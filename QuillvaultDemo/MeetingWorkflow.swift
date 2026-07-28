@@ -194,17 +194,22 @@ struct MeetingWorkflowDependencies {
     let assetWriter: any MeetingAssetWriting
     let mermaidGenerator: any MermaidGenerating
     let mermaidRenderer: any MermaidRendering
+    let apiKeyStore: any APIKeyStoring
+    let byokPreferences: any BYOKPreferencesStoring
+    let connectionTester: any BYOKConnectionTesting
 }
 
 @MainActor
 @Observable
 final class MeetingWorkflow {
-    private let dependencies: MeetingWorkflowDependencies
+    let dependencies: MeetingWorkflowDependencies
     private var authorizedDirectory: URL?
 
     private(set) var state: MeetingWorkflowState = .setup
     private(set) var liveTranscript: [TranscriptSegment] = []
     private(set) var phaseHistory: [MeetingWorkflowPhase] = [.setup]
+    private(set) var byokSettings: BYOKSettings = .deepSeekDefaults
+    private(set) var byokConnectionTestState: BYOKConnectionTestState = .idle
 
     var phase: MeetingWorkflowPhase {
         state.phase
@@ -212,6 +217,68 @@ final class MeetingWorkflow {
 
     init(dependencies: MeetingWorkflowDependencies) {
         self.dependencies = dependencies
+        reloadBYOKSettings()
+    }
+
+    func reloadBYOKSettings() {
+        byokSettings = BYOKSettings(
+            baseURL: dependencies.byokPreferences.baseURL,
+            model: dependencies.byokPreferences.model,
+            apiKeyField: "",
+            hasStoredAPIKey: dependencies.apiKeyStore.hasKey()
+        )
+    }
+
+    func setBYOKBaseURL(_ value: String) {
+        byokSettings.baseURL = value
+    }
+
+    func setBYOKModel(_ value: String) {
+        byokSettings.model = value
+    }
+
+    func setBYOKAPIKeyField(_ value: String) {
+        byokSettings.apiKeyField = value
+    }
+
+    func saveAndTestBYOK() async {
+        byokConnectionTestState = .testing
+        do {
+            let baseURL = byokSettings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let model = byokSettings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !baseURL.isEmpty else {
+                throw BYOKConnectionError.invalidBaseURL
+            }
+            guard !model.isEmpty else {
+                throw BYOKConnectionError.missingModel
+            }
+
+            dependencies.byokPreferences.baseURL = baseURL
+            dependencies.byokPreferences.model = model
+
+            let field = byokSettings.apiKeyField.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !field.isEmpty {
+                try dependencies.apiKeyStore.save(field)
+            }
+
+            guard let apiKey = try dependencies.apiKeyStore.load(), !apiKey.isEmpty else {
+                throw BYOKConnectionError.missingAPIKey
+            }
+
+            let message = try await dependencies.connectionTester.testConnection(
+                baseURL: baseURL,
+                model: model,
+                apiKey: apiKey
+            )
+            byokSettings.apiKeyField = ""
+            byokSettings.hasStoredAPIKey = dependencies.apiKeyStore.hasKey()
+            byokSettings.baseURL = baseURL
+            byokSettings.model = model
+            byokConnectionTestState = .succeeded(message)
+        } catch {
+            byokSettings.hasStoredAPIKey = dependencies.apiKeyStore.hasKey()
+            byokConnectionTestState = .failed(error.localizedDescription)
+        }
     }
 
     func startFaceToFaceSession() async {
@@ -283,7 +350,7 @@ enum DemoWorkflowError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingCredential:
-            "受控凭据替身未准备好"
+            "缺少 BYOK 凭据：请先在设置中保存 API Key"
         case .rejectedDemoResponse:
             "BYOK 替身返回了可诊断的失败；录音与逐字稿仍保留"
         }

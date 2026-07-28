@@ -13,6 +13,8 @@
 		A00000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* XCTest.framework */; };
 		A00000000000000000000006 /* MeetingWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* MeetingWorkflow.swift */; };
 		A00000000000000000000007 /* DemoDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* DemoDependencies.swift */; };
+		A00000000000000000000008 /* BYOKConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* BYOKConfiguration.swift */; };
+		A00000000000000000000009 /* BYOKConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* BYOKConfigurationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,6 +36,8 @@
 		B00000000000000000000006 /* QuillvaultDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuillvaultDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000007 /* MeetingWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingWorkflow.swift; sourceTree = "<group>"; };
 		B00000000000000000000008 /* DemoDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoDependencies.swift; sourceTree = "<group>"; };
+		B00000000000000000000009 /* BYOKConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKConfiguration.swift; sourceTree = "<group>"; };
+		B0000000000000000000000A /* BYOKConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKConfigurationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,7 @@
 				B00000000000000000000002 /* ContentView.swift */,
 				B00000000000000000000007 /* MeetingWorkflow.swift */,
 				B00000000000000000000008 /* DemoDependencies.swift */,
+				B00000000000000000000009 /* BYOKConfiguration.swift */,
 			);
 			path = QuillvaultDemo;
 			sourceTree = "<group>";
@@ -80,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000000000000000000003 /* MeetingWorkflowTests.swift */,
+				B0000000000000000000000A /* BYOKConfigurationTests.swift */,
 			);
 			path = QuillvaultDemoTests;
 			sourceTree = "<group>";
@@ -204,6 +210,7 @@
 				A00000000000000000000002 /* ContentView.swift in Sources */,
 				A00000000000000000000006 /* MeetingWorkflow.swift in Sources */,
 				A00000000000000000000007 /* DemoDependencies.swift in Sources */,
+				A00000000000000000000008 /* BYOKConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -212,6 +219,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000003 /* MeetingWorkflowTests.swift in Sources */,
+				A00000000000000000000009 /* BYOKConfigurationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var workflow = MeetingWorkflow(dependencies: .successfulDemo)
+    @State private var workflow = MeetingWorkflow(dependencies: .liveSetup)
+    @State private var showingBYOKSettings = false
 
     var body: some View {
         NavigationStack {
@@ -15,6 +16,19 @@ struct ContentView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Quillvault Demo")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("BYOK 设置") {
+                        workflow.reloadBYOKSettings()
+                        showingBYOKSettings = true
+                    }
+                }
+            }
+            .sheet(isPresented: $showingBYOKSettings) {
+                NavigationStack {
+                    BYOKSettingsView(workflow: workflow)
+                }
+            }
         }
     }
 
@@ -22,9 +36,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("真机技术闭环 Demo", systemImage: "iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
-            Text("抛弃式可行性原型 · 当前链路使用受控替身")
+            Text("抛弃式可行性原型 · BYOK 配置已接入 Keychain / 真实连接测试")
                 .font(.subheadline)
-            Text("本页只证明 UI 到 MeetingWorkflow 的编排闭环，不代表真实录音、转写或 BYOK 已验证。")
+            Text("录音、转写、目录与纪要生成仍使用受控替身，不代表这些能力已验证。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -79,11 +93,25 @@ struct ContentView: View {
 
     private var setupView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("受控环境已就绪")
+            Text("准备开始")
                 .font(.title2.bold())
-            Label("BYOK 凭据替身", systemImage: "key.fill")
-            Label("权威目录替身", systemImage: "folder.fill")
-            Label("录音、转写与 Mermaid 替身", systemImage: "switch.2")
+            Label(
+                workflow.byokSettings.hasStoredAPIKey
+                    ? "BYOK：Keychain 已有密钥 · \(workflow.byokSettings.model)"
+                    : "BYOK：尚未保存 API Key",
+                systemImage: "key.fill"
+            )
+            Label("权威目录：仍为受控替身", systemImage: "folder.fill")
+            Label("录音、转写与 Mermaid：受控替身", systemImage: "switch.2")
+
+            Button {
+                showingBYOKSettings = true
+            } label: {
+                Label("配置 DeepSeek BYOK", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
             Button {
                 Task { await workflow.startFaceToFaceSession() }
             } label: {
@@ -91,8 +119,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(!workflow.byokSettings.hasStoredAPIKey)
 
-            Button("演示 failed 状态") {
+            Button("演示 failed 状态（受控替身）") {
                 workflow = MeetingWorkflow(dependencies: .failingDemo)
                 Task {
                     await workflow.startFaceToFaceSession()
@@ -205,7 +234,7 @@ struct ContentView: View {
             }
 
             Button("重新演示") {
-                workflow = MeetingWorkflow(dependencies: .successfulDemo)
+                workflow = MeetingWorkflow(dependencies: .liveSetup)
             }
             .buttonStyle(.bordered)
         }
@@ -222,7 +251,7 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button("回到 setup") {
-                workflow = MeetingWorkflow(dependencies: .successfulDemo)
+                workflow = MeetingWorkflow(dependencies: .liveSetup)
             }
             .buttonStyle(.borderedProminent)
         }
@@ -247,6 +276,106 @@ struct ContentView: View {
 
     private func timeRange(for segment: TranscriptSegment) -> String {
         String(format: "%04.1f–%04.1f 秒", segment.startTime, segment.endTime)
+    }
+}
+
+struct BYOKSettingsView: View {
+    @Bindable var workflow: MeetingWorkflow
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Form {
+            Section {
+                Text("验收目标预填 DeepSeek。API Key 仅写入 Keychain；保存后界面不回显完整密钥。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("服务配置") {
+                TextField("Base URL", text: baseURLBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                TextField("Model", text: modelBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField(apiKeyPlaceholder, text: apiKeyBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+
+            Section("连接测试") {
+                Button {
+                    Task { await workflow.saveAndTestBYOK() }
+                } label: {
+                    if case .testing = workflow.byokConnectionTestState {
+                        HStack {
+                            ProgressView()
+                            Text("保存并测试中…")
+                        }
+                    } else {
+                        Label("保存并测试", systemImage: "bolt.horizontal.circle")
+                    }
+                }
+                .disabled({
+                    if case .testing = workflow.byokConnectionTestState { return true }
+                    return false
+                }())
+
+                switch workflow.byokConnectionTestState {
+                case .idle:
+                    Text("将发起真实 Chat Completions 请求，并用 JSON Output 校验 title / overview / summary。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .testing:
+                    Text("正在请求模型…")
+                        .font(.caption)
+                case let .succeeded(message):
+                    Label(message, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                case let .failed(message):
+                    Label(message, systemImage: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            }
+        }
+        .navigationTitle("BYOK 设置")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭") { dismiss() }
+            }
+        }
+        .onAppear {
+            workflow.reloadBYOKSettings()
+        }
+    }
+
+    private var apiKeyPlaceholder: String {
+        workflow.byokSettings.hasStoredAPIKey ? "已保存（输入新密钥可覆盖）" : "API Key"
+    }
+
+    private var baseURLBinding: Binding<String> {
+        Binding(
+            get: { workflow.byokSettings.baseURL },
+            set: { workflow.setBYOKBaseURL($0) }
+        )
+    }
+
+    private var modelBinding: Binding<String> {
+        Binding(
+            get: { workflow.byokSettings.model },
+            set: { workflow.setBYOKModel($0) }
+        )
+    }
+
+    private var apiKeyBinding: Binding<String> {
+        Binding(
+            get: { workflow.byokSettings.apiKeyField },
+            set: { workflow.setBYOKAPIKeyField($0) }
+        )
     }
 }
 

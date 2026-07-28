@@ -2,25 +2,51 @@ import Foundation
 
 @MainActor
 extension MeetingWorkflowDependencies {
-    static let successfulDemo = make(failingGeneration: false)
-    static let failingDemo = make(failingGeneration: true)
+    /// Full fake chain for the disposable demo path and unit tests.
+    static let successfulDemo = makeControlled(failingGeneration: false, seedAPIKey: "demo-seed-key")
+    static let failingDemo = makeControlled(failingGeneration: true, seedAPIKey: "demo-seed-key")
 
-    private static func make(failingGeneration: Bool) -> MeetingWorkflowDependencies {
-        MeetingWorkflowDependencies(
+    /// Live BYOK storage/tester with controlled substitutes for not-yet-wired capabilities.
+    static var liveSetup: MeetingWorkflowDependencies {
+        let keyStore = KeychainAPIKeyStore()
+        return MeetingWorkflowDependencies(
             audioRecorder: DemoAudioRecorder(),
             transcriber: DemoTranscriber(),
-            minutesGenerator: DemoMinutesGenerator(shouldFail: failingGeneration),
-            credentialChecker: DemoCredentialChecker(),
+            minutesGenerator: DemoMinutesGenerator(shouldFail: false),
+            credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: DemoDirectoryAccess(),
             assetWriter: DemoAssetWriter(),
             mermaidGenerator: DeterministicMermaidGenerator(),
-            mermaidRenderer: DemoMermaidRenderer()
+            mermaidRenderer: DemoMermaidRenderer(),
+            apiKeyStore: keyStore,
+            byokPreferences: UserDefaultsBYOKPreferences(),
+            connectionTester: OpenAICompatibleConnectionTester()
+        )
+    }
+
+    private static func makeControlled(
+        failingGeneration: Bool,
+        seedAPIKey: String?
+    ) -> MeetingWorkflowDependencies {
+        let keyStore = InMemoryAPIKeyStore(initial: seedAPIKey)
+        return MeetingWorkflowDependencies(
+            audioRecorder: DemoAudioRecorder(),
+            transcriber: DemoTranscriber(),
+            minutesGenerator: DemoMinutesGenerator(shouldFail: failingGeneration),
+            credentialChecker: StoreBackedCredentialChecker(store: keyStore),
+            directoryAccess: DemoDirectoryAccess(),
+            assetWriter: DemoAssetWriter(),
+            mermaidGenerator: DeterministicMermaidGenerator(),
+            mermaidRenderer: DemoMermaidRenderer(),
+            apiKeyStore: keyStore,
+            byokPreferences: InMemoryBYOKPreferences(),
+            connectionTester: ControllableDemoConnectionTester()
         )
     }
 }
 
 @MainActor
-private final class DemoAudioRecorder: AudioRecording {
+final class DemoAudioRecorder: AudioRecording {
     private let recordingURL = URL(filePath: "/受控替身/recording.m4a")
 
     func start(in directory: URL) async throws -> URL {
@@ -35,7 +61,7 @@ private final class DemoAudioRecorder: AudioRecording {
 }
 
 @MainActor
-private struct DemoTranscriber: Transcribing {
+struct DemoTranscriber: Transcribing {
     private let segments = [
         TranscriptSegment(
             startTime: 0,
@@ -63,7 +89,7 @@ private struct DemoTranscriber: Transcribing {
 }
 
 @MainActor
-private struct DemoMinutesGenerator: MinutesGenerating {
+struct DemoMinutesGenerator: MinutesGenerating {
     let shouldFail: Bool
 
     func generate(from transcript: Transcript) async throws -> StructuredMinutes {
@@ -101,21 +127,14 @@ private struct DemoMinutesGenerator: MinutesGenerating {
 }
 
 @MainActor
-private struct DemoCredentialChecker: BYOKCredentialChecking {
-    func hasBYOKCredential() async -> Bool {
-        true
-    }
-}
-
-@MainActor
-private struct DemoDirectoryAccess: AuthoritativeDirectoryAccessing {
+struct DemoDirectoryAccess: AuthoritativeDirectoryAccessing {
     func authorizedDirectory() async throws -> URL {
         URL(filePath: "/受控替身/Quillvault-Demo")
     }
 }
 
 @MainActor
-private struct DemoAssetWriter: MeetingAssetWriting {
+struct DemoAssetWriter: MeetingAssetWriting {
     func write(
         recordingURL: URL,
         transcript: Transcript,
@@ -133,7 +152,7 @@ private struct DemoAssetWriter: MeetingAssetWriting {
 }
 
 @MainActor
-private struct DeterministicMermaidGenerator: MermaidGenerating {
+struct DeterministicMermaidGenerator: MermaidGenerating {
     func source(for graph: CoreViewpointGraph) -> String {
         let nodes = graph.nodes.map { node in
             "    \(node.id)[\"\(node.label)\"]"
@@ -146,7 +165,7 @@ private struct DeterministicMermaidGenerator: MermaidGenerating {
 }
 
 @MainActor
-private struct DemoMermaidRenderer: MermaidRendering {
+struct DemoMermaidRenderer: MermaidRendering {
     func render(source: String) async throws -> RenderedDiagram {
         try await demoPause()
         return RenderedDiagram(
@@ -154,6 +173,14 @@ private struct DemoMermaidRenderer: MermaidRendering {
             nodeLabels: ["跑通 MeetingWorkflow", "完成真机测试"],
             edgeLabel: "需要"
         )
+    }
+}
+
+@MainActor
+final class ControllableDemoConnectionTester: BYOKConnectionTesting {
+    func testConnection(baseURL: String, model: String, apiKey: String) async throws -> String {
+        try await demoPause()
+        return "连接测试通过：已返回代表性结构化字段（受控替身）"
     }
 }
 
