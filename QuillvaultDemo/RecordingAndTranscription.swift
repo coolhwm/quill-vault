@@ -165,17 +165,24 @@ final class ControllableTranscriber: Transcribing {
     var finalTranscript: Transcript
     var finalizeError: Error?
     var startError: Error?
+    var catchUpError: Error?
+    /// Segments produced only by catch-up (background gap fill).
+    var catchUpSegments: [TranscriptSegment] = []
+    private(set) var pausedAt: TimeInterval?
+    private(set) var catchUpCalls: [(URL, TimeInterval)] = []
     private var onUpdate: (@MainActor ([TranscriptSegment]) -> Void)?
     private(set) var liveSnapshot: [TranscriptSegment] = []
 
     init(
         liveEvents: [TranscriptSegment] = [],
         finalTranscript: Transcript? = nil,
-        finalizeError: Error? = nil
+        finalizeError: Error? = nil,
+        catchUpSegments: [TranscriptSegment] = []
     ) {
         self.liveEvents = liveEvents
         self.finalTranscript = finalTranscript ?? Transcript(segments: liveEvents.filter(\.isFinal))
         self.finalizeError = finalizeError
+        self.catchUpSegments = catchUpSegments
     }
 
     func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
@@ -189,17 +196,39 @@ final class ControllableTranscriber: Transcribing {
         }
     }
 
+    func noteAnalysisPaused(at audioTime: TimeInterval) {
+        pausedAt = audioTime
+    }
+
+    func catchUp(
+        from recordingURL: URL,
+        alreadyCoveredUntil: TimeInterval
+    ) async throws -> [TranscriptSegment] {
+        catchUpCalls.append((recordingURL, alreadyCoveredUntil))
+        if let catchUpError { throw catchUpError }
+        let segments = catchUpSegments.filter { $0.startTime >= alreadyCoveredUntil - 0.05 }
+        if !segments.isEmpty {
+            var merged = liveSnapshot
+            for segment in segments {
+                merged = LiveTranscriptMerger.applying(
+                    TranscriptSegment(
+                        startTime: segment.startTime,
+                        endTime: segment.endTime,
+                        text: segment.text,
+                        isFinal: true
+                    ),
+                    to: merged
+                )
+            }
+            liveSnapshot = merged
+            onUpdate?(merged)
+        }
+        return segments
+    }
+
     func finalize(from recordingURL: URL) async throws -> Transcript {
         if let finalizeError { throw finalizeError }
-        let finals = finalTranscript.segments.map {
-            TranscriptSegment(
-                id: $0.id,
-                startTime: $0.startTime,
-                endTime: $0.endTime,
-                text: $0.text,
-                isFinal: true
-            )
-        }
+        let finals = TranscriptTimeline.mergeFinals(finalTranscript.segments + catchUpSegments)
         onUpdate?(finals)
         return Transcript(segments: finals)
     }
@@ -223,11 +252,13 @@ final class SpeechAnalyzerTranscriber: Transcribing {
     private var finals: [TranscriptSegment] = []
     private var onUpdate: (@MainActor ([TranscriptSegment]) -> Void)?
     private var startedAt: Date?
+    private var analysisPausedAt: TimeInterval?
 
     func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
         self.onUpdate = onUpdate
         self.finals = []
         self.startedAt = Date()
+        self.analysisPausedAt = nil
 
         guard SpeechTranscriber.isAvailable else {
             throw TranscriptionError.unavailable
@@ -259,6 +290,14 @@ final class SpeechAnalyzerTranscriber: Transcribing {
         try engine.start()
         self.engine = engine
 
+        // Keep audio session eligible for background recording while analysis may pause.
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
+        )
+        try? AVAudioSession.sharedInstance().setActive(true)
+
         resultsTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -272,6 +311,24 @@ final class SpeechAnalyzerTranscriber: Transcribing {
 
         try await analyzer.start(inputSequence: stream)
         onUpdate(finals)
+    }
+
+    func noteAnalysisPaused(at audioTime: TimeInterval) {
+        analysisPausedAt = audioTime
+        // Do not stop the audio recorder. Live engine may be suspended by the system.
+    }
+
+    func catchUp(
+        from recordingURL: URL,
+        alreadyCoveredUntil: TimeInterval
+    ) async throws -> [TranscriptSegment] {
+        let filled = try await analyzeFile(recordingURL, after: alreadyCoveredUntil)
+        if !filled.isEmpty {
+            finals = TranscriptTimeline.mergeFinals(finals + filled)
+            onUpdate?(finals)
+        }
+        analysisPausedAt = nil
+        return filled
     }
 
     func finalize(from recordingURL: URL) async throws -> Transcript {
@@ -289,10 +346,9 @@ final class SpeechAnalyzerTranscriber: Transcribing {
         resultsTask?.cancel()
         resultsTask = nil
 
-        // If live analysis produced nothing, attempt file-based catch-up for the saved m4a.
-        if finals.isEmpty {
-            try await catchUpFromFile(recordingURL)
-        }
+        let covered = TranscriptTimeline.lastCoveredEnd(in: finals)
+        let filled = try await analyzeFile(recordingURL, after: covered)
+        finals = TranscriptTimeline.mergeFinals(finals + filled)
 
         analyzer = nil
         transcriber = nil
@@ -320,8 +376,8 @@ final class SpeechAnalyzerTranscriber: Transcribing {
         }
     }
 
-    private func catchUpFromFile(_ url: URL) async throws {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+    private func analyzeFile(_ url: URL, after alreadyCoveredUntil: TimeInterval) async throws -> [TranscriptSegment] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let locale = Locale(identifier: "zh-CN")
         let fileTranscriber = SpeechTranscriber(
             locale: locale,
@@ -339,22 +395,23 @@ final class SpeechAnalyzerTranscriber: Transcribing {
                 let start = CMTimeGetSeconds(result.range.start)
                 let end = CMTimeGetSeconds(result.range.end)
                 let text = String(result.text.characters)
-                if !text.isEmpty {
-                    collected.append(
-                        TranscriptSegment(
-                            startTime: start,
-                            endTime: end,
-                            text: text,
-                            isFinal: true
-                        )
+                if text.isEmpty { continue }
+                if end <= alreadyCoveredUntil + 0.05 { continue }
+                let clippedStart = max(start, alreadyCoveredUntil)
+                collected.append(
+                    TranscriptSegment(
+                        startTime: clippedStart,
+                        endTime: end,
+                        text: text,
+                        isFinal: true
                     )
-                }
+                )
             }
             return collected
         }
         try await analyzer.start(inputAudioFile: file, finishAfterFile: true)
         try await analyzer.finalizeAndFinishThroughEndOfInput()
-        finals = try await collect.value
+        return try await collect.value
     }
 }
 

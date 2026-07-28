@@ -147,6 +147,10 @@ protocol AudioRecording {
 protocol Transcribing {
     /// Starts live transcription and reports merged volatile/final segments via `onUpdate`.
     func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws
+    /// Marks that system analysis may have paused (background/lock). Recording must continue.
+    func noteAnalysisPaused(at audioTime: TimeInterval)
+    /// Catch up unanalyzed ranges from the saved recording (foreground return or stop).
+    func catchUp(from recordingURL: URL, alreadyCoveredUntil: TimeInterval) async throws -> [TranscriptSegment]
     func finalize(from recordingURL: URL) async throws -> Transcript
 }
 
@@ -219,6 +223,10 @@ final class MeetingWorkflow {
     private(set) var directoryState: AuthoritativeDirectoryState = .unset
     /// Survives downstream transcription/generation failures so evidence is never lost.
     private(set) var preservedRecordingURL: URL?
+    /// Last completed audio range end from live analysis (not a real-time display promise in background).
+    private(set) var lastCompletedAudioEnd: TimeInterval = 0
+    private(set) var analysisPaused = false
+    private(set) var diagnosticNote: String?
 
     var phase: MeetingWorkflowPhase {
         state.phase
@@ -335,24 +343,66 @@ final class MeetingWorkflow {
             self.activeRecordingURL = recordingURL
             self.preservedRecordingURL = recordingURL
             self.recordingStartedAt = Date()
+            self.lastCompletedAudioEnd = 0
+            self.analysisPaused = false
+            self.diagnosticNote = nil
             liveTranscript = []
             transition(to: .recording)
 
             // Transcription failures must not reverse an already-started recording.
             do {
                 try await dependencies.transcriber.start { [weak self] segments in
-                    self?.liveTranscript = segments
+                    guard let self else { return }
+                    self.liveTranscript = segments
+                    self.lastCompletedAudioEnd = TranscriptTimeline.lastCoveredEnd(in: segments)
                 }
             } catch {
                 // Keep recording state; surface diagnostic on live transcript banner via failed only if start fully aborts.
                 // Spec: 转写错误不会删除或截断已有录音 — stay in recording with empty/partial transcript.
                 liveTranscript = []
+                diagnosticNote = "实时转写启动失败，录音继续：\(error.localizedDescription)"
             }
         } catch {
             // Do not enter a fake recording state when setup fails before record starts.
             activeRecordingURL = nil
             recordingStartedAt = nil
             transition(to: .failed(error.localizedDescription))
+        }
+    }
+
+    /// Call when App enters background or device locks. Recording continues; analysis may pause.
+    func handleEnteredBackground() {
+        guard phase == .recording else { return }
+        analysisPaused = true
+        let audioTime = recordingDuration
+        dependencies.transcriber.noteAnalysisPaused(at: audioTime)
+        diagnosticNote = String(
+            format: "已进入后台/锁屏：录音继续。最后完成分析至 %.1f 秒。",
+            lastCompletedAudioEnd
+        )
+    }
+
+    /// Call when returning to foreground: catch up unanalyzed audio from the saved recording.
+    func handleBecameActive() async {
+        guard phase == .recording, analysisPaused, let recordingURL = activeRecordingURL else { return }
+        do {
+            let caughtUp = try await dependencies.transcriber.catchUp(
+                from: recordingURL,
+                alreadyCoveredUntil: lastCompletedAudioEnd
+            )
+            if !caughtUp.isEmpty {
+                let merged = TranscriptTimeline.mergeFinals(liveTranscript + caughtUp)
+                liveTranscript = merged
+                lastCompletedAudioEnd = TranscriptTimeline.lastCoveredEnd(in: merged)
+            }
+            analysisPaused = false
+            diagnosticNote = String(
+                format: "前台追平完成，覆盖至 %.1f 秒。",
+                lastCompletedAudioEnd
+            )
+        } catch {
+            // Audio remains; show diagnostic without aborting recording.
+            diagnosticNote = "前台追平失败（录音仍保留）：\(error.localizedDescription)"
         }
     }
 
@@ -370,10 +420,31 @@ final class MeetingWorkflow {
             return
         }
 
+        let recordingDurationSnapshot = recordingDuration
+        recordingStartedAt = nil
+
         let transcript: Transcript
         do {
-            transcript = try await dependencies.transcriber.finalize(from: recordingURL)
+            // Always attempt catch-up for any unanalyzed range before finalize.
+            let caughtUp = try await dependencies.transcriber.catchUp(
+                from: recordingURL,
+                alreadyCoveredUntil: lastCompletedAudioEnd
+            )
+            if !caughtUp.isEmpty {
+                liveTranscript = TranscriptTimeline.mergeFinals(liveTranscript + caughtUp)
+                lastCompletedAudioEnd = TranscriptTimeline.lastCoveredEnd(in: liveTranscript)
+            }
+            var finalized = try await dependencies.transcriber.finalize(from: recordingURL)
+            finalized = Transcript(segments: TranscriptTimeline.mergeFinals(finalized.segments))
+            if !TranscriptTimeline.coversRecordingDuration(
+                finalized.segments,
+                duration: max(recordingDurationSnapshot, lastCompletedAudioEnd)
+            ) {
+                diagnosticNote = "最终逐字稿时间轴可能存在空洞，录音已完整保留。"
+            }
+            transcript = finalized
             liveTranscript = transcript.segments
+            analysisPaused = false
         } catch {
             // Preserve recording evidence; do not invent a completed meeting.
             transition(

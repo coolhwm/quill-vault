@@ -115,6 +115,15 @@ struct DemoTranscriber: Transcribing {
         onUpdate(segments)
     }
 
+    func noteAnalysisPaused(at audioTime: TimeInterval) {}
+
+    func catchUp(
+        from recordingURL: URL,
+        alreadyCoveredUntil: TimeInterval
+    ) async throws -> [TranscriptSegment] {
+        []
+    }
+
     func finalize(from recordingURL: URL) async throws -> Transcript {
         try await demoPause()
         return Transcript(segments: segments)

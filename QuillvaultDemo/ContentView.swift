@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var workflow = MeetingWorkflow(dependencies: .liveSetup)
     @State private var showingBYOKSettings = false
     @State private var showingDirectoryImporter = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -43,6 +44,16 @@ struct ContentView: View {
             .task {
                 await workflow.reloadAuthoritativeDirectory()
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                switch newPhase {
+                case .background:
+                    workflow.handleEnteredBackground()
+                case .active:
+                    Task { await workflow.handleBecameActive() }
+                default:
+                    break
+                }
+            }
         }
     }
 
@@ -50,9 +61,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("真机技术闭环 Demo", systemImage: "iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
-            Text("抛弃式可行性原型 · BYOK / 权威目录 / 前台录音转写已接入")
+            Text("抛弃式可行性原型 · 后台录音优先，转写可追平")
                 .font(.subheadline)
-            Text("纪要生成与 Mermaid 落盘仍有受控替身成分，完整 BYOK 纪要见后续票据。")
+            Text("锁屏/切后台时优先保证 m4a 连续；回到前台或停止后从录音追平逐字稿。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -199,6 +210,20 @@ struct ContentView: View {
             Text("红色为最终片段 · 灰色斜体为 volatile 临时结果")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text(
+                String(
+                    format: "已完成分析至 %.1f 秒%@",
+                    workflow.lastCompletedAudioEnd,
+                    workflow.analysisPaused ? " · 分析可能已暂停（录音继续）" : ""
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if let note = workflow.diagnosticNote {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
 
             Text("实时逐字稿")
                 .font(.headline)
