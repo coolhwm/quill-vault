@@ -125,15 +125,21 @@ extension MeetingWorkflowDependencies {
 
 @MainActor
 final class DemoAudioRecorder: AudioRecording {
-    private let recordingURL = URL(filePath: "/受控替身/recording.m4a")
+    private var recordingURL = URL(filePath: "/受控替身/meeting-demo/recording.m4a")
+    private var started = false
+
+    var currentTime: TimeInterval { started ? 7.8 : 0 }
 
     func start(in directory: URL) async throws -> URL {
         try await demoPause()
+        started = true
+        recordingURL = directory.appendingPathComponent("meeting-demo/recording.m4a")
         return recordingURL
     }
 
     func stop() async throws -> URL {
         try await demoPause()
+        started = false
         return recordingURL
     }
 }
@@ -155,7 +161,10 @@ struct DemoTranscriber: Transcribing {
         )
     ]
 
-    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
+    func start(
+        recordingURL: URL,
+        onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void
+    ) async throws {
         try await demoPause()
         onUpdate(segments)
     }
@@ -276,13 +285,7 @@ struct DemoAssetWriter: MeetingAssetWriting {
     }
 }
 
-@MainActor
-struct DeterministicMermaidGenerator: MermaidGenerating {
-    private let impl = DeterministicFlowchartGenerator()
-    func source(for graph: CoreViewpointGraph) -> String {
-        impl.source(for: graph)
-    }
-}
+typealias DeterministicMermaidGenerator = DeterministicFlowchartGenerator
 
 @MainActor
 struct DemoMermaidRenderer: MermaidRendering {

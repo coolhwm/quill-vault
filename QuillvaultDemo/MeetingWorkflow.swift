@@ -185,14 +185,20 @@ enum MeetingWorkflowState: Equatable, Sendable {
 
 @MainActor
 protocol AudioRecording {
+    /// Starts continuous m4a capture under the authoritative directory (prefer a meeting asset folder).
     func start(in directory: URL) async throws -> URL
     func stop() async throws -> URL
+    /// Audio-clock duration of the active recording (not wall clock).
+    var currentTime: TimeInterval { get }
 }
 
 @MainActor
 protocol Transcribing {
-    /// Starts live transcription and reports merged volatile/final segments via `onUpdate`.
-    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws
+    /// Starts live transcription against the sole recording file (must not open a second mic capture).
+    func start(
+        recordingURL: URL,
+        onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void
+    ) async throws
     /// Marks that system analysis may have paused (background/lock). Recording must continue.
     func noteAnalysisPaused(at audioTime: TimeInterval)
     /// Catch up unanalyzed ranges from the saved recording (foreground return or stop).
@@ -292,6 +298,8 @@ final class MeetingWorkflow {
     }
 
     var recordingDuration: TimeInterval {
+        let audioClock = dependencies.audioRecorder.currentTime
+        if audioClock > 0 { return audioClock }
         guard let recordingStartedAt else { return 0 }
         return Date().timeIntervalSince(recordingStartedAt)
     }
@@ -408,16 +416,14 @@ final class MeetingWorkflow {
             liveTranscript = []
             transition(to: .recording)
 
-            // Transcription failures must not reverse an already-started recording.
+            // Transcription must not open a second mic path; failures must not reverse recording.
             do {
-                try await dependencies.transcriber.start { [weak self] segments in
+                try await dependencies.transcriber.start(recordingURL: recordingURL) { [weak self] segments in
                     guard let self else { return }
                     self.liveTranscript = segments
                     self.lastCompletedAudioEnd = TranscriptTimeline.lastCoveredEnd(in: segments)
                 }
             } catch {
-                // Keep recording state; surface diagnostic on live transcript banner via failed only if start fully aborts.
-                // Spec: 转写错误不会删除或截断已有录音 — stay in recording with empty/partial transcript.
                 liveTranscript = []
                 diagnosticNote = "实时转写启动失败，录音继续：\(error.localizedDescription)"
             }
@@ -479,12 +485,15 @@ final class MeetingWorkflow {
             return
         }
 
-        let recordingDurationSnapshot = recordingDuration
+        let recordingDurationSnapshot = max(
+            recordingDuration,
+            dependencies.audioRecorder.currentTime,
+            lastCompletedAudioEnd
+        )
         recordingStartedAt = nil
 
         let transcript: Transcript
         do {
-            // Always attempt catch-up for any unanalyzed range before finalize.
             let caughtUp = try await dependencies.transcriber.catchUp(
                 from: recordingURL,
                 alreadyCoveredUntil: lastCompletedAudioEnd
@@ -495,17 +504,32 @@ final class MeetingWorkflow {
             }
             var finalized = try await dependencies.transcriber.finalize(from: recordingURL)
             finalized = Transcript(segments: TranscriptTimeline.mergeFinals(finalized.segments))
+            let durationForCoverage = max(recordingDurationSnapshot, lastCompletedAudioEnd)
             if !TranscriptTimeline.coversRecordingDuration(
                 finalized.segments,
-                duration: max(recordingDurationSnapshot, lastCompletedAudioEnd)
+                duration: durationForCoverage
             ) {
-                diagnosticNote = "最终逐字稿时间轴可能存在空洞，录音已完整保留。"
+                // Spec: finalization must prevent missing ranges — block BYOK, keep recording.
+                finalizedTranscript = finalized
+                liveTranscript = finalized.segments
+                _ = try? await dependencies.assetWriter.write(
+                    recordingURL: recordingURL,
+                    transcript: finalized,
+                    minutes: nil,
+                    mermaidSource: nil,
+                    to: directory
+                )
+                transition(
+                    to: .failed(
+                        "最终逐字稿时间轴存在重复或空洞（录音时长约 \(String(format: "%.1f", durationForCoverage)) 秒）。原始录音与逐字稿已保留，未生成 minutes.md。"
+                    )
+                )
+                return
             }
             transcript = finalized
             liveTranscript = transcript.segments
             analysisPaused = false
         } catch {
-            // Preserve recording evidence; do not invent a completed meeting.
             transition(
                 to: .failed(
                     "\(error.localizedDescription)（原始录音已保留：\(recordingURL.lastPathComponent)）"
@@ -515,7 +539,6 @@ final class MeetingWorkflow {
         }
 
         finalizedTranscript = transcript
-        // Persist source assets before BYOK so AI failure never erases evidence.
         do {
             sourceAssetFiles = try await dependencies.assetWriter.write(
                 recordingURL: recordingURL,
@@ -632,9 +655,30 @@ final class MeetingWorkflow {
         do {
             return try await dependencies.minutesGenerator.generate(from: transcript)
         } catch {
-            // One automatic retry for empty / invalid / validation failures.
+            // Retry only empty content / invalid JSON / business validation — not auth/network.
+            guard Self.isRetriableMinutesError(error) else { throw error }
             return try await dependencies.minutesGenerator.generate(from: transcript)
         }
+    }
+
+    private static func isRetriableMinutesError(_ error: Error) -> Bool {
+        if let validation = error as? MinutesValidationError {
+            switch validation {
+            case .emptyContent, .invalidJSON, .missingField, .invalidTimeRange:
+                return true
+            case .generationFailed:
+                return false
+            }
+        }
+        if let connection = error as? BYOKConnectionError {
+            switch connection {
+            case .emptyContent, .invalidJSON, .invalidStructure:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
     }
 
     private func transition(to nextState: MeetingWorkflowState) {

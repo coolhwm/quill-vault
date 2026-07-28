@@ -61,9 +61,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("真机技术闭环 Demo", systemImage: "iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
-            Text("抛弃式可行性原型 · 后台录音优先，转写可追平")
+            Text("抛弃式可行性原型 · 真机技术闭环 Demo")
                 .font(.subheadline)
-            Text("锁屏/切后台时优先保证 m4a 连续；回到前台或停止后从录音追平逐字稿。")
+            Text("麦克风单路连续录音优先；转写可从录音追平；BYOK 纪要与离线 Mermaid 已接入。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -127,7 +127,7 @@ struct ContentView: View {
                 systemImage: "key.fill"
             )
             directoryStatusLabel
-            Label("前台录音 + SpeechAnalyzer 转写已接入；纪要仍部分受控", systemImage: "waveform")
+            Label("录音 / 转写 / BYOK / Mermaid / 权威目录已接入", systemImage: "waveform")
 
             Button {
                 showingBYOKSettings = true
@@ -287,17 +287,17 @@ struct ContentView: View {
 
     private func completedView(_ assets: MeetingAssets) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("完整假链路已完成", systemImage: "checkmark.seal.fill")
+            Label("会议链路已完成", systemImage: "checkmark.seal.fill")
                 .font(.title2.bold())
                 .foregroundStyle(.green)
 
-            section("假逐字稿") {
+            section("逐字稿") {
                 ForEach(assets.transcript.segments) { segment in
                     Text("\(timeRange(for: segment))  \(segment.text)")
                 }
             }
 
-            section("假结构化纪要") {
+            section("结构化纪要") {
                 Text(assets.minutes.title).font(.headline)
                 Text(assets.minutes.overview)
                 Text(assets.minutes.summary)

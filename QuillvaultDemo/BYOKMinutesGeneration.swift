@@ -26,23 +26,41 @@ enum MinutesValidationError: LocalizedError, Equatable {
 enum OwnerAttribution {
     static let pendingOwner = "待确认负责人"
 
-    /// Accept owner only when transcript text explicitly links the name to responsibility.
+    /// Accept owner only when transcript explicitly binds name to responsibility nearby.
     static func resolvedOwner(proposed: String?, transcriptText: String) -> String {
         let name = proposed?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !name.isEmpty else { return pendingOwner }
         if name == pendingOwner { return pendingOwner }
-        let text = transcriptText
-        let responsibilityHints = ["负责", "跟进", "完成", "处理", "owner", "Owner"]
-        let hasName = text.contains(name)
-        let hasResponsibility = responsibilityHints.contains { text.contains($0) }
-        // Require co-occurrence of name and a responsibility cue in the same transcript.
-        guard hasName && hasResponsibility else { return pendingOwner }
-        // Prefer evidence that name appears near a responsibility phrase.
-        for hint in responsibilityHints {
-            if text.contains("\(name)\(hint)") || text.contains("\(name)负责") || text.contains("由\(name)") {
-                return name
-            }
-            if text.contains(name), text.contains(hint) {
+        guard transcriptText.contains(name) else { return pendingOwner }
+
+        // Explicit local patterns only — global co-occurrence of "完成" elsewhere is insufficient.
+        let patterns = [
+            "\(name)负责",
+            "\(name)跟进",
+            "\(name)完成",
+            "由\(name)负责",
+            "请\(name)负责",
+            "\(name) 负责",
+            "\(name)来负责"
+        ]
+        for pattern in patterns where transcriptText.contains(pattern) {
+            return name
+        }
+
+        // Windowed check: name and responsibility cue within ~12 characters.
+        if let nameRange = transcriptText.range(of: name) {
+            let start = transcriptText.index(
+                nameRange.lowerBound,
+                offsetBy: -2,
+                limitedBy: transcriptText.startIndex
+            ) ?? transcriptText.startIndex
+            let end = transcriptText.index(
+                nameRange.upperBound,
+                offsetBy: 12,
+                limitedBy: transcriptText.endIndex
+            ) ?? transcriptText.endIndex
+            let window = String(transcriptText[start..<end])
+            if window.contains("负责") || window.contains("跟进") {
                 return name
             }
         }
@@ -65,7 +83,12 @@ enum StructuredMinutesValidator {
         let overview = try nonEmptyString("overview")
         let summary = try nonEmptyString("summary")
 
-        let chaptersRaw = jsonObject["chapters"] as? [[String: Any]] ?? []
+        guard let chaptersRaw = jsonObject["chapters"] as? [[String: Any]] else {
+            throw MinutesValidationError.missingField("chapters")
+        }
+        guard !chaptersRaw.isEmpty else {
+            throw MinutesValidationError.missingField("chapters")
+        }
         var chapters: [TopicChapter] = []
         for (index, item) in chaptersRaw.enumerated() {
             guard let cTitle = item["title"] as? String, !cTitle.isEmpty,
@@ -208,13 +231,11 @@ enum BYOKMinutesRequestBuilder {
 
     static func containsAudioPayload(_ body: Data) -> Bool {
         let text = String(data: body, encoding: .utf8)?.lowercased() ?? ""
-        let banned = ["recording.m4a", "audio/", "data:audio", "m4a", "base64,", "file://"]
-        // transcript lines may mention words; check stronger signals
         if text.contains("recording.m4a") { return true }
         if text.contains("data:audio") { return true }
         if text.contains("\"audio\"") { return true }
         if text.contains("input_audio") { return true }
-        _ = banned
+        if text.contains("file://") { return true }
         return false
     }
 }

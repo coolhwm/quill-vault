@@ -79,7 +79,7 @@ enum LiveTranscriptMerger {
     }
 }
 
-// MARK: - Device audio recorder (continuous m4a)
+// MARK: - Device audio recorder (continuous m4a — sole mic owner)
 
 @MainActor
 final class DeviceAudioRecorder: AudioRecording {
@@ -88,12 +88,23 @@ final class DeviceAudioRecorder: AudioRecording {
 
     func start(in directory: URL) async throws -> URL {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [.defaultToSpeaker, .allowBluetooth]
+        )
         try session.setActive(true)
 
-        let fileURL = directory
-            .appendingPathComponent("recording-\(UUID().uuidString)", isDirectory: false)
-            .appendingPathExtension("m4a")
+        // Write directly into a meeting asset directory so mid-session kills still leave a coherent folder.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let meetingDir = directory.appendingPathComponent(
+            "meeting-\(formatter.string(from: Date()))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+        let fileURL = meetingDir.appendingPathComponent("recording.m4a")
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -133,6 +144,8 @@ final class ControllableAudioRecorder: AudioRecording {
     private(set) var started = false
     private(set) var stopped = false
     private(set) var recordingURL: URL
+    /// When zero, workflow coverage falls back to last completed transcript end.
+    var simulatedCurrentTime: TimeInterval = 0
     var startError: Error?
     var stopError: Error?
 
@@ -140,15 +153,22 @@ final class ControllableAudioRecorder: AudioRecording {
         self.recordingURL = recordingURL
     }
 
+    var currentTime: TimeInterval {
+        guard started else { return 0 }
+        return simulatedCurrentTime
+    }
+
     func start(in directory: URL) async throws -> URL {
         if let startError { throw startError }
-        // Materialize a tiny m4a-like file so asset writer / survival checks have bytes.
-        let url = directory.appendingPathComponent("recording.m4a")
+        let meetingDir = directory.appendingPathComponent("meeting-test", isDirectory: true)
+        try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+        let url = meetingDir.appendingPathComponent("recording.m4a")
         if !FileManager.default.fileExists(atPath: url.path) {
             try Data("m4a-placeholder".utf8).write(to: url)
         }
         recordingURL = url
         started = true
+        stopped = false
         return url
     }
 
@@ -185,7 +205,10 @@ final class ControllableTranscriber: Transcribing {
         self.catchUpSegments = catchUpSegments
     }
 
-    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
+    func start(
+        recordingURL: URL,
+        onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void
+    ) async throws {
         if let startError { throw startError }
         self.onUpdate = onUpdate
         var merged: [TranscriptSegment] = []
@@ -240,82 +263,59 @@ final class ControllableTranscriber: Transcribing {
     }
 }
 
-// MARK: - SpeechAnalyzer-backed live transcriber (device)
+// MARK: - SpeechAnalyzer transcriber (file-based; does not open a second mic)
 
+/// Sole mic owner is `DeviceAudioRecorder`. This type only analyzes the saved m4a so
+/// recording integrity is never contested by a parallel AVAudioEngine input tap.
 @MainActor
 final class SpeechAnalyzerTranscriber: Transcribing {
-    private var analyzer: SpeechAnalyzer?
-    private var transcriber: SpeechTranscriber?
-    private var engine: AVAudioEngine?
-    private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
-    private var resultsTask: Task<Void, Never>?
     private var finals: [TranscriptSegment] = []
     private var onUpdate: (@MainActor ([TranscriptSegment]) -> Void)?
-    private var startedAt: Date?
     private var analysisPausedAt: TimeInterval?
+    private var activeRecordingURL: URL?
+    private var pollTask: Task<Void, Never>?
 
-    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
+    func start(
+        recordingURL: URL,
+        onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void
+    ) async throws {
         self.onUpdate = onUpdate
         self.finals = []
-        self.startedAt = Date()
         self.analysisPausedAt = nil
+        self.activeRecordingURL = recordingURL
 
         guard SpeechTranscriber.isAvailable else {
             throw TranscriptionError.unavailable
         }
 
         let locale = Locale(identifier: "zh-CN")
-        let transcriber = SpeechTranscriber(
+        let probe = SpeechTranscriber(
             locale: locale,
             preset: .timeIndexedProgressiveTranscription
         )
-        // Ensure assets when possible; ignore soft failures for demo.
-        if let request = try? await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+        if let request = try? await AssetInventory.assetInstallationRequest(supporting: [probe]) {
             try? await request.downloadAndInstall()
         }
 
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
-        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
-        self.inputBuilder = continuation
-        self.analyzer = analyzer
-        self.transcriber = transcriber
-
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
-            continuation.yield(AnalyzerInput(buffer: buffer))
-        }
-        engine.prepare()
-        try engine.start()
-        self.engine = engine
-
-        // Keep audio session eligible for background recording while analysis may pause.
-        try? AVAudioSession.sharedInstance().setCategory(
-            .playAndRecord,
-            mode: .default,
-            options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
-        )
-        try? AVAudioSession.sharedInstance().setActive(true)
-
-        resultsTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                for try await result in transcriber.results {
-                    await self.handle(result: result)
+        // Best-effort live progress by re-reading the growing recording file.
+        // Never installs an input tap — audio continuity owns the mic.
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                guard let self, let url = self.activeRecordingURL else { continue }
+                if self.analysisPausedAt != nil { continue }
+                let covered = TranscriptTimeline.lastCoveredEnd(in: self.finals)
+                if let filled = try? await self.analyzeFile(url, after: covered), !filled.isEmpty {
+                    self.finals = TranscriptTimeline.mergeFinals(self.finals + filled)
+                    self.onUpdate?(self.finals)
                 }
-            } catch {
-                // Surface later via finalize if no finals collected.
             }
         }
-
-        try await analyzer.start(inputSequence: stream)
         onUpdate(finals)
     }
 
     func noteAnalysisPaused(at audioTime: TimeInterval) {
         analysisPausedAt = audioTime
-        // Do not stop the audio recorder. Live engine may be suspended by the system.
     }
 
     func catchUp(
@@ -332,58 +332,36 @@ final class SpeechAnalyzerTranscriber: Transcribing {
     }
 
     func finalize(from recordingURL: URL) async throws -> Transcript {
-        inputBuilder?.finish()
-        inputBuilder = nil
-        engine?.inputNode.removeTap(onBus: 0)
-        engine?.stop()
-        engine = nil
-
-        if let analyzer {
-            try? await analyzer.finalizeAndFinishThroughEndOfInput()
-        }
-        // Brief drain for late final results.
-        try? await Task.sleep(for: .milliseconds(400))
-        resultsTask?.cancel()
-        resultsTask = nil
+        pollTask?.cancel()
+        pollTask = nil
+        activeRecordingURL = nil
 
         let covered = TranscriptTimeline.lastCoveredEnd(in: finals)
         let filled = try await analyzeFile(recordingURL, after: covered)
         finals = TranscriptTimeline.mergeFinals(finals + filled)
-
-        analyzer = nil
-        transcriber = nil
         let transcript = Transcript(segments: finals)
         onUpdate?(finals)
         return transcript
     }
 
-    private func handle(result: SpeechTranscriber.Result) async {
-        let start = CMTimeGetSeconds(result.range.start)
-        let end = CMTimeGetSeconds(result.range.end)
-        let text = String(result.text.characters)
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let segment = TranscriptSegment(
-            startTime: start.isFinite ? start : 0,
-            endTime: end.isFinite ? end : start,
-            text: text,
-            isFinal: result.isFinal
-        )
-        if segment.isFinal {
-            finals = LiveTranscriptMerger.applying(segment, to: finals.filter(\.isFinal))
-            onUpdate?(finals)
-        } else {
-            onUpdate?(LiveTranscriptMerger.applying(segment, to: finals))
-        }
-    }
-
     private func analyzeFile(_ url: URL, after alreadyCoveredUntil: TimeInterval) async throws -> [TranscriptSegment] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        // Growing files may briefly be unreadable while the recorder flushes.
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+        guard size > 0 else { return [] }
+
         let locale = Locale(identifier: "zh-CN")
         let fileTranscriber = SpeechTranscriber(
             locale: locale,
             preset: .timeIndexedProgressiveTranscription
         )
-        let file = try AVAudioFile(forReading: url)
+        let file: AVAudioFile
+        do {
+            file = try AVAudioFile(forReading: url)
+        } catch {
+            return []
+        }
         let analyzer = try await SpeechAnalyzer(
             inputAudioFile: file,
             modules: [fileTranscriber],
@@ -428,29 +406,44 @@ final class FileMeetingAssetWriter: MeetingAssetWriting {
         mermaidSource: String?,
         to directory: URL
     ) async throws -> [MeetingAssetFile] {
+        // Prefer the meeting folder created at record start (`…/meeting-*/recording.m4a`).
+        let parent = recordingURL.deletingLastPathComponent()
         let meetingDir: URL
-        if let lastMeetingDir,
-           FileManager.default.fileExists(atPath: lastMeetingDir.path),
-           lastMeetingDir.deletingLastPathComponent().path == directory.path
+        if parent.lastPathComponent.hasPrefix("meeting-") {
+            meetingDir = parent
+        } else if let lastMeetingDir,
+                  FileManager.default.fileExists(atPath: lastMeetingDir.path)
         {
             meetingDir = lastMeetingDir
         } else {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyyMMdd-HHmmss"
-            let folderName = "meeting-\(formatter.string(from: Date()))"
-            meetingDir = directory.appendingPathComponent(folderName, isDirectory: true)
-            try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
-            lastMeetingDir = meetingDir
+            meetingDir = directory.appendingPathComponent(
+                "meeting-\(formatter.string(from: Date()))",
+                isDirectory: true
+            )
         }
+        lastMeetingDir = meetingDir
+        try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
 
         let destRecording = meetingDir.appendingPathComponent("recording.m4a")
-        if !FileManager.default.fileExists(atPath: destRecording.path) {
-            if FileManager.default.fileExists(atPath: recordingURL.path) {
-                try FileManager.default.copyItem(at: recordingURL, to: destRecording)
-            } else {
-                try Data().write(to: destRecording)
+        if recordingURL.standardizedFileURL == destRecording.standardizedFileURL {
+            // Already the authoritative meeting recording path.
+            guard FileManager.default.fileExists(atPath: destRecording.path) else {
+                throw RecordingError.failedToStart("会议目录中缺少 recording.m4a")
             }
+        } else if !FileManager.default.fileExists(atPath: destRecording.path) {
+            guard FileManager.default.fileExists(atPath: recordingURL.path) else {
+                throw RecordingError.failedToStart("源录音不存在，拒绝写入空 recording.m4a")
+            }
+            try FileManager.default.copyItem(at: recordingURL, to: destRecording)
+        }
+        // Refuse zero-byte evidence files.
+        let attrs = try FileManager.default.attributesOfItem(atPath: destRecording.path)
+        let size = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        guard size > 0 else {
+            throw RecordingError.failedToStart("recording.m4a 为空，拒绝作为会议资产")
         }
 
         let transcriptURL = meetingDir.appendingPathComponent("transcript.md")

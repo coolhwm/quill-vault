@@ -128,8 +128,10 @@ final class BackgroundCatchUpTests: XCTestCase {
             bookmarkStore: InMemoryBookmarkStore(data: bookmark),
             bookmarking: bookmarking
         )
+        let recorder = ControllableAudioRecorder()
+        recorder.simulatedCurrentTime = 9
         return MeetingWorkflowDependencies(
-            audioRecorder: ControllableAudioRecorder(),
+            audioRecorder: recorder,
             transcriber: transcriber,
             minutesGenerator: DemoMinutesGenerator(shouldFail: false),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
