@@ -23,6 +23,9 @@
 		A0000000000000000000000F /* BackgroundCatchUpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* BackgroundCatchUpTests.swift */; };
 		A00000000000000000000010 /* BYOKMinutesGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* BYOKMinutesGeneration.swift */; };
 		A00000000000000000000011 /* BYOKMinutesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* BYOKMinutesTests.swift */; };
+		A00000000000000000000012 /* MermaidSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013 /* MermaidSupport.swift */; };
+		A00000000000000000000013 /* MermaidTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000014 /* MermaidTests.swift */; };
+		A00000000000000000000014 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015 /* mermaid.min.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +57,9 @@
 		B00000000000000000000010 /* BackgroundCatchUpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundCatchUpTests.swift; sourceTree = "<group>"; };
 		B00000000000000000000011 /* BYOKMinutesGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKMinutesGeneration.swift; sourceTree = "<group>"; };
 		B00000000000000000000012 /* BYOKMinutesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKMinutesTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000013 /* MermaidSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidSupport.swift; sourceTree = "<group>"; };
+		B00000000000000000000014 /* MermaidTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000015 /* mermaid.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mermaid.min.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +103,8 @@
 				B0000000000000000000000D /* RecordingAndTranscription.swift */,
 				B0000000000000000000000F /* TranscriptTimeline.swift */,
 				B00000000000000000000011 /* BYOKMinutesGeneration.swift */,
+				B00000000000000000000013 /* MermaidSupport.swift */,
+				B00000000000000000000015 /* mermaid.min.js */,
 			);
 			path = QuillvaultDemo;
 			sourceTree = "<group>";
@@ -110,6 +118,7 @@
 				B0000000000000000000000E /* ForegroundRecordingTests.swift */,
 				B00000000000000000000010 /* BackgroundCatchUpTests.swift */,
 				B00000000000000000000012 /* BYOKMinutesTests.swift */,
+				B00000000000000000000014 /* MermaidTests.swift */,
 			);
 			path = QuillvaultDemoTests;
 			sourceTree = "<group>";
@@ -213,6 +222,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000014 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -239,6 +249,7 @@
 				A0000000000000000000000C /* RecordingAndTranscription.swift in Sources */,
 				A0000000000000000000000E /* TranscriptTimeline.swift in Sources */,
 				A00000000000000000000010 /* BYOKMinutesGeneration.swift in Sources */,
+				A00000000000000000000012 /* MermaidSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -252,6 +263,7 @@
 				A0000000000000000000000D /* ForegroundRecordingTests.swift in Sources */,
 				A0000000000000000000000F /* BackgroundCatchUpTests.swift in Sources */,
 				A00000000000000000000011 /* BYOKMinutesTests.swift in Sources */,
+				A00000000000000000000013 /* MermaidTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -270,6 +270,9 @@ final class MeetingWorkflow {
     private var recordingStartedAt: Date?
     private var finalizedTranscript: Transcript?
     private var sourceAssetFiles: [MeetingAssetFile] = []
+    private var completedAssets: MeetingAssets?
+    private(set) var editableMermaidSource: String = ""
+    private(set) var mermaidRenderError: String?
 
     private(set) var state: MeetingWorkflowState = .setup
     private(set) var liveTranscript: [TranscriptSegment] = []
@@ -558,6 +561,7 @@ final class MeetingWorkflow {
         transition(to: .generating)
         do {
             let minutes = try await generateMinutesAllowingOneRetry(from: transcript)
+            // Always derive Mermaid from constrained graph — never model-authored source.
             let mermaidSource = dependencies.mermaidGenerator.source(
                 for: minutes.coreViewpointGraph
             )
@@ -580,13 +584,47 @@ final class MeetingWorkflow {
                 files: files
             )
             recordingStartedAt = nil
+            editableMermaidSource = mermaidSource
+            mermaidRenderError = nil
+            completedAssets = assets
             transition(to: .completed(assets))
         } catch {
+            // Do not leave a successful completed state or partial authoritative minutes.
             transition(
                 to: .failed(
                     "\(error.localizedDescription)（recording.m4a 与 transcript.md 已保留，未写入残缺 minutes.md。可手动重试。）"
                 )
             )
+        }
+    }
+
+    func updateMermaidSource(_ source: String) {
+        editableMermaidSource = source
+        mermaidRenderError = nil
+    }
+
+    func rerenderMermaid() async {
+        guard case .completed = state else { return }
+        do {
+            let rendered = try await dependencies.mermaidRenderer.render(
+                source: editableMermaidSource
+            )
+            mermaidRenderError = nil
+            if var assets = completedAssets {
+                assets = MeetingAssets(
+                    recordingURL: assets.recordingURL,
+                    transcript: assets.transcript,
+                    minutes: assets.minutes,
+                    mermaidSource: editableMermaidSource,
+                    renderedDiagram: rendered,
+                    files: assets.files
+                )
+                completedAssets = assets
+                state = .completed(assets)
+            }
+        } catch {
+            // Keep edited source; show diagnostic only.
+            mermaidRenderError = error.localizedDescription
         }
     }
 

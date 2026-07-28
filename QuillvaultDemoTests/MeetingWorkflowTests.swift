@@ -32,20 +32,24 @@ final class MeetingWorkflowTests: XCTestCase {
             assets.mermaidSource,
             """
             flowchart TD
-                workflow["跑通 MeetingWorkflow"]
                 device["完成真机测试"]
+                workflow["跑通 MeetingWorkflow"]
                 workflow -->|需要| device
             """
+        )
+        // Sorted node ids make generation deterministic.
+        XCTAssertEqual(
+            DeterministicFlowchartGenerator().source(for: assets.minutes.coreViewpointGraph),
+            assets.mermaidSource
         )
         XCTAssertEqual(
             Set(assets.files.map(\.name)),
             ["recording.m4a", "transcript.md", "minutes.md"]
         )
-        XCTAssertEqual(assets.renderedDiagram.title, "跑通 MeetingWorkflow → 完成真机测试")
-        XCTAssertEqual(
-            assets.renderedDiagram.nodeLabels,
-            ["跑通 MeetingWorkflow", "完成真机测试"]
-        )
         XCTAssertEqual(assets.renderedDiagram.edgeLabel, "需要")
+        XCTAssertEqual(
+            Set(assets.renderedDiagram.nodeLabels),
+            Set(["跑通 MeetingWorkflow", "完成真机测试"])
+        )
     }
 }

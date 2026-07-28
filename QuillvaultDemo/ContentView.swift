@@ -306,7 +306,7 @@ struct ContentView: View {
                 }
             }
 
-            section("假核心观点图") {
+            section("核心观点图（可编辑 · 离线渲染）") {
                 VStack(spacing: 10) {
                     ForEach(
                         Array(assets.renderedDiagram.nodeLabels.enumerated()),
@@ -323,11 +323,29 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                Text(assets.mermaidSource)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                    .padding()
-                    .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+
+                TextEditor(text: Binding(
+                    get: { workflow.editableMermaidSource },
+                    set: { workflow.updateMermaidSource($0) }
+                ))
+                .font(.caption.monospaced())
+                .frame(minHeight: 120)
+                .padding(6)
+                .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+
+                if let error = workflow.mermaidRenderError {
+                    Label(error, systemImage: "xmark.octagon.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Button {
+                    Task { await workflow.rerenderMermaid() }
+                } label: {
+                    Label("重新渲染 Mermaid", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
 
             section("会议资产模型") {

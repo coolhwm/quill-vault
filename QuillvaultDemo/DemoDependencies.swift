@@ -23,8 +23,8 @@ extension MeetingWorkflowDependencies {
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
             assetWriter: FileMeetingAssetWriter(),
-            mermaidGenerator: DeterministicMermaidGenerator(),
-            mermaidRenderer: DemoMermaidRenderer(),
+            mermaidGenerator: DeterministicFlowchartGenerator(),
+            mermaidRenderer: OfflineMermaidRenderer(allowNetwork: false),
             apiKeyStore: keyStore,
             byokPreferences: UserDefaultsBYOKPreferences(),
             connectionTester: OpenAICompatibleConnectionTester(),
@@ -113,8 +113,8 @@ extension MeetingWorkflowDependencies {
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
             assetWriter: ControllableAssetWriter(),
-            mermaidGenerator: DeterministicMermaidGenerator(),
-            mermaidRenderer: DemoMermaidRenderer(),
+            mermaidGenerator: DeterministicFlowchartGenerator(),
+            mermaidRenderer: ControllableMermaidRenderer(),
             apiKeyStore: keyStore,
             byokPreferences: InMemoryBYOKPreferences(),
             connectionTester: ControllableDemoConnectionTester(),
@@ -278,14 +278,9 @@ struct DemoAssetWriter: MeetingAssetWriting {
 
 @MainActor
 struct DeterministicMermaidGenerator: MermaidGenerating {
+    private let impl = DeterministicFlowchartGenerator()
     func source(for graph: CoreViewpointGraph) -> String {
-        let nodes = graph.nodes.map { node in
-            "    \(node.id)[\"\(node.label)\"]"
-        }
-        let edges = graph.edges.map { edge in
-            "    \(edge.from) -->|\(edge.label)| \(edge.to)"
-        }
-        return (["flowchart TD"] + nodes + edges).joined(separator: "\n")
+        impl.source(for: graph)
     }
 }
 
@@ -293,11 +288,7 @@ struct DeterministicMermaidGenerator: MermaidGenerating {
 struct DemoMermaidRenderer: MermaidRendering {
     func render(source: String) async throws -> RenderedDiagram {
         try await demoPause()
-        return RenderedDiagram(
-            title: "跑通 MeetingWorkflow → 完成真机测试",
-            nodeLabels: ["跑通 MeetingWorkflow", "完成真机测试"],
-            edgeLabel: "需要"
-        )
+        return try MermaidSourceParser.previewDiagram(from: source)
     }
 }
 

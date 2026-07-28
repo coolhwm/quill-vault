@@ -466,8 +466,9 @@ final class FileMeetingAssetWriter: MeetingAssetWriting {
             let minutesURL = meetingDir.appendingPathComponent("minutes.md")
             let minutesBody = """
             ---
-            title: \(minutes.title)
+            title: "\(minutes.title.replacingOccurrences(of: "\"", with: "'"))"
             status: byok
+            generated_by: quillvault-demo
             ---
 
             # \(minutes.title)
@@ -499,9 +500,10 @@ final class FileMeetingAssetWriter: MeetingAssetWriting {
             ```
 
             ## 来源
-            \(minutes.sourceLinks.map { "- \($0)" }.joined(separator: "\n"))
+            - [transcript.md](./transcript.md)
+            - [recording.m4a](./recording.m4a)
             """
-            try minutesBody.write(to: minutesURL, atomically: true, encoding: .utf8)
+            try AtomicFileWriter.writeAtomically(minutesBody, to: minutesURL)
             files.append(MeetingAssetFile(name: "minutes.md", detail: minutesURL.path))
         } else {
             // Ensure no partial minutes.md is treated as success.
