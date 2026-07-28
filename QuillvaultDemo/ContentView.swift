@@ -1,8 +1,10 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var workflow = MeetingWorkflow(dependencies: .liveSetup)
     @State private var showingBYOKSettings = false
+    @State private var showingDirectoryImporter = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +31,18 @@ struct ContentView: View {
                     BYOKSettingsView(workflow: workflow)
                 }
             }
+            .fileImporter(
+                isPresented: $showingDirectoryImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                if case let .success(urls) = result, let url = urls.first {
+                    Task { await workflow.applySelectedDirectory(url) }
+                }
+            }
+            .task {
+                await workflow.reloadAuthoritativeDirectory()
+            }
         }
     }
 
@@ -36,9 +50,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("真机技术闭环 Demo", systemImage: "iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
-            Text("抛弃式可行性原型 · BYOK 配置已接入 Keychain / 真实连接测试")
+            Text("抛弃式可行性原型 · BYOK + 权威目录已接入真实存储")
                 .font(.subheadline)
-            Text("录音、转写、目录与纪要生成仍使用受控替身，不代表这些能力已验证。")
+            Text("录音、转写与纪要生成仍使用受控替身，不代表这些能力已验证。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -101,7 +115,7 @@ struct ContentView: View {
                     : "BYOK：尚未保存 API Key",
                 systemImage: "key.fill"
             )
-            Label("权威目录：仍为受控替身", systemImage: "folder.fill")
+            directoryStatusLabel
             Label("录音、转写与 Mermaid：受控替身", systemImage: "switch.2")
 
             Button {
@@ -113,13 +127,24 @@ struct ContentView: View {
             .buttonStyle(.bordered)
 
             Button {
+                showingDirectoryImporter = true
+            } label: {
+                Label(
+                    workflow.directoryState.isWritable ? "重新选择权威目录" : "选择权威目录",
+                    systemImage: "folder.badge.plus"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
                 Task { await workflow.startFaceToFaceSession() }
             } label: {
                 Label("开始面对面会话", systemImage: "record.circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!workflow.byokSettings.hasStoredAPIKey)
+            .disabled(!workflow.byokSettings.hasStoredAPIKey || !workflow.directoryState.isWritable)
 
             Button("演示 failed 状态（受控替身）") {
                 workflow = MeetingWorkflow(dependencies: .failingDemo)
@@ -131,6 +156,33 @@ struct ContentView: View {
             .buttonStyle(.bordered)
         }
         .cardStyle()
+    }
+
+    @ViewBuilder
+    private var directoryStatusLabel: some View {
+        switch workflow.directoryState {
+        case .unset:
+            Label("权威目录：尚未选择", systemImage: "folder")
+        case let .ready(info):
+            VStack(alignment: .leading, spacing: 4) {
+                Label("权威目录：\(info.displayName)", systemImage: "folder.fill")
+                Text(info.pathDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        case let .needsReauthorization(detail):
+            VStack(alignment: .leading, spacing: 4) {
+                Label("权威目录授权失效，需重新选择", systemImage: "folder.badge.questionmark")
+                    .foregroundStyle(.red)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("不会回退到 App 沙盒隐藏副本。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var recordingView: some View {
@@ -234,7 +286,7 @@ struct ContentView: View {
             }
 
             Button("重新演示") {
-                workflow = MeetingWorkflow(dependencies: .liveSetup)
+                resetToLiveSetup()
             }
             .buttonStyle(.bordered)
         }
@@ -251,11 +303,16 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button("回到 setup") {
-                workflow = MeetingWorkflow(dependencies: .liveSetup)
+                resetToLiveSetup()
             }
             .buttonStyle(.borderedProminent)
         }
         .cardStyle()
+    }
+
+    private func resetToLiveSetup() {
+        workflow = MeetingWorkflow(dependencies: .liveSetup)
+        Task { await workflow.reloadAuthoritativeDirectory() }
     }
 
     private func section<Content: View>(

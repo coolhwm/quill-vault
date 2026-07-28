@@ -161,6 +161,8 @@ protocol BYOKCredentialChecking {
 
 @MainActor
 protocol AuthoritativeDirectoryAccessing {
+    func currentState() async -> AuthoritativeDirectoryState
+    func selectDirectory(_ url: URL) async throws -> AuthoritativeDirectoryInfo
     func authorizedDirectory() async throws -> URL
 }
 
@@ -210,6 +212,7 @@ final class MeetingWorkflow {
     private(set) var phaseHistory: [MeetingWorkflowPhase] = [.setup]
     private(set) var byokSettings: BYOKSettings = .deepSeekDefaults
     private(set) var byokConnectionTestState: BYOKConnectionTestState = .idle
+    private(set) var directoryState: AuthoritativeDirectoryState = .unset
 
     var phase: MeetingWorkflowPhase {
         state.phase
@@ -218,6 +221,8 @@ final class MeetingWorkflow {
     init(dependencies: MeetingWorkflowDependencies) {
         self.dependencies = dependencies
         reloadBYOKSettings()
+        // Directory restore is async; callers also invoke reloadAuthoritativeDirectory().
+        directoryState = .unset
     }
 
     func reloadBYOKSettings() {
@@ -281,12 +286,32 @@ final class MeetingWorkflow {
         }
     }
 
+    func reloadAuthoritativeDirectory() async {
+        directoryState = await dependencies.directoryAccess.currentState()
+    }
+
+    func applySelectedDirectory(_ url: URL) async {
+        do {
+            let info = try await dependencies.directoryAccess.selectDirectory(url)
+            directoryState = .ready(info)
+        } catch {
+            directoryState = .needsReauthorization(error.localizedDescription)
+        }
+    }
+
     func startFaceToFaceSession() async {
         guard phase == .setup || phase == .failed else { return }
 
         do {
             guard await dependencies.credentialChecker.hasBYOKCredential() else {
                 throw DemoWorkflowError.missingCredential
+            }
+            directoryState = await dependencies.directoryAccess.currentState()
+            guard directoryState.isWritable else {
+                if case let .needsReauthorization(detail) = directoryState {
+                    throw AuthoritativeDirectoryError.bookmarkInvalid(detail)
+                }
+                throw AuthoritativeDirectoryError.notSelected
             }
             let directory = try await dependencies.directoryAccess.authorizedDirectory()
             _ = try await dependencies.audioRecorder.start(in: directory)

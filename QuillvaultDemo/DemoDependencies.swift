@@ -6,15 +6,19 @@ extension MeetingWorkflowDependencies {
     static let successfulDemo = makeControlled(failingGeneration: false, seedAPIKey: "demo-seed-key")
     static let failingDemo = makeControlled(failingGeneration: true, seedAPIKey: "demo-seed-key")
 
-    /// Live BYOK storage/tester with controlled substitutes for not-yet-wired capabilities.
+    /// Live BYOK + authoritative directory, with controlled substitutes for remaining capabilities.
     static var liveSetup: MeetingWorkflowDependencies {
         let keyStore = KeychainAPIKeyStore()
+        let directoryAccess = BookmarkAuthoritativeDirectoryAccess(
+            bookmarkStore: UserDefaultsBookmarkStore(),
+            bookmarking: SystemSecurityScopedBookmarking()
+        )
         return MeetingWorkflowDependencies(
             audioRecorder: DemoAudioRecorder(),
             transcriber: DemoTranscriber(),
             minutesGenerator: DemoMinutesGenerator(shouldFail: false),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
-            directoryAccess: DemoDirectoryAccess(),
+            directoryAccess: directoryAccess,
             assetWriter: DemoAssetWriter(),
             mermaidGenerator: DeterministicMermaidGenerator(),
             mermaidRenderer: DemoMermaidRenderer(),
@@ -29,12 +33,22 @@ extension MeetingWorkflowDependencies {
         seedAPIKey: String?
     ) -> MeetingWorkflowDependencies {
         let keyStore = InMemoryAPIKeyStore(initial: seedAPIKey)
+        let bookmarking = ControllableBookmarking()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Quillvault-Demo-Controlled", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let bookmark = (try? bookmarking.makeBookmark(for: folder)) ?? Data("controlled".utf8)
+        let store = InMemoryBookmarkStore(data: bookmark)
+        let directoryAccess = BookmarkAuthoritativeDirectoryAccess(
+            bookmarkStore: store,
+            bookmarking: bookmarking
+        )
         return MeetingWorkflowDependencies(
             audioRecorder: DemoAudioRecorder(),
             transcriber: DemoTranscriber(),
             minutesGenerator: DemoMinutesGenerator(shouldFail: failingGeneration),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
-            directoryAccess: DemoDirectoryAccess(),
+            directoryAccess: directoryAccess,
             assetWriter: DemoAssetWriter(),
             mermaidGenerator: DeterministicMermaidGenerator(),
             mermaidRenderer: DemoMermaidRenderer(),
@@ -128,8 +142,28 @@ struct DemoMinutesGenerator: MinutesGenerating {
 
 @MainActor
 struct DemoDirectoryAccess: AuthoritativeDirectoryAccessing {
+    private let url = URL(filePath: "/受控替身/Quillvault-Demo")
+
+    func currentState() async -> AuthoritativeDirectoryState {
+        .ready(
+            AuthoritativeDirectoryInfo(
+                displayName: "Quillvault-Demo",
+                pathDescription: url.path,
+                isAccessible: true
+            )
+        )
+    }
+
+    func selectDirectory(_ url: URL) async throws -> AuthoritativeDirectoryInfo {
+        AuthoritativeDirectoryInfo(
+            displayName: url.lastPathComponent,
+            pathDescription: url.path,
+            isAccessible: true
+        )
+    }
+
     func authorizedDirectory() async throws -> URL {
-        URL(filePath: "/受控替身/Quillvault-Demo")
+        url
     }
 }
 
