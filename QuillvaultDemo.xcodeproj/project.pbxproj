@@ -17,6 +17,8 @@
 		A00000000000000000000009 /* BYOKConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* BYOKConfigurationTests.swift */; };
 		A0000000000000000000000A /* AuthoritativeDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000B /* AuthoritativeDirectory.swift */; };
 		A0000000000000000000000B /* AuthoritativeDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000C /* AuthoritativeDirectoryTests.swift */; };
+		A0000000000000000000000C /* RecordingAndTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000D /* RecordingAndTranscription.swift */; };
+		A0000000000000000000000D /* ForegroundRecordingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000E /* ForegroundRecordingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +44,8 @@
 		B0000000000000000000000A /* BYOKConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKConfigurationTests.swift; sourceTree = "<group>"; };
 		B0000000000000000000000B /* AuthoritativeDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthoritativeDirectory.swift; sourceTree = "<group>"; };
 		B0000000000000000000000C /* AuthoritativeDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthoritativeDirectoryTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000000D /* RecordingAndTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAndTranscription.swift; sourceTree = "<group>"; };
+		B0000000000000000000000E /* ForegroundRecordingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundRecordingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +86,7 @@
 				B00000000000000000000008 /* DemoDependencies.swift */,
 				B00000000000000000000009 /* BYOKConfiguration.swift */,
 				B0000000000000000000000B /* AuthoritativeDirectory.swift */,
+				B0000000000000000000000D /* RecordingAndTranscription.swift */,
 			);
 			path = QuillvaultDemo;
 			sourceTree = "<group>";
@@ -92,6 +97,7 @@
 				B00000000000000000000003 /* MeetingWorkflowTests.swift */,
 				B0000000000000000000000A /* BYOKConfigurationTests.swift */,
 				B0000000000000000000000C /* AuthoritativeDirectoryTests.swift */,
+				B0000000000000000000000E /* ForegroundRecordingTests.swift */,
 			);
 			path = QuillvaultDemoTests;
 			sourceTree = "<group>";
@@ -218,6 +224,7 @@
 				A00000000000000000000007 /* DemoDependencies.swift in Sources */,
 				A00000000000000000000008 /* BYOKConfiguration.swift in Sources */,
 				A0000000000000000000000A /* AuthoritativeDirectory.swift in Sources */,
+				A0000000000000000000000C /* RecordingAndTranscription.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,6 +235,7 @@
 				A00000000000000000000003 /* MeetingWorkflowTests.swift in Sources */,
 				A00000000000000000000009 /* BYOKConfigurationTests.swift in Sources */,
 				A0000000000000000000000B /* AuthoritativeDirectoryTests.swift in Sources */,
+				A0000000000000000000000D /* ForegroundRecordingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +281,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quillvault Demo";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault Demo 需要麦克风以录制面对面会话并生成会议资产。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Quillvault Demo 使用设备端语音识别生成实时逐字稿。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -294,6 +304,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quillvault Demo";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault Demo 需要麦克风以录制面对面会话并生成会议资产。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Quillvault Demo 使用设备端语音识别生成实时逐字稿。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;

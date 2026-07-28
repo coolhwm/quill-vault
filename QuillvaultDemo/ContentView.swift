@@ -50,9 +50,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("真机技术闭环 Demo", systemImage: "iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
-            Text("抛弃式可行性原型 · BYOK + 权威目录已接入真实存储")
+            Text("抛弃式可行性原型 · BYOK / 权威目录 / 前台录音转写已接入")
                 .font(.subheadline)
-            Text("录音、转写与纪要生成仍使用受控替身，不代表这些能力已验证。")
+            Text("纪要生成与 Mermaid 落盘仍有受控替身成分，完整 BYOK 纪要见后续票据。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -116,7 +116,7 @@ struct ContentView: View {
                 systemImage: "key.fill"
             )
             directoryStatusLabel
-            Label("录音、转写与 Mermaid：受控替身", systemImage: "switch.2")
+            Label("前台录音 + SpeechAnalyzer 转写已接入；纪要仍部分受控", systemImage: "waveform")
 
             Button {
                 showingBYOKSettings = true
@@ -187,17 +187,47 @@ struct ContentView: View {
 
     private var recordingView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("正在记录面对面会话", systemImage: "waveform.circle.fill")
-                .font(.title2.bold())
-                .foregroundStyle(.red)
+            HStack {
+                Label("录音中", systemImage: "record.circle.fill")
+                    .font(.title2.bold())
+                    .foregroundStyle(.red)
+                Spacer()
+                Text(durationText(workflow.recordingDuration))
+                    .font(.title3.monospacedDigit().bold())
+                    .foregroundStyle(.red)
+            }
+            Text("红色为最终片段 · 灰色斜体为 volatile 临时结果")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Text("实时逐字稿")
                 .font(.headline)
+            if workflow.liveTranscript.isEmpty {
+                Text("等待语音识别结果…（录音已持续写入 m4a）")
+                    .foregroundStyle(.secondary)
+            }
             ForEach(workflow.liveTranscript) { segment in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(timeRange(for: segment))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(segment.text)
+                    HStack {
+                        Text(timeRange(for: segment))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text(segment.isFinal ? "final" : "volatile")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                segment.isFinal ? Color.red.opacity(0.15) : Color.gray.opacity(0.15),
+                                in: Capsule()
+                            )
+                    }
+                    if segment.isFinal {
+                        Text(segment.text)
+                    } else {
+                        Text(segment.text)
+                            .foregroundStyle(.secondary)
+                            .italic()
+                    }
                 }
             }
             Button {
@@ -210,6 +240,11 @@ struct ContentView: View {
             .tint(.red)
         }
         .cardStyle()
+    }
+
+    private func durationText(_ interval: TimeInterval) -> String {
+        let total = Int(interval)
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 
     private func progressView(title: String, systemImage: String) -> some View {

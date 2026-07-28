@@ -6,7 +6,7 @@ extension MeetingWorkflowDependencies {
     static let successfulDemo = makeControlled(failingGeneration: false, seedAPIKey: "demo-seed-key")
     static let failingDemo = makeControlled(failingGeneration: true, seedAPIKey: "demo-seed-key")
 
-    /// Live BYOK + authoritative directory, with controlled substitutes for remaining capabilities.
+    /// Live BYOK + authoritative directory + device recording/transcription.
     static var liveSetup: MeetingWorkflowDependencies {
         let keyStore = KeychainAPIKeyStore()
         let directoryAccess = BookmarkAuthoritativeDirectoryAccess(
@@ -14,17 +14,18 @@ extension MeetingWorkflowDependencies {
             bookmarking: SystemSecurityScopedBookmarking()
         )
         return MeetingWorkflowDependencies(
-            audioRecorder: DemoAudioRecorder(),
-            transcriber: DemoTranscriber(),
+            audioRecorder: DeviceAudioRecorder(),
+            transcriber: SpeechAnalyzerTranscriber(),
             minutesGenerator: DemoMinutesGenerator(shouldFail: false),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
-            assetWriter: DemoAssetWriter(),
+            assetWriter: FileMeetingAssetWriter(),
             mermaidGenerator: DeterministicMermaidGenerator(),
             mermaidRenderer: DemoMermaidRenderer(),
             apiKeyStore: keyStore,
             byokPreferences: UserDefaultsBYOKPreferences(),
-            connectionTester: OpenAICompatibleConnectionTester()
+            connectionTester: OpenAICompatibleConnectionTester(),
+            microphonePermission: SystemMicrophonePermission()
         )
     }
 
@@ -43,18 +44,36 @@ extension MeetingWorkflowDependencies {
             bookmarkStore: store,
             bookmarking: bookmarking
         )
+        let segments = [
+            TranscriptSegment(
+                startTime: 0,
+                endTime: 3.2,
+                text: "我们需要验证会议工作流。",
+                isFinal: true
+            ),
+            TranscriptSegment(
+                startTime: 3.2,
+                endTime: 7.8,
+                text: "小林负责完成真机测试，周五前反馈。",
+                isFinal: true
+            )
+        ]
         return MeetingWorkflowDependencies(
-            audioRecorder: DemoAudioRecorder(),
-            transcriber: DemoTranscriber(),
+            audioRecorder: ControllableAudioRecorder(),
+            transcriber: ControllableTranscriber(
+                liveEvents: segments,
+                finalTranscript: Transcript(segments: segments)
+            ),
             minutesGenerator: DemoMinutesGenerator(shouldFail: failingGeneration),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
-            assetWriter: DemoAssetWriter(),
+            assetWriter: ControllableAssetWriter(),
             mermaidGenerator: DeterministicMermaidGenerator(),
             mermaidRenderer: DemoMermaidRenderer(),
             apiKeyStore: keyStore,
             byokPreferences: InMemoryBYOKPreferences(),
-            connectionTester: ControllableDemoConnectionTester()
+            connectionTester: ControllableDemoConnectionTester(),
+            microphonePermission: ControllableMicrophonePermission(granted: true)
         )
     }
 }
@@ -91,9 +110,9 @@ struct DemoTranscriber: Transcribing {
         )
     ]
 
-    func start() async throws -> [TranscriptSegment] {
+    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws {
         try await demoPause()
-        return segments
+        onUpdate(segments)
     }
 
     func finalize(from recordingURL: URL) async throws -> Transcript {

@@ -172,17 +172,22 @@ final class AuthoritativeDirectoryTests: XCTestCase {
         let keyStore = InMemoryAPIKeyStore(initial: seedAPIKey)
         return MeetingWorkflow(
             dependencies: MeetingWorkflowDependencies(
-                audioRecorder: DemoAudioRecorder(),
-                transcriber: DemoTranscriber(),
+                audioRecorder: ControllableAudioRecorder(),
+                transcriber: ControllableTranscriber(
+                    liveEvents: [
+                        TranscriptSegment(startTime: 0, endTime: 1, text: "ok", isFinal: true)
+                    ]
+                ),
                 minutesGenerator: DemoMinutesGenerator(shouldFail: false),
                 credentialChecker: StoreBackedCredentialChecker(store: keyStore),
                 directoryAccess: access,
-                assetWriter: DemoAssetWriter(),
+                assetWriter: ControllableAssetWriter(),
                 mermaidGenerator: DeterministicMermaidGenerator(),
                 mermaidRenderer: DemoMermaidRenderer(),
                 apiKeyStore: keyStore,
                 byokPreferences: InMemoryBYOKPreferences(),
-                connectionTester: ControllableDemoConnectionTester()
+                connectionTester: ControllableDemoConnectionTester(),
+                microphonePermission: ControllableMicrophonePermission(granted: true)
             )
         )
     }

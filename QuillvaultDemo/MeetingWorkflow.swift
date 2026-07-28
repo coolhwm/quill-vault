@@ -145,7 +145,8 @@ protocol AudioRecording {
 
 @MainActor
 protocol Transcribing {
-    func start() async throws -> [TranscriptSegment]
+    /// Starts live transcription and reports merged volatile/final segments via `onUpdate`.
+    func start(onUpdate: @escaping @MainActor ([TranscriptSegment]) -> Void) async throws
     func finalize(from recordingURL: URL) async throws -> Transcript
 }
 
@@ -199,6 +200,7 @@ struct MeetingWorkflowDependencies {
     let apiKeyStore: any APIKeyStoring
     let byokPreferences: any BYOKPreferencesStoring
     let connectionTester: any BYOKConnectionTesting
+    let microphonePermission: any MicrophonePermissioning
 }
 
 @MainActor
@@ -206,6 +208,8 @@ struct MeetingWorkflowDependencies {
 final class MeetingWorkflow {
     let dependencies: MeetingWorkflowDependencies
     private var authorizedDirectory: URL?
+    private var activeRecordingURL: URL?
+    private var recordingStartedAt: Date?
 
     private(set) var state: MeetingWorkflowState = .setup
     private(set) var liveTranscript: [TranscriptSegment] = []
@@ -213,9 +217,16 @@ final class MeetingWorkflow {
     private(set) var byokSettings: BYOKSettings = .deepSeekDefaults
     private(set) var byokConnectionTestState: BYOKConnectionTestState = .idle
     private(set) var directoryState: AuthoritativeDirectoryState = .unset
+    /// Survives downstream transcription/generation failures so evidence is never lost.
+    private(set) var preservedRecordingURL: URL?
 
     var phase: MeetingWorkflowPhase {
         state.phase
+    }
+
+    var recordingDuration: TimeInterval {
+        guard let recordingStartedAt else { return 0 }
+        return Date().timeIntervalSince(recordingStartedAt)
     }
 
     init(dependencies: MeetingWorkflowDependencies) {
@@ -313,13 +324,34 @@ final class MeetingWorkflow {
                 }
                 throw AuthoritativeDirectoryError.notSelected
             }
+            let micGranted = await dependencies.microphonePermission.requestAccess()
+            guard micGranted else {
+                throw RecordingError.microphoneDenied
+            }
+
             let directory = try await dependencies.directoryAccess.authorizedDirectory()
-            _ = try await dependencies.audioRecorder.start(in: directory)
-            let initialTranscript = try await dependencies.transcriber.start()
+            let recordingURL = try await dependencies.audioRecorder.start(in: directory)
             self.authorizedDirectory = directory
-            liveTranscript = initialTranscript
+            self.activeRecordingURL = recordingURL
+            self.preservedRecordingURL = recordingURL
+            self.recordingStartedAt = Date()
+            liveTranscript = []
             transition(to: .recording)
+
+            // Transcription failures must not reverse an already-started recording.
+            do {
+                try await dependencies.transcriber.start { [weak self] segments in
+                    self?.liveTranscript = segments
+                }
+            } catch {
+                // Keep recording state; surface diagnostic on live transcript banner via failed only if start fully aborts.
+                // Spec: 转写错误不会删除或截断已有录音 — stay in recording with empty/partial transcript.
+                liveTranscript = []
+            }
         } catch {
+            // Do not enter a fake recording state when setup fails before record starts.
+            activeRecordingURL = nil
+            recordingStartedAt = nil
             transition(to: .failed(error.localizedDescription))
         }
     }
@@ -327,12 +359,32 @@ final class MeetingWorkflow {
     func finishFaceToFaceSession() async {
         guard phase == .recording, let directory = authorizedDirectory else { return }
 
+        transition(to: .finalizing)
+        let recordingURL: URL
         do {
-            transition(to: .finalizing)
-            let recordingURL = try await dependencies.audioRecorder.stop()
-            let transcript = try await dependencies.transcriber.finalize(from: recordingURL)
-            liveTranscript = transcript.segments
+            recordingURL = try await dependencies.audioRecorder.stop()
+            preservedRecordingURL = recordingURL
+            activeRecordingURL = recordingURL
+        } catch {
+            transition(to: .failed(error.localizedDescription))
+            return
+        }
 
+        let transcript: Transcript
+        do {
+            transcript = try await dependencies.transcriber.finalize(from: recordingURL)
+            liveTranscript = transcript.segments
+        } catch {
+            // Preserve recording evidence; do not invent a completed meeting.
+            transition(
+                to: .failed(
+                    "\(error.localizedDescription)（原始录音已保留：\(recordingURL.lastPathComponent)）"
+                )
+            )
+            return
+        }
+
+        do {
             transition(to: .generating)
             let minutes = try await dependencies.minutesGenerator.generate(from: transcript)
             let mermaidSource = dependencies.mermaidGenerator.source(
@@ -356,9 +408,14 @@ final class MeetingWorkflow {
                 renderedDiagram: renderedDiagram,
                 files: files
             )
+            recordingStartedAt = nil
             transition(to: .completed(assets))
         } catch {
-            transition(to: .failed(error.localizedDescription))
+            transition(
+                to: .failed(
+                    "\(error.localizedDescription)（原始录音与逐字稿已保留：\(recordingURL.lastPathComponent)）"
+                )
+            )
         }
     }
 

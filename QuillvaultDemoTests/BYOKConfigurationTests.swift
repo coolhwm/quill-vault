@@ -205,7 +205,8 @@ final class BYOKConfigurationTests: XCTestCase {
                 mermaidRenderer: DemoMermaidRenderer(),
                 apiKeyStore: keyStore,
                 byokPreferences: preferences,
-                connectionTester: tester
+                connectionTester: tester,
+                microphonePermission: ControllableMicrophonePermission(granted: true)
             )
         )
     }
