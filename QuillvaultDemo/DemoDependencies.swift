@@ -16,7 +16,10 @@ extension MeetingWorkflowDependencies {
         return MeetingWorkflowDependencies(
             audioRecorder: DeviceAudioRecorder(),
             transcriber: SpeechAnalyzerTranscriber(),
-            minutesGenerator: DemoMinutesGenerator(shouldFail: false),
+            minutesGenerator: DeepSeekMinutesGenerator(
+                apiKeyStore: keyStore,
+                preferences: UserDefaultsBYOKPreferences()
+            ),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
             assetWriter: FileMeetingAssetWriter(),
@@ -64,7 +67,49 @@ extension MeetingWorkflowDependencies {
                 liveEvents: segments,
                 finalTranscript: Transcript(segments: segments)
             ),
-            minutesGenerator: DemoMinutesGenerator(shouldFail: failingGeneration),
+            minutesGenerator: ControllableMinutesGenerator(
+                failTimes: failingGeneration ? 2 : 0,
+                successMinutes: StructuredMinutes(
+                    title: "Quillvault 技术闭环讨论",
+                    overview: "用受控替身验证面对面会话的完整编排入口。",
+                    summary: "团队决定先跑通 MeetingWorkflow，再逐段替换真实系统能力。",
+                    chapters: [
+                        TopicChapter(
+                            title: "工作流验证",
+                            startTime: 0,
+                            endTime: 7.8,
+                            summary: "确认 MeetingWorkflow 切面"
+                        )
+                    ],
+                    decisions: [
+                        DecisionItem(
+                            statement: "以 MeetingWorkflow 作为唯一高层编排与自动化测试切面。",
+                            reason: "降低耦合",
+                            evidence: "我们需要验证会议工作流。"
+                        )
+                    ],
+                    actionItems: [
+                        ActionItem(
+                            task: "完成真机测试",
+                            owner: "小林",
+                            deadline: "周五",
+                            evidence: "小林负责完成真机测试，周五前反馈。"
+                        )
+                    ],
+                    risks: ["当前链路使用受控替身，不能代表真实系统能力已验证。"],
+                    unresolvedQuestions: ["真实 SpeechAnalyzer 的后台补齐表现如何？"],
+                    coreViewpointGraph: CoreViewpointGraph(
+                        nodes: [
+                            GraphNode(id: "workflow", label: "跑通 MeetingWorkflow"),
+                            GraphNode(id: "device", label: "完成真机测试")
+                        ],
+                        edges: [
+                            GraphEdge(from: "workflow", to: "device", label: "需要")
+                        ]
+                    ),
+                    sourceLinks: ["./transcript.md", "./recording.m4a"]
+                )
+            ),
             credentialChecker: StoreBackedCredentialChecker(store: keyStore),
             directoryAccess: directoryAccess,
             assetWriter: ControllableAssetWriter(),
@@ -144,7 +189,21 @@ struct DemoMinutesGenerator: MinutesGenerating {
             title: "Quillvault 技术闭环讨论",
             overview: "用受控替身验证面对面会话的完整编排入口。",
             summary: "团队决定先跑通 MeetingWorkflow，再逐段替换真实系统能力。",
-            decisions: ["以 MeetingWorkflow 作为唯一高层编排与自动化测试切面。"],
+            chapters: [
+                TopicChapter(
+                    title: "工作流验证",
+                    startTime: 0,
+                    endTime: 7.8,
+                    summary: "确认 MeetingWorkflow 切面"
+                )
+            ],
+            decisions: [
+                DecisionItem(
+                    statement: "以 MeetingWorkflow 作为唯一高层编排与自动化测试切面。",
+                    reason: "降低耦合",
+                    evidence: "我们需要验证会议工作流。"
+                )
+            ],
             actionItems: [
                 ActionItem(
                     task: "完成真机测试",
@@ -163,7 +222,8 @@ struct DemoMinutesGenerator: MinutesGenerating {
                 edges: [
                     GraphEdge(from: "workflow", to: "device", label: "需要")
                 ]
-            )
+            ),
+            sourceLinks: ["./transcript.md", "./recording.m4a"]
         )
     }
 }
@@ -200,16 +260,19 @@ struct DemoAssetWriter: MeetingAssetWriting {
     func write(
         recordingURL: URL,
         transcript: Transcript,
-        minutes: StructuredMinutes,
-        mermaidSource: String,
+        minutes: StructuredMinutes?,
+        mermaidSource: String?,
         to directory: URL
     ) async throws -> [MeetingAssetFile] {
         try await demoPause()
-        return [
+        var files = [
             MeetingAssetFile(name: "recording.m4a", detail: "原始录音 · 受控替身"),
-            MeetingAssetFile(name: "transcript.md", detail: "2 个带时间范围的逐字稿片段"),
-            MeetingAssetFile(name: "minutes.md", detail: "结构化纪要 + 内嵌 Mermaid")
+            MeetingAssetFile(name: "transcript.md", detail: "2 个带时间范围的逐字稿片段")
         ]
+        if minutes != nil {
+            files.append(MeetingAssetFile(name: "minutes.md", detail: "结构化纪要 + 内嵌 Mermaid"))
+        }
+        return files
     }
 }
 

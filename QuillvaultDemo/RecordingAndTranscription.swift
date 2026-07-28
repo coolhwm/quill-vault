@@ -419,63 +419,99 @@ final class SpeechAnalyzerTranscriber: Transcribing {
 
 @MainActor
 final class FileMeetingAssetWriter: MeetingAssetWriting {
+    private var lastMeetingDir: URL?
+
     func write(
         recordingURL: URL,
         transcript: Transcript,
-        minutes: StructuredMinutes,
-        mermaidSource: String,
+        minutes: StructuredMinutes?,
+        mermaidSource: String?,
         to directory: URL
     ) async throws -> [MeetingAssetFile] {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let folderName = "meeting-\(formatter.string(from: Date()))"
-        let meetingDir = directory.appendingPathComponent(folderName, isDirectory: true)
-        try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+        let meetingDir: URL
+        if let lastMeetingDir,
+           FileManager.default.fileExists(atPath: lastMeetingDir.path),
+           lastMeetingDir.deletingLastPathComponent().path == directory.path
+        {
+            meetingDir = lastMeetingDir
+        } else {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let folderName = "meeting-\(formatter.string(from: Date()))"
+            meetingDir = directory.appendingPathComponent(folderName, isDirectory: true)
+            try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+            lastMeetingDir = meetingDir
+        }
 
         let destRecording = meetingDir.appendingPathComponent("recording.m4a")
-        if FileManager.default.fileExists(atPath: destRecording.path) {
-            try FileManager.default.removeItem(at: destRecording)
-        }
-        if FileManager.default.fileExists(atPath: recordingURL.path) {
-            try FileManager.default.copyItem(at: recordingURL, to: destRecording)
-        } else {
-            try Data().write(to: destRecording)
+        if !FileManager.default.fileExists(atPath: destRecording.path) {
+            if FileManager.default.fileExists(atPath: recordingURL.path) {
+                try FileManager.default.copyItem(at: recordingURL, to: destRecording)
+            } else {
+                try Data().write(to: destRecording)
+            }
         }
 
-        let transcriptMarkdown = Self.transcriptMarkdown(from: transcript)
         let transcriptURL = meetingDir.appendingPathComponent("transcript.md")
-        try transcriptMarkdown.write(to: transcriptURL, atomically: true, encoding: .utf8)
+        try Self.transcriptMarkdown(from: transcript)
+            .write(to: transcriptURL, atomically: true, encoding: .utf8)
 
-        // minutes.md is still produced by later tickets with full structure; write a minimal stub so the
-        // directory is inspectable without claiming BYOK minutes are done.
-        let minutesURL = meetingDir.appendingPathComponent("minutes.md")
-        let minutesBody = """
-        ---
-        title: \(minutes.title)
-        status: demo-partial
-        ---
-
-        # \(minutes.title)
-
-        \(minutes.overview)
-
-        \(minutes.summary)
-
-        ```mermaid
-        \(mermaidSource)
-        ```
-
-        - [逐字稿](./transcript.md)
-        - [录音](./recording.m4a)
-        """
-        try minutesBody.write(to: minutesURL, atomically: true, encoding: .utf8)
-
-        return [
+        var files = [
             MeetingAssetFile(name: "recording.m4a", detail: destRecording.path),
-            MeetingAssetFile(name: "transcript.md", detail: "\(transcript.segments.count) 个带时间戳片段"),
-            MeetingAssetFile(name: "minutes.md", detail: "结构化纪要（后续 BYOK 票完善）")
+            MeetingAssetFile(name: "transcript.md", detail: "\(transcript.segments.count) 个带时间戳片段")
         ]
+
+        if let minutes, let mermaidSource {
+            let minutesURL = meetingDir.appendingPathComponent("minutes.md")
+            let minutesBody = """
+            ---
+            title: \(minutes.title)
+            status: byok
+            ---
+
+            # \(minutes.title)
+
+            ## 总览
+            \(minutes.overview)
+
+            ## 摘要
+            \(minutes.summary)
+
+            ## 章节
+            \(minutes.chapters.map { "- [\($0.startTime)-\($0.endTime)] \($0.title)：\($0.summary)" }.joined(separator: "\n"))
+
+            ## 决策
+            \(minutes.decisions.map { "- \($0.statement)（\($0.reason)；依据：\($0.evidence)）" }.joined(separator: "\n"))
+
+            ## 行动项
+            \(minutes.actionItems.map { "- \($0.owner) · \($0.task) · \($0.deadline)\n  依据：\($0.evidence)" }.joined(separator: "\n"))
+
+            ## 风险
+            \(minutes.risks.map { "- \($0)" }.joined(separator: "\n"))
+
+            ## 未决问题
+            \(minutes.unresolvedQuestions.map { "- \($0)" }.joined(separator: "\n"))
+
+            ## 核心观点图
+            ```mermaid
+            \(mermaidSource)
+            ```
+
+            ## 来源
+            \(minutes.sourceLinks.map { "- \($0)" }.joined(separator: "\n"))
+            """
+            try minutesBody.write(to: minutesURL, atomically: true, encoding: .utf8)
+            files.append(MeetingAssetFile(name: "minutes.md", detail: minutesURL.path))
+        } else {
+            // Ensure no partial minutes.md is treated as success.
+            let minutesURL = meetingDir.appendingPathComponent("minutes.md")
+            if FileManager.default.fileExists(atPath: minutesURL.path) {
+                try FileManager.default.removeItem(at: minutesURL)
+            }
+        }
+
+        return files
     }
 
     static func transcriptMarkdown(from transcript: Transcript) -> String {
@@ -499,42 +535,54 @@ final class ControllableAssetWriter: MeetingAssetWriting {
     private(set) var lastRecordingURL: URL?
     private(set) var lastTranscript: Transcript?
     private(set) var wroteTo: URL?
+    private(set) var lastWroteMinutes = false
+    private(set) var writeCallCount = 0
     var shouldFail = false
-    var writtenFiles: [MeetingAssetFile] = [
-        MeetingAssetFile(name: "recording.m4a", detail: "written"),
-        MeetingAssetFile(name: "transcript.md", detail: "written"),
-        MeetingAssetFile(name: "minutes.md", detail: "written")
-    ]
 
     func write(
         recordingURL: URL,
         transcript: Transcript,
-        minutes: StructuredMinutes,
-        mermaidSource: String,
+        minutes: StructuredMinutes?,
+        mermaidSource: String?,
         to directory: URL
     ) async throws -> [MeetingAssetFile] {
+        writeCallCount += 1
         lastRecordingURL = recordingURL
         lastTranscript = transcript
         wroteTo = directory
+        lastWroteMinutes = minutes != nil
         if shouldFail {
             throw TranscriptionError.failed("asset write failed")
         }
-        // Mirror essential files when the recording exists so survival tests can inspect them.
+        let meetingDir = directory.appendingPathComponent("meeting-test", isDirectory: true)
+        try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: recordingURL.path) {
-            let meetingDir = directory.appendingPathComponent("meeting-test", isDirectory: true)
-            try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
             let dest = meetingDir.appendingPathComponent("recording.m4a")
             if dest.path != recordingURL.path {
                 try? FileManager.default.removeItem(at: dest)
                 try FileManager.default.copyItem(at: recordingURL, to: dest)
             }
-            try FileMeetingAssetWriter.transcriptMarkdown(from: transcript)
-                .write(
-                    to: meetingDir.appendingPathComponent("transcript.md"),
-                    atomically: true,
-                    encoding: .utf8
-                )
         }
-        return writtenFiles
+        try FileMeetingAssetWriter.transcriptMarkdown(from: transcript)
+            .write(
+                to: meetingDir.appendingPathComponent("transcript.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        let minutesURL = meetingDir.appendingPathComponent("minutes.md")
+        if let minutes {
+            try "title: \(minutes.title)".write(to: minutesURL, atomically: true, encoding: .utf8)
+        } else if FileManager.default.fileExists(atPath: minutesURL.path) {
+            try FileManager.default.removeItem(at: minutesURL)
+        }
+
+        var files = [
+            MeetingAssetFile(name: "recording.m4a", detail: "written"),
+            MeetingAssetFile(name: "transcript.md", detail: "written")
+        ]
+        if minutes != nil {
+            files.append(MeetingAssetFile(name: "minutes.md", detail: "written"))
+        }
+        return files
     }
 }

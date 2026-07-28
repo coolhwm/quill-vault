@@ -21,6 +21,8 @@
 		A0000000000000000000000D /* ForegroundRecordingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000E /* ForegroundRecordingTests.swift */; };
 		A0000000000000000000000E /* TranscriptTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000F /* TranscriptTimeline.swift */; };
 		A0000000000000000000000F /* BackgroundCatchUpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* BackgroundCatchUpTests.swift */; };
+		A00000000000000000000010 /* BYOKMinutesGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* BYOKMinutesGeneration.swift */; };
+		A00000000000000000000011 /* BYOKMinutesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* BYOKMinutesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,8 @@
 		B0000000000000000000000E /* ForegroundRecordingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundRecordingTests.swift; sourceTree = "<group>"; };
 		B0000000000000000000000F /* TranscriptTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTimeline.swift; sourceTree = "<group>"; };
 		B00000000000000000000010 /* BackgroundCatchUpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundCatchUpTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* BYOKMinutesGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKMinutesGeneration.swift; sourceTree = "<group>"; };
+		B00000000000000000000012 /* BYOKMinutesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKMinutesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +96,7 @@
 				B0000000000000000000000B /* AuthoritativeDirectory.swift */,
 				B0000000000000000000000D /* RecordingAndTranscription.swift */,
 				B0000000000000000000000F /* TranscriptTimeline.swift */,
+				B00000000000000000000011 /* BYOKMinutesGeneration.swift */,
 			);
 			path = QuillvaultDemo;
 			sourceTree = "<group>";
@@ -104,6 +109,7 @@
 				B0000000000000000000000C /* AuthoritativeDirectoryTests.swift */,
 				B0000000000000000000000E /* ForegroundRecordingTests.swift */,
 				B00000000000000000000010 /* BackgroundCatchUpTests.swift */,
+				B00000000000000000000012 /* BYOKMinutesTests.swift */,
 			);
 			path = QuillvaultDemoTests;
 			sourceTree = "<group>";
@@ -232,6 +238,7 @@
 				A0000000000000000000000A /* AuthoritativeDirectory.swift in Sources */,
 				A0000000000000000000000C /* RecordingAndTranscription.swift in Sources */,
 				A0000000000000000000000E /* TranscriptTimeline.swift in Sources */,
+				A00000000000000000000010 /* BYOKMinutesGeneration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,6 +251,7 @@
 				A0000000000000000000000B /* AuthoritativeDirectoryTests.swift in Sources */,
 				A0000000000000000000000D /* ForegroundRecordingTests.swift in Sources */,
 				A0000000000000000000000F /* BackgroundCatchUpTests.swift in Sources */,
+				A00000000000000000000011 /* BYOKMinutesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

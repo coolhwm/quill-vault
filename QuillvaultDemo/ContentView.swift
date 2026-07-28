@@ -359,13 +359,20 @@ struct ContentView: View {
                 .font(.title2.bold())
                 .foregroundStyle(.red)
             Text(message)
-            Text("这是可观察的失败态。受控录音与逐字稿没有被删除。")
+            Text("录音与逐字稿应已保留；失败不会留下残缺权威 minutes.md。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button {
+                Task { await workflow.retryGenerateMinutes() }
+            } label: {
+                Label("重试 BYOK 纪要生成", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
             Button("回到 setup") {
                 resetToLiveSetup()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
         }
         .cardStyle()
     }

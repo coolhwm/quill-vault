@@ -49,6 +49,47 @@ struct ActionItem: Equatable, Sendable, Identifiable {
     }
 }
 
+struct TopicChapter: Equatable, Sendable, Identifiable {
+    let id: UUID
+    let title: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+    let summary: String
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        summary: String
+    ) {
+        self.id = id
+        self.title = title
+        self.startTime = startTime
+        self.endTime = endTime
+        self.summary = summary
+    }
+}
+
+struct DecisionItem: Equatable, Sendable, Identifiable {
+    let id: UUID
+    let statement: String
+    let reason: String
+    let evidence: String
+
+    init(
+        id: UUID = UUID(),
+        statement: String,
+        reason: String,
+        evidence: String
+    ) {
+        self.id = id
+        self.statement = statement
+        self.reason = reason
+        self.evidence = evidence
+    }
+}
+
 struct GraphNode: Equatable, Sendable {
     let id: String
     let label: String
@@ -69,11 +110,16 @@ struct StructuredMinutes: Equatable, Sendable {
     let title: String
     let overview: String
     let summary: String
-    let decisions: [String]
+    let chapters: [TopicChapter]
+    let decisions: [DecisionItem]
     let actionItems: [ActionItem]
     let risks: [String]
     let unresolvedQuestions: [String]
     let coreViewpointGraph: CoreViewpointGraph
+    let sourceLinks: [String]
+
+    /// Compatibility helper for older call sites that only had decision strings.
+    var decisionStatements: [String] { decisions.map(\.statement) }
 }
 
 struct RenderedDiagram: Equatable, Sendable {
@@ -156,7 +202,14 @@ protocol Transcribing {
 
 @MainActor
 protocol MinutesGenerating {
+    /// Generates structured minutes from final transcript text only (never audio).
     func generate(from transcript: Transcript) async throws -> StructuredMinutes
+}
+
+/// Captures the last outbound BYOK payload for privacy assertions in tests.
+@MainActor
+protocol BYOKRequestInspecting: AnyObject {
+    var lastRequestBodyJSON: String? { get }
 }
 
 @MainActor
@@ -173,11 +226,12 @@ protocol AuthoritativeDirectoryAccessing {
 
 @MainActor
 protocol MeetingAssetWriting {
+    /// Writes recording + transcript immediately. Minutes are optional so failures never leave partial minutes.md.
     func write(
         recordingURL: URL,
         transcript: Transcript,
-        minutes: StructuredMinutes,
-        mermaidSource: String,
+        minutes: StructuredMinutes?,
+        mermaidSource: String?,
         to directory: URL
     ) async throws -> [MeetingAssetFile]
 }
@@ -214,6 +268,8 @@ final class MeetingWorkflow {
     private var authorizedDirectory: URL?
     private var activeRecordingURL: URL?
     private var recordingStartedAt: Date?
+    private var finalizedTranscript: Transcript?
+    private var sourceAssetFiles: [MeetingAssetFile] = []
 
     private(set) var state: MeetingWorkflowState = .setup
     private(set) var liveTranscript: [TranscriptSegment] = []
@@ -455,9 +511,53 @@ final class MeetingWorkflow {
             return
         }
 
+        finalizedTranscript = transcript
+        // Persist source assets before BYOK so AI failure never erases evidence.
         do {
-            transition(to: .generating)
-            let minutes = try await dependencies.minutesGenerator.generate(from: transcript)
+            sourceAssetFiles = try await dependencies.assetWriter.write(
+                recordingURL: recordingURL,
+                transcript: transcript,
+                minutes: nil,
+                mermaidSource: nil,
+                to: directory
+            )
+        } catch {
+            transition(
+                to: .failed(
+                    "源资产写入失败：\(error.localizedDescription)（录音文件仍保留：\(recordingURL.lastPathComponent)）"
+                )
+            )
+            return
+        }
+
+        await generateMinutesWithRetry(recordingURL: recordingURL, transcript: transcript, directory: directory)
+    }
+
+    /// Manual retry after BYOK failure. Requires a finalized transcript.
+    func retryGenerateMinutes() async {
+        guard let transcript = finalizedTranscript,
+              let recordingURL = preservedRecordingURL ?? activeRecordingURL,
+              let directory = authorizedDirectory
+        else {
+            transition(to: .failed("无法重试：缺少最终逐字稿或录音。"))
+            return
+        }
+        guard phase == .failed || phase == .setup else { return }
+        await generateMinutesWithRetry(
+            recordingURL: recordingURL,
+            transcript: transcript,
+            directory: directory
+        )
+    }
+
+    private func generateMinutesWithRetry(
+        recordingURL: URL,
+        transcript: Transcript,
+        directory: URL
+    ) async {
+        transition(to: .generating)
+        do {
+            let minutes = try await generateMinutesAllowingOneRetry(from: transcript)
             let mermaidSource = dependencies.mermaidGenerator.source(
                 for: minutes.coreViewpointGraph
             )
@@ -484,9 +584,18 @@ final class MeetingWorkflow {
         } catch {
             transition(
                 to: .failed(
-                    "\(error.localizedDescription)（原始录音与逐字稿已保留：\(recordingURL.lastPathComponent)）"
+                    "\(error.localizedDescription)（recording.m4a 与 transcript.md 已保留，未写入残缺 minutes.md。可手动重试。）"
                 )
             )
+        }
+    }
+
+    private func generateMinutesAllowingOneRetry(from transcript: Transcript) async throws -> StructuredMinutes {
+        do {
+            return try await dependencies.minutesGenerator.generate(from: transcript)
+        } catch {
+            // One automatic retry for empty / invalid / validation failures.
+            return try await dependencies.minutesGenerator.generate(from: transcript)
         }
     }
 
