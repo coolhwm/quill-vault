@@ -1,0 +1,84 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "home.empty.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording will be available from the primary action on this screen." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "面对面会话将从本页主操作快速开始。" } }
+      }
+    },
+    "home.empty.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ready for your next meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "准备记录下一场会议" } }
+      }
+    },
+    "home.subtitle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your meetings remain yours." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议文件始终由你掌握。" } }
+      }
+    },
+    "minutes.empty.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Completed transcripts and minutes will appear here." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成的逐字稿和纪要会显示在这里。" } }
+      }
+    },
+    "minutes.empty.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No minutes yet" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "还没有纪要" } }
+      }
+    },
+    "minutes.navigation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要" } }
+      }
+    },
+    "settings.about.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } }
+      }
+    },
+    "settings.local.first" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local-first meeting assets" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地优先的会议资产" } }
+      }
+    },
+    "settings.navigation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } }
+      }
+    },
+    "settings.privacy" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No automatic analytics or uploads" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不自动统计或上传" } }
+      }
+    },
+    "tab.home" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "首页" } }
+      }
+    },
+    "tab.minutes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要" } }
+      }
+    },
+    "tab.settings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -1,8 +1,8 @@
 # Quillvault 真机技术闭环 Demo 范围说明
 
-> 状态：共识已达成，待实施
+> 状态：技术验证已通过
 > 目标：在 iOS 26 真机上跑通并验收 Quillvault 的最小核心链路
-> 规格：[本地规格说明](./真机技术闭环Demo_规格说明.md) · [GitHub Issue #1](https://github.com/coolhwm/quill-vault/issues/1)
+> 规格：[本地规格说明](./真机技术闭环Demo_规格说明.md) · [技术验证结论](./真机技术闭环Demo_技术验证结论.md) · [GitHub Issue #1](https://github.com/coolhwm/quill-vault/issues/1)
 
 ## 原型原则
 

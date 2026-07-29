@@ -1,5 +1,8 @@
 # Quillvault 真机技术闭环 Demo
 
+> 状态：已完成
+> 验证结论：[真机技术闭环 Demo 技术验证结论](./真机技术闭环Demo_技术验证结论.md)
+
 ## Problem Statement
 
 PKM 技术用户希望验证 Quillvault 的核心产品假设能否在 iOS 26 真机上成立：一次面对面会话能否从可靠录音开始，经设备端实时转写、BYOK 结构化纪要和可编辑 Mermaid，最终成为用户自己掌握的 Markdown 会议资产。

@@ -1,0 +1,550 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1DF2DA6D4AEE888B0F4C18BE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
+		27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 1F77943C5C19E39633AD0355 /* HomeFeature */; };
+		67E56C45446E335C6CBDA26C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
+		781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */; };
+		82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = AB1DFCA2DF85450E6929AFAC /* SettingsFeature */; };
+		9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957B75AE625AD703BD1D6A0D /* AppRootView.swift */; };
+		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
+		961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */; };
+		B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 721031C655B87E518827D0EC /* DesignSystem */; };
+		B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */; };
+		BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */; };
+		C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07DD9DE903D6014F01C42586 /* AppRouter.swift */; };
+		D86E7933698DE2B3E9DE4FDF /* RootNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */; };
+		F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1D4B3D2EB9C806040106BA7C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3266BC551D0FB1F1251AD10B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 084F7FBB906AE3C9A286C519;
+			remoteInfo = Quillvault;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		02D47DA788E214C5FF1935ED /* Quillvault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Quillvault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		07DD9DE903D6014F01C42586 /* AppRouter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
+		0AB205973E9B6720D1AB0E9F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootNavigationUITests.swift; sourceTree = "<group>"; };
+		782AAC83BAEDC6B8BA0199AF /* QuillvaultUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuillvaultUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
+		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
+		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
+		DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; path = Localizable.xcstrings; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		179986F81A4D3F243481E0DC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1DF2DA6D4AEE888B0F4C18BE /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C9EE738C146BE20313D19420 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67E56C45446E335C6CBDA26C /* Foundation.framework in Frameworks */,
+				93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */,
+				27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */,
+				F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */,
+				82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */,
+				B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0A7EA544F03DA5C1110BF600 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */,
+				9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */,
+				07DD9DE903D6014F01C42586 /* AppRouter.swift */,
+				957B75AE625AD703BD1D6A0D /* AppRootView.swift */,
+			);
+			name = App;
+			path = App;
+			sourceTree = "<group>";
+		};
+		5F97E3E74192875E80FB3F29 /* QuillvaultApp */ = {
+			isa = PBXGroup;
+			children = (
+				0A7EA544F03DA5C1110BF600 /* App */,
+				E8817E1E51ECDF0F886AE0CD /* Resources */,
+			);
+			name = QuillvaultApp;
+			path = QuillvaultApp;
+			sourceTree = "<group>";
+		};
+		6DB0B73AFA6B6A0F23651FEF = {
+			isa = PBXGroup;
+			children = (
+				8A0856B778512EB393CBF837 /* Products */,
+				AAB33FC1C2912A478CFB20C2 /* Frameworks */,
+				5F97E3E74192875E80FB3F29 /* QuillvaultApp */,
+				D3B8F9D4AA455873DFC078AD /* QuillvaultUITests */,
+			);
+			sourceTree = "<group>";
+		};
+		8A0856B778512EB393CBF837 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				02D47DA788E214C5FF1935ED /* Quillvault.app */,
+				782AAC83BAEDC6B8BA0199AF /* QuillvaultUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AAB33FC1C2912A478CFB20C2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				D43EABF275FF802FC44F9E55 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D3B8F9D4AA455873DFC078AD /* QuillvaultUITests */ = {
+			isa = PBXGroup;
+			children = (
+				5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */,
+			);
+			name = QuillvaultUITests;
+			path = QuillvaultUITests;
+			sourceTree = "<group>";
+		};
+		D43EABF275FF802FC44F9E55 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				0AB205973E9B6720D1AB0E9F /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		E8817E1E51ECDF0F886AE0CD /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */,
+				DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		084F7FBB906AE3C9A286C519 /* Quillvault */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1DC68F27D23CF50A94A7D878 /* Build configuration list for PBXNativeTarget "Quillvault" */;
+			buildPhases = (
+				890CCB2D465DC450D0AAF718 /* Sources */,
+				C9EE738C146BE20313D19420 /* Frameworks */,
+				5DA5C25F20FA8EE456E185CA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Quillvault;
+			packageProductDependencies = (
+				9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */,
+				1F77943C5C19E39633AD0355 /* HomeFeature */,
+				62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */,
+				AB1DFCA2DF85450E6929AFAC /* SettingsFeature */,
+				721031C655B87E518827D0EC /* DesignSystem */,
+			);
+			productName = Quillvault;
+			productReference = 02D47DA788E214C5FF1935ED /* Quillvault.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8F8FB563019AF87A00CABD09 /* QuillvaultUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3AB5239B35EF7881F3F4D4B1 /* Build configuration list for PBXNativeTarget "QuillvaultUITests" */;
+			buildPhases = (
+				72E36D17678513A2E6D95E1E /* Sources */,
+				179986F81A4D3F243481E0DC /* Frameworks */,
+				6BEF3B1F1663D407EC9AAAB1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				33FDBE52955CB0F2D8419511 /* PBXTargetDependency */,
+			);
+			name = QuillvaultUITests;
+			productName = QuillvaultUITests;
+			productReference = 782AAC83BAEDC6B8BA0199AF /* QuillvaultUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3266BC551D0FB1F1251AD10B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = A708E7AB50147E8460FA6584 /* Build configuration list for PBXProject "Quillvault" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				"zh-Hans",
+				Base,
+			);
+			mainGroup = 6DB0B73AFA6B6A0F23651FEF;
+			minimizedProjectReferenceProxies = 0;
+			packageReferences = (
+				96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */,
+				3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */,
+			);
+			preferredProjectObjectVersion = 100;
+			productRefGroup = 8A0856B778512EB393CBF837 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				084F7FBB906AE3C9A286C519 /* Quillvault */,
+				8F8FB563019AF87A00CABD09 /* QuillvaultUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5DA5C25F20FA8EE456E185CA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */,
+				BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6BEF3B1F1663D407EC9AAAB1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		72E36D17678513A2E6D95E1E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D86E7933698DE2B3E9DE4FDF /* RootNavigationUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		890CCB2D465DC450D0AAF718 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */,
+				781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */,
+				C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */,
+				9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		33FDBE52955CB0F2D8419511 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Quillvault;
+			target = 084F7FBB906AE3C9A286C519 /* Quillvault */;
+			targetProxy = 1D4B3D2EB9C806040106BA7C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		57722601B695BC3943F52806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.Quillvault;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7E198B0E9C2FF20397E86BC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		AF5AB7025B4D97B1E5CFE1A9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.QuillvaultUITests;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Quillvault;
+			};
+			name = Debug;
+		};
+		B091A3C12DB3707BEA8AD6A6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.QuillvaultUITests;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Quillvault;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B544D3D2447E0B5BCB07DCDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.Quillvault;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F068B035256E96384AAB3198 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1DC68F27D23CF50A94A7D878 /* Build configuration list for PBXNativeTarget "Quillvault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				57722601B695BC3943F52806 /* Release */,
+				B544D3D2447E0B5BCB07DCDC /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3AB5239B35EF7881F3F4D4B1 /* Build configuration list for PBXNativeTarget "QuillvaultUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B091A3C12DB3707BEA8AD6A6 /* Release */,
+				AF5AB7025B4D97B1E5CFE1A9 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A708E7AB50147E8460FA6584 /* Build configuration list for PBXProject "Quillvault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F068B035256E96384AAB3198 /* Debug */,
+				7E198B0E9C2FF20397E86BC6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/QuillvaultDesignSystem;
+		};
+		96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/QuillvaultFeatures;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1F77943C5C19E39633AD0355 /* HomeFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
+			productName = HomeFeature;
+		};
+		62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
+			productName = MeetingsFeature;
+		};
+		721031C655B87E518827D0EC /* DesignSystem */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */;
+			productName = DesignSystem;
+		};
+		9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
+			productName = AppNavigation;
+		};
+		AB1DFCA2DF85450E6929AFAC /* SettingsFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
+			productName = SettingsFeature;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 3266BC551D0FB1F1251AD10B /* Project object */;
+}

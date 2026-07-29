@@ -1,0 +1,145 @@
+name: iOS
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check architecture boundaries
+        run: sh Scripts/check-architecture.sh
+
+      - name: Check Swift formatting
+        run: xcrun swift-format lint --strict --recursive Packages QuillvaultApp QuillvaultUITests
+
+      - name: Check patch whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: git diff --check "$BASE_SHA" HEAD
+
+      - name: Test local packages
+        run: swift test --package-path Packages/QuillvaultFeatures
+
+      - name: Build Debug
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Build Release
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Release
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Test Debug launch and top-level navigation
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Debug
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -resultBundlePath "$RUNNER_TEMP/Debug-UI.xcresult"
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+      - name: Test Release launch and top-level navigation
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Release
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -resultBundlePath "$RUNNER_TEMP/Release-UI.xcresult"
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+      - name: Preserve verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-results
+          path: |
+            ${{ runner.temp }}/Debug-UI.xcresult
+            ${{ runner.temp }}/Release-UI.xcresult
+
+  main-simulator-matrix:
+    if: github.event_name == 'push'
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - iPhone 16e
+          - iPhone 17 Pro
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run UI suite
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Debug
+          -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
+          -resultBundlePath "$RUNNER_TEMP/Simulator-UI.xcresult"
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+      - name: Preserve matrix result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-${{ matrix.device }}
+          path: ${{ runner.temp }}/Simulator-UI.xcresult
+
+  release-evidence:
+    if: github.event_name == 'push'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Archive unsigned Release
+        run: >-
+          xcodebuild
+          -project Quillvault.xcodeproj
+          -scheme Quillvault
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath "$RUNNER_TEMP/Quillvault.xcarchive"
+          CODE_SIGNING_ALLOWED=NO
+          archive
+
+      - name: Record package dependency and license evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/dependency-evidence"
+          swift package --package-path Packages/QuillvaultDesignSystem show-dependencies --format json \
+            > "$RUNNER_TEMP/dependency-evidence/design-system.json"
+          swift package --package-path Packages/QuillvaultFeatures show-dependencies --format json \
+            > "$RUNNER_TEMP/dependency-evidence/features.json"
+          ruby -e 'File.write(ARGV[0], "No third-party production dependencies.\\n")' \
+            "$RUNNER_TEMP/dependency-evidence/licenses.txt"
+
+      - name: Preserve archive and dependency evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: |
+            ${{ runner.temp }}/Quillvault.xcarchive
+            ${{ runner.temp }}/dependency-evidence
