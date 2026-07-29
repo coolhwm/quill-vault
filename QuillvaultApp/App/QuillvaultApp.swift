@@ -6,7 +6,10 @@ struct QuillvaultApp: App {
 
   var body: some Scene {
     WindowGroup {
-      AppRootView(router: compositionRoot.router)
+      AppRootView(
+        router: compositionRoot.router,
+        meetingsModel: compositionRoot.meetingsModel
+      )
     }
   }
 }

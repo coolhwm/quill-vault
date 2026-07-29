@@ -17,6 +17,9 @@ jobs:
       - name: Check architecture boundaries
         run: sh Scripts/check-architecture.sh
 
+      - name: Check privacy manifest
+        run: sh Scripts/check-privacy-manifest.sh
+
       - name: Check Swift formatting
         run: xcrun swift-format lint --strict --recursive Packages QuillvaultApp QuillvaultUITests
 
@@ -26,7 +29,10 @@ jobs:
         run: git diff --check "$BASE_SHA" HEAD
 
       - name: Test local packages
-        run: swift test --package-path Packages/QuillvaultFeatures
+        run: |
+          swift test --package-path Packages/QuillvaultCore
+          swift test --package-path Packages/QuillvaultFeatures
+          swift test --package-path Packages/QuillvaultInfrastructure
 
       - name: Build Debug
         run: >-
@@ -35,8 +41,14 @@ jobs:
           -scheme Quillvault
           -configuration Debug
           -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/DebugDerivedData"
           CODE_SIGNING_ALLOWED=NO
           build
+
+      - name: Verify bundled third-party notice
+        run: >-
+          test -f
+          "$RUNNER_TEMP/DebugDerivedData/Build/Products/Debug-iphonesimulator/Quillvault.app/GRDB-LICENSE.txt"
 
       - name: Build Release
         run: >-
@@ -133,8 +145,10 @@ jobs:
             > "$RUNNER_TEMP/dependency-evidence/design-system.json"
           swift package --package-path Packages/QuillvaultFeatures show-dependencies --format json \
             > "$RUNNER_TEMP/dependency-evidence/features.json"
-          ruby -e 'File.write(ARGV[0], "No third-party production dependencies.\\n")' \
-            "$RUNNER_TEMP/dependency-evidence/licenses.txt"
+          swift package --package-path Packages/QuillvaultInfrastructure show-dependencies --format json \
+            > "$RUNNER_TEMP/dependency-evidence/infrastructure.json"
+          cp ThirdPartyNotices/GRDB-LICENSE.txt \
+            "$RUNNER_TEMP/dependency-evidence/GRDB-LICENSE.txt"
 
       - name: Preserve archive and dependency evidence
         uses: actions/upload-artifact@v4

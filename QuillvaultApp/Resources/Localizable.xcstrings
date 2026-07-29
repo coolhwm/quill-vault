@@ -37,6 +37,96 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要" } }
       }
     },
+    "minutes.asset.minutes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes ready" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已就绪" } }
+      }
+    },
+    "minutes.asset.recording" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "仅有录音" } }
+      }
+    },
+    "minutes.asset.transcript" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript ready" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿已就绪" } }
+      }
+    },
+    "minutes.diagnostics %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld incomplete item(s) were skipped." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已跳过 %lld 个不完整项目。" } }
+      }
+    },
+    "minutes.directory.choose" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose Meeting Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择会议目录" } }
+      }
+    },
+    "minutes.loading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Scanning meeting files…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在扫描会议文件…" } }
+      }
+    },
+    "minutes.recovery.access.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose the same folder again to renew access. Quillvault will not switch folders automatically." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请重新选择原目录以恢复访问。Quillvault 不会自动切换到其他目录。" } }
+      }
+    },
+    "minutes.recovery.access.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder access expired" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "目录访问已失效" } }
+      }
+    },
+    "minutes.recovery.download.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Download the meeting files in Files, then try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先在“文件”中下载会议文件，然后重试。" } }
+      }
+    },
+    "minutes.recovery.download.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting files are not downloaded" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议文件尚未下载" } }
+      }
+    },
+    "minutes.recovery.generic.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No meeting file was changed. Try scanning the current folder again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议文件未被修改，请重新扫描当前目录。" } }
+      }
+    },
+    "minutes.recovery.generic.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting library unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录暂不可用" } }
+      }
+    },
+    "minutes.recovery.icloud.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable iCloud Drive for Quillvault, or choose an Obsidian meeting folder." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请为 Quillvault 启用 iCloud Drive，或选择 Obsidian 中的会议目录。" } }
+      }
+    },
+    "minutes.recovery.icloud.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "iCloud Drive is unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "iCloud Drive 不可用" } }
+      }
+    },
+    "minutes.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try Again" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试" } }
+      }
+    },
     "settings.about.section" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } },

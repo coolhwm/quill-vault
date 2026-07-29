@@ -65,7 +65,9 @@
 
 ### 3.1 GRDB
 
-**结论：采用。**
+**结论：采用。** MVP 固定为 `7.10.0`（SPM exact），许可证为 MIT；版本锁定同时
+记录在 Swift Package 与 Xcode workspace 的 `Package.resolved`，许可文本保存在
+`ThirdPartyNotices/GRDB-LICENSE.txt`。
 
 GRDB 是长期维护的 SQLite Swift 工具包，提供迁移、事务、WAL 并发、数据库观察和 FTS。它允许项目直接控制 schema 与 SQL，同时减少 sqlite3 C API 的错误表面积。[GRDB 官方仓库](https://github.com/groue/GRDB.swift)
 

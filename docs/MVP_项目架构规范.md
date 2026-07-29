@@ -261,6 +261,12 @@ stateDiagram-v2
 - `transcript.md`
 - `minutes.md`
 
+每个正式会议目录同时包含可见的 `meeting.json` 身份清单，当前
+`schemaVersion` 为 `1`，保存稳定 UUID `meetingID` 与 `createdAt`。该清单只定义
+文件目录身份，不复制三类内容正文；索引删除后以它恢复同一 Meeting ID。缺少或无法
+解析清单、没有任何正式资产，或目录名带 `.candidate`、`.partial`、`.tmp` 后缀时，
+扫描器只记录脱敏诊断，不把目录当作有效会议。
+
 **可重建或运行状态**
 
 - 会议列表索引；
@@ -290,6 +296,8 @@ schema_metadata
 - FTS 表从解析后的 Markdown 内容更新；
 - 数据库提供完全重建入口；
 - 重建期间 UI 可以显示进度并保持已有文件可访问。
+- 当前首个命名迁移为 `v1_create_rebuildable_meeting_catalog`；数据库损坏时只隔离
+  SQLite、WAL 与 SHM 文件，再由协调只读扫描重建，绝不修改权威会议文件。
 
 ## 9. 文件系统规范
 

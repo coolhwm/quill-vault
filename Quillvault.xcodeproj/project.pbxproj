@@ -9,10 +9,14 @@
 /* Begin PBXBuildFile section */
 		1DF2DA6D4AEE888B0F4C18BE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
 		27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 1F77943C5C19E39633AD0355 /* HomeFeature */; };
+		64277C4B607361AA929BEFEA /* Application in Frameworks */ = {isa = PBXBuildFile; productRef = D5729DFB800F95B2F3EFB536 /* Application */; };
+		670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */ = {isa = PBXBuildFile; productRef = 1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */; };
 		67E56C45446E335C6CBDA26C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
 		781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */; };
 		82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = AB1DFCA2DF85450E6929AFAC /* SettingsFeature */; };
+		8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 4738FE796A919DAD340B4206 /* PersistenceGRDB */; };
 		9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957B75AE625AD703BD1D6A0D /* AppRootView.swift */; };
+		920F0BC333020C91F21D608C /* Domain in Frameworks */ = {isa = PBXBuildFile; productRef = 8B0862626BC69050D8B0730F /* Domain */; };
 		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
 		961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */; };
 		B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 721031C655B87E518827D0EC /* DesignSystem */; };
@@ -20,6 +24,7 @@
 		BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */; };
 		C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07DD9DE903D6014F01C42586 /* AppRouter.swift */; };
 		D86E7933698DE2B3E9DE4FDF /* RootNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */; };
+		E6F3A3EFA8EF96C4809EF56E /* GRDB-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */; };
 		F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +46,7 @@
 		782AAC83BAEDC6B8BA0199AF /* QuillvaultUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuillvaultUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
+		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
 		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
 		DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -65,6 +71,10 @@
 				F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */,
 				82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */,
 				B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */,
+				64277C4B607361AA929BEFEA /* Application in Frameworks */,
+				920F0BC333020C91F21D608C /* Domain in Frameworks */,
+				670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */,
+				8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +110,7 @@
 				AAB33FC1C2912A478CFB20C2 /* Frameworks */,
 				5F97E3E74192875E80FB3F29 /* QuillvaultApp */,
 				D3B8F9D4AA455873DFC078AD /* QuillvaultUITests */,
+				B1938BE46BA5E72732DED72D /* ThirdPartyNotices */,
 			);
 			sourceTree = "<group>";
 		};
@@ -118,6 +129,15 @@
 				D43EABF275FF802FC44F9E55 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B1938BE46BA5E72732DED72D /* ThirdPartyNotices */ = {
+			isa = PBXGroup;
+			children = (
+				9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */,
+			);
+			name = ThirdPartyNotices;
+			path = ThirdPartyNotices;
 			sourceTree = "<group>";
 		};
 		D3B8F9D4AA455873DFC078AD /* QuillvaultUITests */ = {
@@ -169,6 +189,10 @@
 				62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */,
 				AB1DFCA2DF85450E6929AFAC /* SettingsFeature */,
 				721031C655B87E518827D0EC /* DesignSystem */,
+				D5729DFB800F95B2F3EFB536 /* Application */,
+				8B0862626BC69050D8B0730F /* Domain */,
+				1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */,
+				4738FE796A919DAD340B4206 /* PersistenceGRDB */,
 			);
 			productName = Quillvault;
 			productReference = 02D47DA788E214C5FF1935ED /* Quillvault.app */;
@@ -215,6 +239,8 @@
 			packageReferences = (
 				96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */,
 				3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */,
+				149C5F742B2833C6204A613D /* XCLocalSwiftPackageReference "QuillvaultCore" */,
+				0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "QuillvaultInfrastructure" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 8A0856B778512EB393CBF837 /* Products */;
@@ -234,6 +260,7 @@
 			files = (
 				961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */,
 				BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */,
+				E6F3A3EFA8EF96C4809EF56E /* GRDB-LICENSE.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,6 +311,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = QuillvaultApp/SupportingFiles/Quillvault.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -396,6 +424,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = QuillvaultApp/SupportingFiles/Quillvault.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -508,6 +537,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "QuillvaultInfrastructure" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/QuillvaultInfrastructure;
+		};
+		149C5F742B2833C6204A613D /* XCLocalSwiftPackageReference "QuillvaultCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/QuillvaultCore;
+		};
 		3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/QuillvaultDesignSystem;
@@ -519,10 +556,20 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "QuillvaultInfrastructure" */;
+			productName = MeetingFileStore;
+		};
 		1F77943C5C19E39633AD0355 /* HomeFeature */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
 			productName = HomeFeature;
+		};
+		4738FE796A919DAD340B4206 /* PersistenceGRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "QuillvaultInfrastructure" */;
+			productName = PersistenceGRDB;
 		};
 		62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -534,6 +581,11 @@
 			package = 3AF66E741B235E010C662EA0 /* XCLocalSwiftPackageReference "QuillvaultDesignSystem" */;
 			productName = DesignSystem;
 		};
+		8B0862626BC69050D8B0730F /* Domain */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 149C5F742B2833C6204A613D /* XCLocalSwiftPackageReference "QuillvaultCore" */;
+			productName = Domain;
+		};
 		9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
@@ -543,6 +595,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
 			productName = SettingsFeature;
+		};
+		D5729DFB800F95B2F3EFB536 /* Application */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 149C5F742B2833C6204A613D /* XCLocalSwiftPackageReference "QuillvaultCore" */;
+			productName = Application;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

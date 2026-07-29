@@ -6,6 +6,7 @@ import SwiftUI
 
 struct AppRootView: View {
   @Bindable var router: AppRouter
+  let meetingsModel: MeetingsModel
 
   var body: some View {
     TabView(selection: $router.selectedTab) {
@@ -18,7 +19,7 @@ struct AppRootView: View {
       .tag(AppTab.home)
 
       NavigationStack {
-        MeetingsView()
+        MeetingsView(model: meetingsModel)
       }
       .tabItem {
         Label("tab.minutes", systemImage: AppTab.minutes.systemImage)
