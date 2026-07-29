@@ -19,6 +19,156 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议文件始终由你掌握。" } }
       }
     },
+    "home.recording.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio is saved first. AI, network, and transcription never block recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "音频优先保存；AI、网络和转写不会阻止录音开始。" } }
+      }
+    },
+    "home.recording.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Record a meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "记录面对面会议" } }
+      }
+    },
+    "recording.active" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在录音" } }
+      }
+    },
+    "recording.completed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存" } }
+      }
+    },
+    "recording.elapsed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Elapsed recording time" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已用时间" } }
+      }
+    },
+    "recording.failure.already" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Another recording is already active." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已有一场录音正在进行。" } }
+      }
+    },
+    "recording.failure.directory" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The meeting folder is unavailable. Restore folder access and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录暂不可用，请恢复目录访问后重试。" } }
+      }
+    },
+    "recording.failure.generic" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording could not be completed. Existing audio has not been overwritten." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音操作未能完成，已有音频不会被覆盖。" } }
+      }
+    },
+    "recording.failure.invalid" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The audio file did not pass duration and packet validation. Keep the app open and retry." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "音频未通过时长与音频包校验，请保持 App 打开并重试。" } }
+      }
+    },
+    "recording.failure.permission" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Allow microphone access in Settings before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先在系统设置中允许麦克风访问。" } }
+      }
+    },
+    "recording.failure.storage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Free at least 512 MB in the meeting folder before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先为会议目录释放至少 512 MB 空间。" } }
+      }
+    },
+    "recording.failure.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording needs attention" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音需要处理" } }
+      }
+    },
+    "recording.finish.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finishing needs attention" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束录音需要处理" } }
+      }
+    },
+    "recording.finishing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Validating and saving audio…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在校验并保存音频…" } }
+      }
+    },
+    "recording.navigation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议录音" } }
+      }
+    },
+    "recording.notice.cancel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not now" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂不录音" } }
+      }
+    },
+    "recording.notice.confirm" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "I understand — start" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我已了解，开始录音" } }
+      }
+    },
+    "recording.notice.message" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tell everyone present that recording is active and follow applicable consent laws. Audio remains in your authoritative meeting folder." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请告知所有参与者正在录音，并遵守适用的同意规则。音频将保存在你的权威会议目录中。" } }
+      }
+    },
+    "recording.notice.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Before your first recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "首次录音前请确认" } }
+      }
+    },
+    "recording.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try again" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试" } }
+      }
+    },
+    "recording.start" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始录音" } }
+      }
+    },
+    "recording.start.hint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checks consent, microphone, storage, and meeting folder, then starts persistent audio." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "检查录音告知、麦克风、存储与会议目录后开始持久录音。" } }
+      }
+    },
+    "recording.starting" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Starting recording…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在开始录音…" } }
+      }
+    },
+    "recording.stop" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "End and save recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束并保存录音" } }
+      }
+    },
+    "recording.stop.hint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stops capture, validates the audio container, duration, and packets, then saves the meeting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "停止采集，校验音频容器、时长和音频包后保存会议。" } }
+      }
+    },
     "minutes.empty.description" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Completed transcripts and minutes will appear here." } },

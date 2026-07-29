@@ -51,6 +51,35 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Settings"].isHittable)
   }
 
+  func testRecordingNoticeStartStatusAndStopAreAccessible() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-recording",
+        "-UIPreferredContentSizeCategoryName",
+        "UICTContentSizeCategoryAccessibilityXXXL",
+      ]
+    )
+
+    let start = app.buttons["recording.start"]
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    start.tap()
+
+    let consent = app.alerts["Before your first recording"]
+    XCTAssertTrue(consent.waitForExistence(timeout: 2))
+    consent.buttons["I understand — start"].tap()
+
+    XCTAssertTrue(screen("recording.screen").waitForExistence(timeout: 2))
+    let stop = app.buttons["recording.stop"]
+    XCTAssertTrue(stop.waitForExistence(timeout: 2))
+    XCTAssertTrue(stop.isHittable)
+    stop.tap()
+
+    XCTAssertTrue(screen("home.screen").waitForExistence(timeout: 2))
+    XCTAssertTrue(app.staticTexts["Recording saved"].exists)
+  }
+
   private func launch(
     language: String,
     locale: String,

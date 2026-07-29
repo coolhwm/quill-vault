@@ -6,6 +6,8 @@ struct MeetingFileStoreDependencies: Sendable {
   let bookmarkCodec: any DirectoryBookmarkCoding
   let scopeAccess: any SecurityScopedResourceAccessing
   let ubiquitousStatus: any UbiquitousItemStatusChecking
+  let minimumRecordingCapacityBytes: Int64
+  let availableCapacity: @Sendable (URL) throws -> Int64?
 
   static func live() -> Self {
     Self(
@@ -13,7 +15,13 @@ struct MeetingFileStoreDependencies: Sendable {
       bookmarkStore: UserDefaultsDirectoryBookmarkStore(),
       bookmarkCodec: FoundationDirectoryBookmarkCodec(),
       scopeAccess: FoundationSecurityScopedResourceAccess(),
-      ubiquitousStatus: FoundationUbiquitousItemStatusChecker()
+      ubiquitousStatus: FoundationUbiquitousItemStatusChecker(),
+      minimumRecordingCapacityBytes: 512 * 1_024 * 1_024,
+      availableCapacity: { url in
+        try url.resourceValues(
+          forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ).volumeAvailableCapacityForImportantUsage
+      }
     )
   }
 
@@ -25,7 +33,11 @@ struct MeetingFileStoreDependencies: Sendable {
     scopeAccess: any SecurityScopedResourceAccessing =
       AlwaysGrantedSecurityScopedResourceAccess(),
     ubiquitousStatus: any UbiquitousItemStatusChecking =
-      AlwaysDownloadedItemStatusChecker()
+      AlwaysDownloadedItemStatusChecker(),
+    minimumRecordingCapacityBytes: Int64 = 512 * 1_024 * 1_024,
+    availableCapacity: @escaping @Sendable (URL) throws -> Int64? = { _ in
+      Int64.max
+    }
   ) -> Self {
     let resolvedDefaultDirectoryProvider: any DefaultDirectoryProviding
     if let defaultDirectoryProvider {
@@ -48,7 +60,9 @@ struct MeetingFileStoreDependencies: Sendable {
         ),
       bookmarkCodec: bookmarkCodec,
       scopeAccess: scopeAccess,
-      ubiquitousStatus: ubiquitousStatus
+      ubiquitousStatus: ubiquitousStatus,
+      minimumRecordingCapacityBytes: minimumRecordingCapacityBytes,
+      availableCapacity: availableCapacity
     )
   }
 }

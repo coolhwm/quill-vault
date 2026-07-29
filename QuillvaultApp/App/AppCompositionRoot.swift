@@ -1,5 +1,8 @@
 import Application
+import AudioCapture
+import Domain
 import Foundation
+import HomeFeature
 import MeetingFileStore
 import MeetingsFeature
 import Observation
@@ -9,41 +12,144 @@ import PersistenceGRDB
 @Observable
 final class AppCompositionRoot {
   let router: AppRouter
+  let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
 
   init(
     router: AppRouter = AppRouter(),
-    meetingLibrary: (any MeetingLibraryUseCase)? = nil
+    meetingLibrary: (any MeetingLibraryUseCase)? = nil,
+    recording: (any RecordingUseCase)? = nil
   ) {
     self.router = router
+    let fileStore = MeetingFileStore()
+    recordingModel = HomeRecordingModel(
+      recording: recording ?? Self.makeDefaultRecording(fileStore: fileStore)
+    )
     meetingsModel = MeetingsModel(
-      library: meetingLibrary ?? Self.makeMeetingLibrary()
+      library: meetingLibrary
+        ?? Self.makeMeetingLibrary(fileStore: fileStore)
     )
   }
 
-  private static func makeMeetingLibrary() -> any MeetingLibraryUseCase {
+  private static func makeMeetingLibrary(
+    fileStore: MeetingFileStore
+  ) -> any MeetingLibraryUseCase {
     RetryingMeetingLibraryUseCase {
-      try buildMeetingLibrary()
+      try buildMeetingLibrary(fileStore: fileStore)
     }
   }
 
-  nonisolated private static func buildMeetingLibrary()
+  nonisolated private static func buildMeetingLibrary(
+    fileStore: MeetingFileStore
+  )
     throws -> any MeetingLibraryUseCase
   {
-    let applicationSupport = try FileManager.default.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: true
-    )
+    let applicationSupport = try applicationSupportDirectory()
     let databaseURL =
       applicationSupport
       .appending(path: "Quillvault", directoryHint: .isDirectory)
       .appending(path: "meeting-catalog.sqlite")
     let catalog = try GRDBMeetingCatalog.openRecovering(at: databaseURL)
     return MeetingLibraryWorkflow(
-      directoryAccess: MeetingFileStore(),
+      directoryAccess: fileStore,
       catalog: catalog
     )
   }
+
+  private static func makeRecording(
+    fileStore: MeetingFileStore
+  ) -> any RecordingUseCase {
+    RetryingRecordingUseCase {
+      try buildRecording(fileStore: fileStore)
+    }
+  }
+
+  private static func makeDefaultRecording(
+    fileStore: MeetingFileStore
+  ) -> any RecordingUseCase {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
+        return UITestRecordingUseCase()
+      }
+    #endif
+    return makeRecording(fileStore: fileStore)
+  }
+
+  nonisolated private static func buildRecording(
+    fileStore: MeetingFileStore
+  ) throws -> any RecordingUseCase {
+    let stateURL =
+      try applicationSupportDirectory()
+      .appending(path: "Quillvault", directoryHint: .isDirectory)
+      .appending(path: "recording-state.sqlite")
+    return RecordingWorkflow(
+      capture: AudioCaptureEngine(fileStore: fileStore),
+      store: try GRDBRecordingSessionStore.open(at: stateURL),
+      consentStore: UserDefaultsRecordingConsentStore(),
+      makeMeetingID: {
+        MeetingID(rawValue: UUID())
+      },
+      now: {
+        Date()
+      }
+    )
+  }
+
+  nonisolated private static func applicationSupportDirectory() throws -> URL {
+    try FileManager.default.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true
+    )
+  }
 }
+
+#if DEBUG
+  private actor UITestRecordingUseCase: RecordingUseCase {
+    private var hasAcknowledgedNotice = false
+    private var activeSession: RecordingSession?
+
+    func restore() async throws -> RecordingSnapshot? {
+      activeSession.map {
+        RecordingSnapshot(session: $0, activity: .recording)
+      }
+    }
+
+    func acknowledgeRecordingNotice() async throws {
+      hasAcknowledgedNotice = true
+    }
+
+    func start() async throws -> RecordingSnapshot {
+      guard hasAcknowledgedNotice else {
+        throw RecordingError.recordingConsentRequired
+      }
+      guard activeSession == nil else {
+        throw RecordingError.alreadyRecording
+      }
+      let session = RecordingSession(
+        meetingID: MeetingID(
+          rawValue: UUID(uuidString: "A8480D38-FBA5-49F4-B396-ED63BB96FA7C")!
+        ),
+        startedAt: Date()
+      )
+      activeSession = session
+      return RecordingSnapshot(session: session, activity: .recording)
+    }
+
+    func stop() async throws -> RecordingCompletion {
+      guard let session = activeSession else {
+        throw RecordingError.noActiveRecording
+      }
+      activeSession = nil
+      return RecordingCompletion(
+        session: session,
+        audio: RecordedAudio(
+          durationSeconds: 1,
+          packetCount: 1,
+          byteCount: 1
+        )
+      )
+    }
+  }
+#endif

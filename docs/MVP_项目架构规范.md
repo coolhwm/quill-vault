@@ -306,6 +306,8 @@ schema_metadata
 - 使用持久安全书签恢复用户目录；
 - 使用 `NSFileCoordinator` 协调与 Obsidian、Files 和 iCloud 的并发访问；
 - 写入流程为：同目录临时文件 → flush/sync → coordinated replace → 读取确认；
+- 录音期间只发布不可索引的 `.recording.json` 恢复标记；音频校验成功后，协调校验该标记并原子提升为 `meeting.json`；
+- 无效或中断录音保留 `recording.m4a` 与恢复标记、释放目录访问和活跃锁，不发布成正式会议；
 - 不跨卷假设 rename 原子性；
 - App 不维护隐藏的第二份会议资产；
 - 候选纪要只在生成或替换确认期间存在，完成或取消后清理；

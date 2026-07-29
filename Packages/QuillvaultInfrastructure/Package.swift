@@ -10,6 +10,7 @@ let package = Package(
     .macOS(.v14),
   ],
   products: [
+    .library(name: "AudioCapture", targets: ["AudioCapture"]),
     .library(name: "MeetingFileStore", targets: ["MeetingFileStore"]),
     .library(name: "PersistenceGRDB", targets: ["PersistenceGRDB"]),
   ],
@@ -22,6 +23,12 @@ let package = Package(
   ],
   targets: [
     .target(
+      name: "AudioCapture",
+      dependencies: [
+        .product(name: "Domain", package: "QuillvaultCore")
+      ]
+    ),
+    .target(
       name: "MeetingFileStore",
       dependencies: [
         .product(name: "Domain", package: "QuillvaultCore")
@@ -32,6 +39,13 @@ let package = Package(
       dependencies: [
         .product(name: "Domain", package: "QuillvaultCore"),
         .product(name: "GRDB", package: "GRDB.swift"),
+      ]
+    ),
+    .testTarget(
+      name: "AudioCaptureTests",
+      dependencies: [
+        "AudioCapture",
+        .product(name: "Domain", package: "QuillvaultCore"),
       ]
     ),
     .testTarget(
@@ -52,6 +66,14 @@ let package = Package(
         "MeetingFileStore",
         "PersistenceGRDB",
         .product(name: "Application", package: "QuillvaultCore"),
+        .product(name: "Domain", package: "QuillvaultCore"),
+      ]
+    ),
+    .testTarget(
+      name: "RecordingIntegrationTests",
+      dependencies: [
+        "AudioCapture",
+        "MeetingFileStore",
         .product(name: "Domain", package: "QuillvaultCore"),
       ]
     ),

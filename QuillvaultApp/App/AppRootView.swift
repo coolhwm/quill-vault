@@ -6,12 +6,13 @@ import SwiftUI
 
 struct AppRootView: View {
   @Bindable var router: AppRouter
+  let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
 
   var body: some View {
     TabView(selection: $router.selectedTab) {
       NavigationStack {
-        HomeView()
+        HomeView(model: recordingModel)
       }
       .tabItem {
         Label("tab.home", systemImage: AppTab.home.systemImage)

@@ -195,6 +195,189 @@ struct MeetingFileStoreTests {
       _ = try await task.value
     }
   }
+
+  @Test("Low storage rejects recording before creating a meeting directory")
+  func lowStorageCreatesNoRecordingDirectory() async throws {
+    let root = try TemporaryDirectory()
+    let store = MeetingFileStore(
+      dependencies: .testing(
+        defaultDirectory: root.url,
+        minimumRecordingCapacityBytes: 1_000,
+        availableCapacity: { _ in 999 }
+      )
+    )
+    let session = RecordingSession.fixture()
+
+    await #expect(throws: RecordingError.insufficientStorage) {
+      _ = try await store.reserveRecording(for: session)
+    }
+    #expect(
+      try FileManager.default.contentsOfDirectory(atPath: root.url.path).isEmpty
+    )
+  }
+
+  @Test("Publishing a recording creates a readable identity manifest without replacing files")
+  func publishesRecordingIdentity() async throws {
+    let root = try TemporaryDirectory()
+    let store = MeetingFileStore(
+      dependencies: .testing(defaultDirectory: root.url)
+    )
+    let session = RecordingSession.fixture()
+    let reservation = try await store.reserveRecording(for: session)
+    try Data("audio-header".utf8).write(to: reservation.recordingURL)
+
+    try await store.publishRecordingStart(
+      reservation,
+      startedAt: session.startedAt
+    )
+    #expect(
+      FileManager.default.fileExists(
+        atPath: reservation.directoryURL
+          .appending(path: ".recording.json").path
+      )
+    )
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: reservation.directoryURL
+          .appending(path: "meeting.json").path
+      )
+    )
+    try await store.finishRecording(meetingID: session.meetingID)
+
+    let manifestData = try Data(
+      contentsOf: reservation.directoryURL.appending(path: "meeting.json")
+    )
+    let manifest = try JSONDecoder().decode(
+      MeetingManifest.self,
+      from: manifestData
+    )
+    #expect(manifest.meetingID == session.meetingID.rawValue)
+    #expect(
+      try Data(contentsOf: reservation.recordingURL)
+        == Data("audio-header".utf8)
+    )
+  }
+
+  @Test("A tampered pending manifest is never published as a meeting")
+  func tamperedPendingManifestIsRejected() async throws {
+    let root = try TemporaryDirectory()
+    let store = MeetingFileStore(
+      dependencies: .testing(defaultDirectory: root.url)
+    )
+    let session = RecordingSession.fixture()
+    let reservation = try await store.reserveRecording(for: session)
+    let audio = Data("preserve-audio".utf8)
+    try audio.write(to: reservation.recordingURL)
+    try await store.publishRecordingStart(
+      reservation,
+      startedAt: session.startedAt
+    )
+    let tamperedManifest = """
+      {
+        "schemaVersion": 1,
+        "meetingID": "\(session.meetingID.rawValue.uuidString)",
+        "createdAt": "not-a-date"
+      }
+      """
+    try Data(tamperedManifest.utf8).write(
+      to: reservation.directoryURL.appending(path: ".recording.json")
+    )
+
+    await #expect(throws: (any Error).self) {
+      try await store.finishRecording(meetingID: session.meetingID)
+    }
+
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: reservation.directoryURL
+          .appending(path: "meeting.json").path
+      )
+    )
+    #expect(try Data(contentsOf: reservation.recordingURL) == audio)
+  }
+
+  @Test("An existing meeting directory is never overwritten or removed")
+  func existingMeetingIsProtected() async throws {
+    let root = try TemporaryDirectory()
+    let session = RecordingSession.fixture()
+    let existing = root.url.appending(
+      path: "meeting-\(session.meetingID.rawValue.uuidString.lowercased())",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: existing,
+      withIntermediateDirectories: false
+    )
+    let sentinel = existing.appending(path: "sentinel")
+    try Data("keep".utf8).write(to: sentinel)
+    let store = MeetingFileStore(
+      dependencies: .testing(defaultDirectory: root.url)
+    )
+
+    await #expect(throws: RecordingError.captureCouldNotStart) {
+      _ = try await store.reserveRecording(for: session)
+    }
+    #expect(try Data(contentsOf: sentinel) == Data("keep".utf8))
+  }
+
+  @Test("Cancellation removes only the reservation created by that recording")
+  func cancellationRemovesOwnedReservation() async throws {
+    let root = try TemporaryDirectory()
+    let unrelated = root.url.appending(
+      path: "unrelated",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: unrelated,
+      withIntermediateDirectories: false
+    )
+    let store = MeetingFileStore(
+      dependencies: .testing(defaultDirectory: root.url)
+    )
+    let session = RecordingSession.fixture()
+    let reservation = try await store.reserveRecording(for: session)
+
+    await store.cancelRecording(meetingID: session.meetingID)
+
+    #expect(!FileManager.default.fileExists(atPath: reservation.directoryURL.path))
+    #expect(FileManager.default.fileExists(atPath: unrelated.path))
+  }
+
+  @Test("Abandoning invalid audio preserves recovery files and releases scope")
+  func abandonmentPreservesRecoveryAndReleasesScope() async throws {
+    let root = try TemporaryDirectory()
+    let scopes = ScopeAccessSpy()
+    let store = MeetingFileStore(
+      dependencies: .testing(
+        defaultDirectory: root.url,
+        scopeAccess: scopes
+      )
+    )
+    _ = try await store.authorizeSelectedDirectory(
+      .init(opaqueReference: root.url.absoluteString)
+    )
+    let session = RecordingSession.fixture()
+    let reservation = try await store.reserveRecording(for: session)
+    try Data("recoverable".utf8).write(to: reservation.recordingURL)
+    try await store.publishRecordingStart(
+      reservation,
+      startedAt: session.startedAt
+    )
+
+    await store.abandonRecording(meetingID: session.meetingID)
+
+    #expect(
+      FileManager.default.fileExists(atPath: reservation.recordingURL.path)
+    )
+    #expect(
+      FileManager.default.fileExists(
+        atPath: reservation.directoryURL
+          .appending(path: ".recording.json").path
+      )
+    )
+    #expect(await scopes.startCount == 2)
+    #expect(await scopes.stopCount == 2)
+  }
 }
 
 private struct MeetingDirectoryFixture {
@@ -312,5 +495,16 @@ private struct UbiquitousStatusStub: UbiquitousItemStatusChecking {
 
   func isDownloaded(_ url: URL) throws -> Bool {
     url.lastPathComponent != unavailableFileName
+  }
+}
+
+extension RecordingSession {
+  fileprivate static func fixture() -> Self {
+    .init(
+      meetingID: MeetingID(
+        rawValue: UUID(uuidString: "5F6FA632-D2A8-4A4E-B3D9-162F2BEF4E2B")!
+      ),
+      startedAt: Date(timeIntervalSince1970: 1_722_470_400)
+    )
   }
 }

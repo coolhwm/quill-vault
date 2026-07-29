@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1DF2DA6D4AEE888B0F4C18BE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
+		231A9CFD2AB14BCB9A2AE001 /* AudioCapture in Frameworks */ = {isa = PBXBuildFile; productRef = 231A9CFD2AB14BCB9A2AE002 /* AudioCapture */; };
 		27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 1F77943C5C19E39633AD0355 /* HomeFeature */; };
 		64277C4B607361AA929BEFEA /* Application in Frameworks */ = {isa = PBXBuildFile; productRef = D5729DFB800F95B2F3EFB536 /* Application */; };
 		670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */ = {isa = PBXBuildFile; productRef = 1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */; };
@@ -73,6 +74,7 @@
 				B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */,
 				64277C4B607361AA929BEFEA /* Application in Frameworks */,
 				920F0BC333020C91F21D608C /* Domain in Frameworks */,
+				231A9CFD2AB14BCB9A2AE001 /* AudioCapture in Frameworks */,
 				670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */,
 				8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */,
 			);
@@ -191,6 +193,7 @@
 				721031C655B87E518827D0EC /* DesignSystem */,
 				D5729DFB800F95B2F3EFB536 /* Application */,
 				8B0862626BC69050D8B0730F /* Domain */,
+				231A9CFD2AB14BCB9A2AE002 /* AudioCapture */,
 				1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */,
 				4738FE796A919DAD340B4206 /* PersistenceGRDB */,
 			);
@@ -316,6 +319,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault records face-to-face meetings you start and saves the audio in your chosen meeting folder.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -429,6 +433,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault records face-to-face meetings you start and saves the audio in your chosen meeting folder.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -565,6 +570,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "QuillvaultFeatures" */;
 			productName = HomeFeature;
+		};
+		231A9CFD2AB14BCB9A2AE002 /* AudioCapture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "QuillvaultInfrastructure" */;
+			productName = AudioCapture;
 		};
 		4738FE796A919DAD340B4206 /* PersistenceGRDB */ = {
 			isa = XCSwiftPackageProductDependency;

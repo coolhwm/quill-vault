@@ -8,6 +8,7 @@ struct QuillvaultApp: App {
     WindowGroup {
       AppRootView(
         router: compositionRoot.router,
+        recordingModel: compositionRoot.recordingModel,
         meetingsModel: compositionRoot.meetingsModel
       )
     }
