@@ -118,6 +118,58 @@ final class BackgroundCatchUpTests: XCTestCase {
         XCTAssertTrue(TranscriptTimeline.coversRecordingDuration(merged, duration: 6))
     }
 
+    func testProductionTranscriberReplaysBackgroundBuffersAtOriginalTimelineOffset() async throws {
+        let source = ControllableAudioBufferSource()
+        let session = ControllableSpeechAnalysisSession()
+        session.resultForReceivedBuffer = { index in
+            TranscriptSegment(
+                startTime: Double(index) * 0.01,
+                endTime: Double(index + 1) * 0.01,
+                text: "后台\(index)",
+                isFinal: true
+            )
+        }
+        let transcriber = SpeechAnalyzerTranscriber(
+            audioSource: source,
+            analysisSession: session
+        )
+        var snapshots: [[TranscriptSegment]] = []
+        try await transcriber.start(
+            recordingURL: URL(filePath: "/tmp/unused-recording.m4a")
+        ) { snapshots.append($0) }
+        session.emit(
+            TranscriptSegment(startTime: 0, endTime: 1, text: "前台", isFinal: true)
+        )
+
+        transcriber.noteAnalysisPaused(at: 1)
+        source.emitTestBuffer()
+        source.emitTestBuffer()
+        await Task.yield()
+        XCTAssertEqual(session.receivedBufferCount, 0)
+
+        let caughtUp = try await transcriber.catchUp(
+            from: URL(filePath: "/tmp/unused-recording.m4a"),
+            alreadyCoveredUntil: 1
+        )
+
+        XCTAssertEqual(session.startCount, 2)
+        XCTAssertEqual(session.finishCount, 1)
+        XCTAssertEqual(session.receivedBufferCount, 2)
+        XCTAssertEqual(caughtUp.map(\.text), ["后台0", "后台1"])
+        XCTAssertEqual(caughtUp[0].startTime, 1, accuracy: 0.001)
+        XCTAssertEqual(caughtUp[1].endTime, 1.02, accuracy: 0.001)
+
+        source.emitTestBuffer()
+        await Task.yield()
+        XCTAssertEqual(session.receivedBufferCount, 3)
+        XCTAssertEqual(snapshots.last?.last?.text, "后台2")
+
+        _ = try await transcriber.finalize(
+            from: URL(filePath: "/tmp/unused-recording.m4a")
+        )
+        XCTAssertEqual(session.finishCount, 2)
+    }
+
     private func makeDeps(transcriber: ControllableTranscriber) -> MeetingWorkflowDependencies {
         let keyStore = InMemoryAPIKeyStore(initial: "sk-test")
         let bookmarking = ControllableBookmarking()

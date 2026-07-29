@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import XCTest
 @testable import QuillvaultDemo
 
@@ -148,6 +149,79 @@ final class ForegroundRecordingTests: XCTestCase {
         XCTAssertEqual(merged.map(\.text), ["F", "V2"])
         XCTAssertEqual(merged.filter(\.isFinal).count, 1)
         XCTAssertEqual(merged.filter { !$0.isFinal }.count, 1)
+    }
+
+    func testLiveSpeechUsesOneStreamingSessionThroughFinalize() async throws {
+        let source = ControllableAudioBufferSource()
+        let session = ControllableSpeechAnalysisSession()
+        let transcriber = SpeechAnalyzerTranscriber(
+            audioSource: source,
+            analysisSession: session
+        )
+        var snapshots: [[TranscriptSegment]] = []
+
+        try await transcriber.start(
+            recordingURL: URL(filePath: "/tmp/unused-recording.m4a")
+        ) { snapshots.append($0) }
+        session.emit(
+            TranscriptSegment(
+                startTime: 0,
+                endTime: 1,
+                text: "实时字幕",
+                isFinal: true
+            )
+        )
+        source.emitTestBuffer()
+        await Task.yield()
+
+        let caughtUp = try await transcriber.catchUp(
+            from: URL(filePath: "/tmp/unused-recording.m4a"),
+            alreadyCoveredUntil: 1
+        )
+        let transcript = try await transcriber.finalize(
+            from: URL(filePath: "/tmp/unused-recording.m4a")
+        )
+
+        XCTAssertEqual(session.startCount, 1)
+        XCTAssertEqual(session.receivedBufferCount, 1)
+        XCTAssertEqual(session.finishCount, 1)
+        XCTAssertTrue(caughtUp.isEmpty)
+        XCTAssertEqual(transcript.segments.map(\.text), ["实时字幕"])
+        XCTAssertEqual(snapshots.last?.map(\.text), ["实时字幕"])
+        XCTAssertFalse(source.hasHandler)
+    }
+
+    func testAudioTapBlockCanRunOutsideMainActor() async throws {
+        let fileURL = tempRoot.appendingPathComponent("tap-test.caf")
+        let format = try XCTUnwrap(
+            AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16_000,
+                channels: 1,
+                interleaved: false
+            )
+        )
+        let file = try AVAudioFile(forWriting: fileURL, settings: format.settings)
+        let sink = DeviceAudioCaptureSink(audioFile: file, sampleRate: format.sampleRate)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 160))
+        buffer.frameLength = 160
+        let sendableBuffer = SendableAudioBuffer(value: buffer)
+        let tap = sink.makeTapBlock()
+        let sampleRate = format.sampleRate
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                tap(
+                    sendableBuffer.value,
+                    AVAudioTime(sampleTime: 0, atRate: sampleRate)
+                )
+                continuation.resume()
+            }
+        }
+
+        XCTAssertEqual(sink.duration, 0.01, accuracy: 0.001)
+        XCTAssertNil(sink.failureDescription)
+        sink.close()
     }
 
     private func makeDeps(

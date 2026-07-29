@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 
@@ -64,6 +64,62 @@ enum TranscriptionError: LocalizedError, Equatable {
     }
 }
 
+enum ExistingMeetingImportError: LocalizedError, Equatable {
+    case missingRecording
+    case missingTranscript
+    case unreadableTranscript
+
+    var errorDescription: String? {
+        switch self {
+        case .missingRecording:
+            "所选会议目录缺少 recording.m4a。"
+        case .missingTranscript:
+            "所选会议目录缺少 transcript.md。"
+        case .unreadableTranscript:
+            "transcript.md 中没有可读取的带时间戳逐字稿片段。"
+        }
+    }
+}
+
+enum ExistingTranscriptParser {
+    static func parse(markdown: String) throws -> Transcript {
+        let expression = try NSRegularExpression(
+            pattern: #"(?m)^\s*-\s*\[\s*(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)\s*\]\s+(.+?)\s*$"#
+        )
+        let fullRange = NSRange(markdown.startIndex..., in: markdown)
+        let segments: [TranscriptSegment] = expression.matches(
+            in: markdown,
+            range: fullRange
+        ).compactMap { match -> TranscriptSegment? in
+            guard let startRange = Range(match.range(at: 1), in: markdown),
+                  let endRange = Range(match.range(at: 2), in: markdown),
+                  let textRange = Range(match.range(at: 3), in: markdown),
+                  let start = TimeInterval(String(markdown[startRange])),
+                  let end = TimeInterval(String(markdown[endRange])),
+                  start.isFinite,
+                  end.isFinite,
+                  start >= 0,
+                  end > start
+            else {
+                return nil
+            }
+            let text = markdown[textRange].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return TranscriptSegment(
+                startTime: start,
+                endTime: end,
+                text: text,
+                isFinal: true
+            )
+        }
+        let normalized = TranscriptTimeline.mergeFinals(segments)
+        guard !normalized.isEmpty else {
+            throw ExistingMeetingImportError.unreadableTranscript
+        }
+        return Transcript(segments: normalized)
+    }
+}
+
 // MARK: - Transcript merge
 
 enum LiveTranscriptMerger {
@@ -82,16 +138,115 @@ enum LiveTranscriptMerger {
 // MARK: - Device audio recorder (continuous m4a — sole mic owner)
 
 @MainActor
-final class DeviceAudioRecorder: AudioRecording {
-    private var recorder: AVAudioRecorder?
+protocol LiveAudioBufferSource: AnyObject {
+    func setAudioBufferHandler(_ handler: (@Sendable (SendableAudioBuffer) -> Void)?)
+}
+
+struct SendableAudioBuffer: @unchecked Sendable {
+    let value: AVAudioPCMBuffer
+}
+
+final class DeviceAudioCaptureSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var audioFile: AVAudioFile?
+    private var handler: (@Sendable (SendableAudioBuffer) -> Void)?
+    private var capturedFrames: AVAudioFramePosition = 0
+    private var writeError: Error?
+    private let sampleRate: Double
+
+    init(audioFile: AVAudioFile, sampleRate: Double) {
+        self.audioFile = audioFile
+        self.sampleRate = sampleRate
+    }
+
+    func setHandler(_ handler: (@Sendable (SendableAudioBuffer) -> Void)?) {
+        lock.withLock {
+            self.handler = handler
+        }
+    }
+
+    func receive(_ buffer: AVAudioPCMBuffer) {
+        let copiedBuffer: AVAudioPCMBuffer?
+        let currentHandler: (@Sendable (SendableAudioBuffer) -> Void)?
+        lock.lock()
+        do {
+            try audioFile?.write(from: buffer)
+            capturedFrames += AVAudioFramePosition(buffer.frameLength)
+        } catch {
+            writeError = error
+        }
+        currentHandler = handler
+        copiedBuffer = currentHandler == nil ? nil : Self.copy(buffer)
+        lock.unlock()
+        if let copiedBuffer {
+            currentHandler?(SendableAudioBuffer(value: copiedBuffer))
+        }
+    }
+
+    nonisolated func makeTapBlock() -> AVAudioNodeTapBlock {
+        { [weak self] buffer, _ in
+            self?.receive(buffer)
+        }
+    }
+
+    var duration: TimeInterval {
+        lock.withLock {
+            guard sampleRate > 0 else { return 0 }
+            return Double(capturedFrames) / sampleRate
+        }
+    }
+
+    var failureDescription: String? {
+        lock.withLock {
+            writeError?.localizedDescription
+        }
+    }
+
+    func close() {
+        lock.withLock {
+            handler = nil
+            audioFile = nil
+        }
+    }
+
+    private static func copy(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let destination = AVAudioPCMBuffer(
+            pcmFormat: source.format,
+            frameCapacity: source.frameLength
+        ) else {
+            return nil
+        }
+        destination.frameLength = source.frameLength
+        let sourceBuffers = UnsafeMutableAudioBufferListPointer(source.mutableAudioBufferList)
+        let destinationBuffers = UnsafeMutableAudioBufferListPointer(destination.mutableAudioBufferList)
+        guard sourceBuffers.count == destinationBuffers.count else { return nil }
+        for index in sourceBuffers.indices {
+            guard let sourceData = sourceBuffers[index].mData,
+                  let destinationData = destinationBuffers[index].mData
+            else {
+                continue
+            }
+            let byteCount = Int(sourceBuffers[index].mDataByteSize)
+            memcpy(destinationData, sourceData, byteCount)
+            destinationBuffers[index].mDataByteSize = sourceBuffers[index].mDataByteSize
+        }
+        return destination
+    }
+}
+
+@MainActor
+final class DeviceAudioRecorder: AudioRecording, LiveAudioBufferSource {
+    private var engine: AVAudioEngine?
+    private var captureSink: DeviceAudioCaptureSink?
     private var recordingURL: URL?
+    private var lastDuration: TimeInterval = 0
 
     func start(in directory: URL) async throws -> URL {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.defaultToSpeaker, .allowBluetooth]
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
         try session.setActive(true)
 
@@ -106,34 +261,72 @@ final class DeviceAudioRecorder: AudioRecording {
         try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
         let fileURL = meetingDir.appendingPathComponent("recording.m4a")
 
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw RecordingError.failedToStart("麦克风没有可用的音频格式")
+        }
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44_100,
-            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: inputFormat.sampleRate,
+            AVNumberOfChannelsKey: inputFormat.channelCount,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
-
-        let recorder = try AVAudioRecorder(url: fileURL, settings: settings)
-        recorder.isMeteringEnabled = true
-        guard recorder.record() else {
-            throw RecordingError.failedToStart("AVAudioRecorder.record() 返回 false")
+        let file = try AVAudioFile(
+            forWriting: fileURL,
+            settings: settings,
+            commonFormat: inputFormat.commonFormat,
+            interleaved: inputFormat.isInterleaved
+        )
+        let sink = DeviceAudioCaptureSink(audioFile: file, sampleRate: inputFormat.sampleRate)
+        input.installTap(
+            onBus: 0,
+            bufferSize: 4_096,
+            format: inputFormat,
+            block: sink.makeTapBlock()
+        )
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            sink.close()
+            throw RecordingError.failedToStart(error.localizedDescription)
         }
-        self.recorder = recorder
+        self.engine = engine
+        self.captureSink = sink
         self.recordingURL = fileURL
+        self.lastDuration = 0
         return fileURL
     }
 
     func stop() async throws -> URL {
-        guard let recorder, let recordingURL else {
+        guard let engine, let captureSink, let recordingURL else {
             throw RecordingError.notRecording
         }
-        recorder.stop()
-        self.recorder = nil
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        lastDuration = captureSink.duration
+        let failureDescription = captureSink.failureDescription
+        captureSink.close()
+        self.engine = nil
+        self.captureSink = nil
+        if let failureDescription {
+            throw RecordingError.failedToStart("写入 M4A 失败：\(failureDescription)")
+        }
+        guard lastDuration > 0 else {
+            throw RecordingError.failedToStart("录音文件没有捕获到音频帧")
+        }
         return recordingURL
     }
 
     var currentTime: TimeInterval {
-        recorder?.currentTime ?? 0
+        captureSink?.duration ?? lastDuration
+    }
+
+    func setAudioBufferHandler(_ handler: (@Sendable (SendableAudioBuffer) -> Void)?) {
+        captureSink?.setHandler(handler)
     }
 }
 
@@ -176,6 +369,31 @@ final class ControllableAudioRecorder: AudioRecording {
         if let stopError { throw stopError }
         stopped = true
         return recordingURL
+    }
+}
+
+@MainActor
+final class ControllableAudioBufferSource: LiveAudioBufferSource {
+    private var handler: (@Sendable (SendableAudioBuffer) -> Void)?
+
+    var hasHandler: Bool {
+        handler != nil
+    }
+
+    func setAudioBufferHandler(_ handler: (@Sendable (SendableAudioBuffer) -> Void)?) {
+        self.handler = handler
+    }
+
+    func emitTestBuffer() {
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        )!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 160)!
+        buffer.frameLength = 160
+        handler?(SendableAudioBuffer(value: buffer))
     }
 }
 
@@ -263,17 +481,202 @@ final class ControllableTranscriber: Transcribing {
     }
 }
 
-// MARK: - SpeechAnalyzer transcriber (file-based; does not open a second mic)
+// MARK: - SpeechAnalyzer transcriber (one live stream from the recorder's mic buffers)
 
-/// Sole mic owner is `DeviceAudioRecorder`. This type only analyzes the saved m4a so
-/// recording integrity is never contested by a parallel AVAudioEngine input tap.
+@MainActor
+protocol SpeechAnalysisSessioning: AnyObject {
+    func start(onResult: @escaping @MainActor (TranscriptSegment) -> Void) async throws
+    func receive(_ buffer: AVAudioPCMBuffer)
+    func finish() async throws
+}
+
+@MainActor
+final class ControllableSpeechAnalysisSession: SpeechAnalysisSessioning {
+    private var onResult: (@MainActor (TranscriptSegment) -> Void)?
+    private(set) var startCount = 0
+    private(set) var receivedBufferCount = 0
+    private(set) var finishCount = 0
+    var resultForReceivedBuffer: ((Int) -> TranscriptSegment)?
+    private var sessionBufferIndex = 0
+
+    func start(onResult: @escaping @MainActor (TranscriptSegment) -> Void) async throws {
+        startCount += 1
+        sessionBufferIndex = 0
+        self.onResult = onResult
+    }
+
+    func receive(_ buffer: AVAudioPCMBuffer) {
+        receivedBufferCount += 1
+        if let result = resultForReceivedBuffer?(sessionBufferIndex) {
+            onResult?(result)
+        }
+        sessionBufferIndex += 1
+    }
+
+    func finish() async throws {
+        finishCount += 1
+    }
+
+    func emit(_ segment: TranscriptSegment) {
+        onResult?(segment)
+    }
+}
+
+@MainActor
+final class DeviceSpeechAnalysisSession: SpeechAnalysisSessioning {
+    private final class ConverterInput: @unchecked Sendable {
+        let buffer: AVAudioPCMBuffer
+        var supplied = false
+
+        init(buffer: AVAudioPCMBuffer) {
+            self.buffer = buffer
+        }
+    }
+
+    private var analyzer: SpeechAnalyzer?
+    private var transcriber: SpeechTranscriber?
+    private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var resultsTask: Task<Void, Never>?
+    private var analyzerFormat: AVAudioFormat?
+    private var converter: AVAudioConverter?
+
+    func start(onResult: @escaping @MainActor (TranscriptSegment) -> Void) async throws {
+        guard SpeechTranscriber.isAvailable else {
+            throw TranscriptionError.unavailable
+        }
+        let requestedLocale = Locale(identifier: "zh-CN")
+        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
+            throw TranscriptionError.failed("设备不支持简体中文语音模型")
+        }
+        let transcriber = SpeechTranscriber(
+            locale: locale,
+            preset: .timeIndexedProgressiveTranscription
+        )
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            try await request.downloadAndInstall()
+        }
+        guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
+            compatibleWith: [transcriber]
+        ) else {
+            throw TranscriptionError.failed("无法取得 SpeechAnalyzer 兼容音频格式")
+        }
+
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        self.analyzer = analyzer
+        self.transcriber = transcriber
+        self.analyzerFormat = analyzerFormat
+        self.inputContinuation = continuation
+        self.resultsTask = Task {
+            do {
+                for try await result in transcriber.results {
+                    let start = CMTimeGetSeconds(result.range.start)
+                    let end = CMTimeGetSeconds(result.range.end)
+                    let text = String(result.text.characters)
+                    guard !text.isEmpty, start.isFinite, end.isFinite, end >= start else {
+                        continue
+                    }
+                    onResult(
+                        TranscriptSegment(
+                            startTime: start,
+                            endTime: end,
+                            text: text,
+                            isFinal: result.isFinal
+                        )
+                    )
+                }
+            } catch {
+                // finish() owns lifecycle errors; result termination itself is not fatal.
+            }
+        }
+        try await analyzer.start(inputSequence: inputSequence)
+    }
+
+    func receive(_ buffer: AVAudioPCMBuffer) {
+        do {
+            let converted = try convertedBuffer(buffer)
+            inputContinuation?.yield(AnalyzerInput(buffer: converted))
+        } catch {
+            // A later buffer may recover after an audio-route format change.
+            converter = nil
+        }
+    }
+
+    func finish() async throws {
+        inputContinuation?.finish()
+        inputContinuation = nil
+        if let analyzer {
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+        }
+        await resultsTask?.value
+        resultsTask = nil
+        analyzer = nil
+        transcriber = nil
+        analyzerFormat = nil
+        converter = nil
+    }
+
+    private func convertedBuffer(_ input: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        guard let analyzerFormat else {
+            throw TranscriptionError.failed("SpeechAnalyzer 尚未准备完成")
+        }
+        if input.format == analyzerFormat {
+            return input
+        }
+        if converter == nil || converter?.inputFormat != input.format {
+            converter = AVAudioConverter(from: input.format, to: analyzerFormat)
+        }
+        guard let converter else {
+            throw TranscriptionError.failed("无法创建音频格式转换器")
+        }
+        let ratio = analyzerFormat.sampleRate / input.format.sampleRate
+        let capacity = AVAudioFrameCount(ceil(Double(input.frameLength) * ratio)) + 1
+        guard let output = AVAudioPCMBuffer(
+            pcmFormat: analyzerFormat,
+            frameCapacity: capacity
+        ) else {
+            throw TranscriptionError.failed("无法分配转写音频缓冲区")
+        }
+        let converterInput = ConverterInput(buffer: input)
+        var conversionError: NSError?
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            if converterInput.supplied {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            converterInput.supplied = true
+            inputStatus.pointee = .haveData
+            return converterInput.buffer
+        }
+        if let conversionError {
+            throw conversionError
+        }
+        guard status == .haveData || status == .inputRanDry else {
+            throw TranscriptionError.failed("音频格式转换失败：\(status.rawValue)")
+        }
+        return output
+    }
+}
+
 @MainActor
 final class SpeechAnalyzerTranscriber: Transcribing {
     private var finals: [TranscriptSegment] = []
+    private var liveSnapshot: [TranscriptSegment] = []
     private var onUpdate: (@MainActor ([TranscriptSegment]) -> Void)?
-    private var analysisPausedAt: TimeInterval?
-    private var activeRecordingURL: URL?
-    private var pollTask: Task<Void, Never>?
+    private let audioSource: any LiveAudioBufferSource
+    private let analysisSession: any SpeechAnalysisSessioning
+    private var timelineOffset: TimeInterval = 0
+    private var pausedAt: TimeInterval?
+    private var isPaused = false
+    private var pendingBuffers: [SendableAudioBuffer] = []
+
+    init(
+        audioSource: any LiveAudioBufferSource,
+        analysisSession: any SpeechAnalysisSessioning = DeviceSpeechAnalysisSession()
+    ) {
+        self.audioSource = audioSource
+        self.analysisSession = analysisSession
+    }
 
     func start(
         recordingURL: URL,
@@ -281,115 +684,101 @@ final class SpeechAnalyzerTranscriber: Transcribing {
     ) async throws {
         self.onUpdate = onUpdate
         self.finals = []
-        self.analysisPausedAt = nil
-        self.activeRecordingURL = recordingURL
-
-        guard SpeechTranscriber.isAvailable else {
-            throw TranscriptionError.unavailable
-        }
-
-        let locale = Locale(identifier: "zh-CN")
-        let probe = SpeechTranscriber(
-            locale: locale,
-            preset: .timeIndexedProgressiveTranscription
-        )
-        if let request = try? await AssetInventory.assetInstallationRequest(supporting: [probe]) {
-            try? await request.downloadAndInstall()
-        }
-
-        // Best-effort live progress by re-reading the growing recording file.
-        // Never installs an input tap — audio continuity owns the mic.
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(4))
-                guard let self, let url = self.activeRecordingURL else { continue }
-                if self.analysisPausedAt != nil { continue }
-                let covered = TranscriptTimeline.lastCoveredEnd(in: self.finals)
-                if let filled = try? await self.analyzeFile(url, after: covered), !filled.isEmpty {
-                    self.finals = TranscriptTimeline.mergeFinals(self.finals + filled)
-                    self.onUpdate?(self.finals)
-                }
+        self.liveSnapshot = []
+        self.timelineOffset = 0
+        self.pausedAt = nil
+        self.isPaused = false
+        self.pendingBuffers = []
+        try await startAnalysisSession(at: 0)
+        audioSource.setAudioBufferHandler { [weak self] buffer in
+            Task { @MainActor [weak self] in
+                self?.route(buffer)
             }
         }
         onUpdate(finals)
     }
 
     func noteAnalysisPaused(at audioTime: TimeInterval) {
-        analysisPausedAt = audioTime
+        guard !isPaused else { return }
+        pausedAt = audioTime
+        isPaused = true
     }
 
     func catchUp(
         from recordingURL: URL,
         alreadyCoveredUntil: TimeInterval
     ) async throws -> [TranscriptSegment] {
-        let filled = try await analyzeFile(recordingURL, after: alreadyCoveredUntil)
-        if !filled.isEmpty {
-            finals = TranscriptTimeline.mergeFinals(finals + filled)
-            onUpdate?(finals)
+        guard isPaused else { return [] }
+
+        // SpeechAnalyzer itself may stop producing results while the app is backgrounded.
+        // End that one session first, then replay the recorder's buffered PCM into a new,
+        // non-overlapping session whose local zero maps to the original audio timeline.
+        try await analysisSession.finish()
+        let replayOffset = pausedAt ?? alreadyCoveredUntil
+        try await startAnalysisSession(at: replayOffset)
+
+        // No await in this drain: buffer-routing tasks cannot interleave between the final
+        // empty check and clearing isPaused, so every background buffer is replayed once.
+        while !pendingBuffers.isEmpty {
+            let batch = pendingBuffers
+            pendingBuffers.removeAll(keepingCapacity: true)
+            for buffer in batch {
+                analysisSession.receive(buffer.value)
+            }
         }
-        analysisPausedAt = nil
-        return filled
+        isPaused = false
+        pausedAt = nil
+
+        return finals.filter {
+            $0.isFinal && $0.endTime > alreadyCoveredUntil + 0.001
+        }
     }
 
     func finalize(from recordingURL: URL) async throws -> Transcript {
-        pollTask?.cancel()
-        pollTask = nil
-        activeRecordingURL = nil
-
-        let covered = TranscriptTimeline.lastCoveredEnd(in: finals)
-        let filled = try await analyzeFile(recordingURL, after: covered)
-        finals = TranscriptTimeline.mergeFinals(finals + filled)
+        audioSource.setAudioBufferHandler(nil)
+        if isPaused {
+            try await analysisSession.finish()
+            try await startAnalysisSession(at: pausedAt ?? TranscriptTimeline.lastCoveredEnd(in: finals))
+            while !pendingBuffers.isEmpty {
+                let batch = pendingBuffers
+                pendingBuffers.removeAll(keepingCapacity: true)
+                for buffer in batch {
+                    analysisSession.receive(buffer.value)
+                }
+            }
+            isPaused = false
+            pausedAt = nil
+        }
+        try await analysisSession.finish()
         let transcript = Transcript(segments: finals)
         onUpdate?(finals)
         return transcript
     }
 
-    private func analyzeFile(_ url: URL, after alreadyCoveredUntil: TimeInterval) async throws -> [TranscriptSegment] {
-        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        // Growing files may briefly be unreadable while the recorder flushes.
-        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
-        guard size > 0 else { return [] }
-
-        let locale = Locale(identifier: "zh-CN")
-        let fileTranscriber = SpeechTranscriber(
-            locale: locale,
-            preset: .timeIndexedProgressiveTranscription
-        )
-        let file: AVAudioFile
-        do {
-            file = try AVAudioFile(forReading: url)
-        } catch {
-            return []
-        }
-        let analyzer = try await SpeechAnalyzer(
-            inputAudioFile: file,
-            modules: [fileTranscriber],
-            finishAfterFile: true
-        )
-        let collect = Task {
-            var collected: [TranscriptSegment] = []
-            for try await result in fileTranscriber.results where result.isFinal {
-                let start = CMTimeGetSeconds(result.range.start)
-                let end = CMTimeGetSeconds(result.range.end)
-                let text = String(result.text.characters)
-                if text.isEmpty { continue }
-                if end <= alreadyCoveredUntil + 0.05 { continue }
-                let clippedStart = max(start, alreadyCoveredUntil)
-                collected.append(
-                    TranscriptSegment(
-                        startTime: clippedStart,
-                        endTime: end,
-                        text: text,
-                        isFinal: true
-                    )
-                )
+    private func startAnalysisSession(at offset: TimeInterval) async throws {
+        timelineOffset = offset
+        try await analysisSession.start { [weak self] segment in
+            guard let self else { return }
+            let adjusted = TranscriptSegment(
+                startTime: segment.startTime + self.timelineOffset,
+                endTime: segment.endTime + self.timelineOffset,
+                text: segment.text,
+                isFinal: segment.isFinal
+            )
+            self.liveSnapshot = LiveTranscriptMerger.applying(adjusted, to: self.liveSnapshot)
+            if adjusted.isFinal {
+                self.finals = TranscriptTimeline.mergeFinals(self.finals + [adjusted])
             }
-            return collected
+            self.onUpdate?(self.liveSnapshot)
         }
-        try await analyzer.start(inputAudioFile: file, finishAfterFile: true)
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
-        return try await collect.value
+    }
+
+    private func route(_ buffer: SendableAudioBuffer) {
+        if isPaused {
+            pendingBuffers.append(buffer)
+        } else {
+            analysisSession.receive(buffer.value)
+        }
     }
 }
 
@@ -409,7 +798,10 @@ final class FileMeetingAssetWriter: MeetingAssetWriting {
         // Prefer the meeting folder created at record start (`…/meeting-*/recording.m4a`).
         let parent = recordingURL.deletingLastPathComponent()
         let meetingDir: URL
-        if parent.lastPathComponent.hasPrefix("meeting-") {
+        let existingTranscript = parent.appendingPathComponent("transcript.md")
+        if parent.lastPathComponent.hasPrefix("meeting-")
+            || FileManager.default.fileExists(atPath: existingTranscript.path)
+        {
             meetingDir = parent
         } else if let lastMeetingDir,
                   FileManager.default.fileExists(atPath: lastMeetingDir.path)

@@ -209,7 +209,23 @@ protocol Transcribing {
 @MainActor
 protocol MinutesGenerating {
     /// Generates structured minutes from final transcript text only (never audio).
-    func generate(from transcript: Transcript) async throws -> StructuredMinutes
+    func generate(
+        from transcript: Transcript,
+        onProgress: (@MainActor @Sendable (MinutesGenerationProgress) -> Void)?
+    ) async throws -> StructuredMinutes
+}
+
+extension MinutesGenerating {
+    func generate(from transcript: Transcript) async throws -> StructuredMinutes {
+        try await generate(from: transcript, onProgress: nil)
+    }
+}
+
+struct MinutesGenerationProgress: Equatable, Sendable {
+    let message: String
+    let completedSteps: Int
+    let totalSteps: Int
+    let receivedCharacters: Int
 }
 
 /// Captures the last outbound BYOK payload for privacy assertions in tests.
@@ -292,6 +308,7 @@ final class MeetingWorkflow {
     private(set) var lastCompletedAudioEnd: TimeInterval = 0
     private(set) var analysisPaused = false
     private(set) var diagnosticNote: String?
+    private(set) var minutesGenerationProgress: MinutesGenerationProgress?
 
     var phase: MeetingWorkflowPhase {
         state.phase
@@ -559,6 +576,64 @@ final class MeetingWorkflow {
         await generateMinutesWithRetry(recordingURL: recordingURL, transcript: transcript, directory: directory)
     }
 
+    /// Reuses a previously finalized meeting folder without recording or transcribing again.
+    func generateMinutesFromExistingMeetingDirectory(_ directory: URL) async {
+        guard phase == .setup || phase == .failed else { return }
+
+        let accessedSecurityScope = directory.startAccessingSecurityScopedResource()
+        defer {
+            if accessedSecurityScope {
+                directory.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            guard await dependencies.credentialChecker.hasBYOKCredential() else {
+                throw DemoWorkflowError.missingCredential
+            }
+
+            let recordingURL = directory.appendingPathComponent("recording.m4a")
+            guard FileManager.default.fileExists(atPath: recordingURL.path) else {
+                throw ExistingMeetingImportError.missingRecording
+            }
+            let recordingAttributes = try FileManager.default.attributesOfItem(atPath: recordingURL.path)
+            let recordingSize = (recordingAttributes[.size] as? NSNumber)?.intValue ?? 0
+            guard recordingSize > 0 else {
+                throw ExistingMeetingImportError.missingRecording
+            }
+
+            let transcriptURL = directory.appendingPathComponent("transcript.md")
+            guard FileManager.default.fileExists(atPath: transcriptURL.path) else {
+                throw ExistingMeetingImportError.missingTranscript
+            }
+            let transcriptMarkdown = try String(contentsOf: transcriptURL, encoding: .utf8)
+            let transcript = try ExistingTranscriptParser.parse(markdown: transcriptMarkdown)
+
+            authorizedDirectory = directory
+            activeRecordingURL = recordingURL
+            preservedRecordingURL = recordingURL
+            finalizedTranscript = transcript
+            liveTranscript = transcript.segments
+            lastCompletedAudioEnd = TranscriptTimeline.lastCoveredEnd(in: transcript.segments)
+            diagnosticNote = "已读取现有 transcript.md；跳过录音与转写，直接生成纪要。"
+            sourceAssetFiles = [
+                MeetingAssetFile(name: "recording.m4a", detail: recordingURL.path),
+                MeetingAssetFile(
+                    name: "transcript.md",
+                    detail: "\(transcript.segments.count) 个带时间戳片段"
+                )
+            ]
+
+            await generateMinutesWithRetry(
+                recordingURL: recordingURL,
+                transcript: transcript,
+                directory: directory
+            )
+        } catch {
+            transition(to: .failed("导入已有会议失败：\(error.localizedDescription)"))
+        }
+    }
+
     /// Manual retry after BYOK failure. Requires a finalized transcript.
     func retryGenerateMinutes() async {
         guard let transcript = finalizedTranscript,
@@ -569,6 +644,12 @@ final class MeetingWorkflow {
             return
         }
         guard phase == .failed || phase == .setup else { return }
+        let accessedSecurityScope = directory.startAccessingSecurityScopedResource()
+        defer {
+            if accessedSecurityScope {
+                directory.stopAccessingSecurityScopedResource()
+            }
+        }
         await generateMinutesWithRetry(
             recordingURL: recordingURL,
             transcript: transcript,
@@ -581,6 +662,12 @@ final class MeetingWorkflow {
         transcript: Transcript,
         directory: URL
     ) async {
+        minutesGenerationProgress = MinutesGenerationProgress(
+            message: "准备发送最终逐字稿…",
+            completedSteps: 0,
+            totalSteps: 1,
+            receivedCharacters: 0
+        )
         transition(to: .generating)
         do {
             let minutes = try await generateMinutesAllowingOneRetry(from: transcript)
@@ -610,6 +697,7 @@ final class MeetingWorkflow {
             editableMermaidSource = mermaidSource
             mermaidRenderError = nil
             completedAssets = assets
+            minutesGenerationProgress = nil
             transition(to: .completed(assets))
         } catch {
             // Do not leave a successful completed state or partial authoritative minutes.
@@ -652,12 +740,21 @@ final class MeetingWorkflow {
     }
 
     private func generateMinutesAllowingOneRetry(from transcript: Transcript) async throws -> StructuredMinutes {
+        let progress: @MainActor @Sendable (MinutesGenerationProgress) -> Void = { [weak self] update in
+            self?.minutesGenerationProgress = update
+        }
         do {
-            return try await dependencies.minutesGenerator.generate(from: transcript)
+            return try await dependencies.minutesGenerator.generate(
+                from: transcript,
+                onProgress: progress
+            )
         } catch {
             // Retry only empty content / invalid JSON / business validation — not auth/network.
             guard Self.isRetriableMinutesError(error) else { throw error }
-            return try await dependencies.minutesGenerator.generate(from: transcript)
+            return try await dependencies.minutesGenerator.generate(
+                from: transcript,
+                onProgress: progress
+            )
         }
     }
 

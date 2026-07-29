@@ -53,6 +53,25 @@ protocol BYOKConnectionTesting: AnyObject {
 
 protocol HTTPTransporting: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
+    func stream(
+        for request: URLRequest,
+        onLine: @escaping @Sendable (String) async throws -> Void
+    ) async throws -> URLResponse
+}
+
+extension HTTPTransporting {
+    /// Test transports that only implement data(for:) remain usable and exercise the
+    /// non-streaming compatibility path.
+    func stream(
+        for request: URLRequest,
+        onLine: @escaping @Sendable (String) async throws -> Void
+    ) async throws -> URLResponse {
+        let (data, response) = try await data(for: request)
+        if let text = String(data: data, encoding: .utf8) {
+            try await onLine(text)
+        }
+        return response
+    }
 }
 
 // MARK: - Errors
@@ -247,11 +266,24 @@ final class UserDefaultsBYOKPreferences: BYOKPreferencesStoring {
 
 // MARK: - Request / response helpers
 
+enum BYOKRequestPurpose {
+    case connectionProbe
+    case minutesGeneration
+
+    var timeoutInterval: TimeInterval {
+        switch self {
+        case .connectionProbe: 45
+        case .minutesGeneration: 90
+        }
+    }
+}
+
 enum BYOKConnectionRequestBuilder {
     static func makeURLRequest(
         baseURL: String,
         model: String,
-        apiKey: String
+        apiKey: String,
+        purpose: BYOKRequestPurpose = .connectionProbe
     ) throws -> URLRequest {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -280,7 +312,7 @@ enum BYOKConnectionRequestBuilder {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 45
+        request.timeoutInterval = purpose.timeoutInterval
 
         let body: [String: Any] = [
             "model": model,
@@ -400,8 +432,29 @@ enum BYOKHTTPResponseMapper {
 }
 
 struct URLSessionHTTPTransport: HTTPTransporting {
+    private let session: URLSession
+
+    init() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 90
+        configuration.timeoutIntervalForResource = 300
+        session = URLSession(configuration: configuration)
+    }
+
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        try await URLSession.shared.data(for: request)
+        try await session.data(for: request)
+    }
+
+    func stream(
+        for request: URLRequest,
+        onLine: @escaping @Sendable (String) async throws -> Void
+    ) async throws -> URLResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            try await onLine(line)
+        }
+        return response
     }
 }
 

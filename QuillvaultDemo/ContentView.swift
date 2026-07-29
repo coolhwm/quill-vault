@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var workflow = MeetingWorkflow(dependencies: .liveSetup)
     @State private var showingBYOKSettings = false
     @State private var showingDirectoryImporter = false
+    @State private var showingExistingMeetingImporter = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -39,6 +40,17 @@ struct ContentView: View {
             ) { result in
                 if case let .success(urls) = result, let url = urls.first {
                     Task { await workflow.applySelectedDirectory(url) }
+                }
+            }
+            .fileImporter(
+                isPresented: $showingExistingMeetingImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                if case let .success(urls) = result, let url = urls.first {
+                    Task {
+                        await workflow.generateMinutesFromExistingMeetingDirectory(url)
+                    }
                 }
             }
             .task {
@@ -108,7 +120,11 @@ struct ContentView: View {
         case .finalizing:
             progressView(title: "正在补齐最终逐字稿…", systemImage: "text.badge.checkmark")
         case .generating:
-            progressView(title: "正在生成结构化纪要与核心观点图…", systemImage: "wand.and.stars")
+            progressView(
+                title: workflow.minutesGenerationProgress?.message
+                    ?? "正在生成结构化纪要与核心观点图…",
+                systemImage: "wand.and.stars"
+            )
         case let .completed(assets):
             completedView(assets)
         case let .failed(message):
@@ -156,6 +172,15 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!workflow.byokSettings.hasStoredAPIKey || !workflow.directoryState.isWritable)
+
+            Button {
+                showingExistingMeetingImporter = true
+            } label: {
+                Label("从已有逐字稿生成纪要", systemImage: "doc.text.magnifyingglass")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!workflow.byokSettings.hasStoredAPIKey)
 
             Button("演示 failed 状态（受控替身）") {
                 workflow = MeetingWorkflow(dependencies: .failingDemo)

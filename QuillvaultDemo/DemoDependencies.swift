@@ -9,13 +9,14 @@ extension MeetingWorkflowDependencies {
     /// Live BYOK + authoritative directory + device recording/transcription.
     static var liveSetup: MeetingWorkflowDependencies {
         let keyStore = KeychainAPIKeyStore()
+        let audioRecorder = DeviceAudioRecorder()
         let directoryAccess = BookmarkAuthoritativeDirectoryAccess(
             bookmarkStore: UserDefaultsBookmarkStore(),
             bookmarking: SystemSecurityScopedBookmarking()
         )
         return MeetingWorkflowDependencies(
-            audioRecorder: DeviceAudioRecorder(),
-            transcriber: SpeechAnalyzerTranscriber(),
+            audioRecorder: audioRecorder,
+            transcriber: SpeechAnalyzerTranscriber(audioSource: audioRecorder),
             minutesGenerator: DeepSeekMinutesGenerator(
                 apiKeyStore: keyStore,
                 preferences: UserDefaultsBYOKPreferences()
@@ -188,8 +189,19 @@ struct DemoTranscriber: Transcribing {
 struct DemoMinutesGenerator: MinutesGenerating {
     let shouldFail: Bool
 
-    func generate(from transcript: Transcript) async throws -> StructuredMinutes {
+    func generate(
+        from transcript: Transcript,
+        onProgress: (@MainActor @Sendable (MinutesGenerationProgress) -> Void)?
+    ) async throws -> StructuredMinutes {
         try await demoPause()
+        onProgress?(
+            MinutesGenerationProgress(
+                message: "演示纪要生成完成",
+                completedSteps: 1,
+                totalSteps: 1,
+                receivedCharacters: transcript.segments.map(\.text.count).reduce(0, +)
+            )
+        )
         if shouldFail {
             throw DemoWorkflowError.rejectedDemoResponse
         }
