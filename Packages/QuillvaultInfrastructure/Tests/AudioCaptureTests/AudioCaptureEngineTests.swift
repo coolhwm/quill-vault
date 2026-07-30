@@ -207,6 +207,54 @@ struct AudioCaptureEngineTests {
     #expect(await files.abandonedIDs == [session.meetingID])
   }
 
+  @Test("A truncated local m4a clears the interrupted recording lock")
+  func interruptedRecoveryRejectsTruncatedLocalM4A() async throws {
+    let temporary = TemporaryAudioFile()
+    try Data([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+      0x4D, 0x34, 0x41, 0x20, 0x00, 0x00, 0x00, 0x00,
+      0x4D, 0x34, 0x41, 0x20, 0x6D, 0x70, 0x34, 0x32,
+    ]).write(to: temporary.url)
+    let session = RecordingSession.fixture()
+    let reservation = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: temporary.url.deletingLastPathComponent(),
+      recordingURL: temporary.url
+    )
+    let files = RecordingFilesStub(recoveredReservation: reservation)
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: AVRecordedAudioValidator()
+    )
+
+    let result = try await engine.recoverInterrupted(session)
+
+    #expect(result == nil)
+    #expect(await files.finishedIDs.isEmpty)
+    #expect(await files.abandonedIDs == [session.meetingID])
+  }
+
+  @Test("Unspecified and permission errors are not definitive content failures")
+  func validatorPreservesNonContentErrors() {
+    #expect(
+      !AVRecordedAudioValidator.isDefinitiveContentFailure(
+        kAudioFileUnspecifiedError
+      )
+    )
+    #expect(
+      !AVRecordedAudioValidator.isDefinitiveContentFailure(
+        kAudioFilePermissionsError
+      )
+    )
+    #expect(
+      AVRecordedAudioValidator.isDefinitiveContentFailure(
+        kAudioFileInvalidFileError
+      )
+    )
+  }
+
   @Test("Invalid audio remains unpublished and cannot finish")
   func invalidAudioDoesNotPublishMeeting() async throws {
     let files = RecordingFilesStub()
@@ -297,7 +345,7 @@ struct AudioCaptureEngineTests {
     let temporary = TemporaryAudioFile()
     try Data().write(to: temporary.url)
 
-    #expect(throws: (any Error).self) {
+    #expect(throws: RecordingError.invalidRecordedAudio) {
       _ = try AVRecordedAudioValidator().validate(temporary.url)
     }
   }
