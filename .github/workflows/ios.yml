@@ -59,6 +59,7 @@ jobs:
           test "$(plutil -extract CFBundleDisplayName raw "$app/Info.plist")" = "Quillvault"
           test "$(plutil -extract CFBundleDisplayName raw "$app/en.lproj/InfoPlist.strings")" = "Quillvault"
           test "$(plutil -extract CFBundleDisplayName raw "$app/zh-Hans.lproj/InfoPlist.strings")" = "墨匣"
+          test "$(plutil -extract UIBackgroundModes.0 raw "$app/Info.plist")" = "audio"
 
       - name: Build Release
         run: >-

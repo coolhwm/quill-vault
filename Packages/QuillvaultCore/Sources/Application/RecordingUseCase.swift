@@ -3,15 +3,22 @@ import Domain
 public enum RecordingActivity: Equatable, Sendable {
   case recording
   case finishing
+  case interrupted(RecordedAudio)
 }
 
 public struct RecordingSnapshot: Equatable, Sendable {
   public let session: RecordingSession
   public let activity: RecordingActivity
+  public let captureEvents: [RecordingCaptureEvent]
 
-  public init(session: RecordingSession, activity: RecordingActivity) {
+  public init(
+    session: RecordingSession,
+    activity: RecordingActivity,
+    captureEvents: [RecordingCaptureEvent] = []
+  ) {
     self.session = session
     self.activity = activity
+    self.captureEvents = captureEvents
   }
 }
 
@@ -44,10 +51,8 @@ public struct LiveTranscriptSnapshot: Equatable, Sendable {
   }
 
   public var displayText: String {
-    (
-      finalSegments.map(TranscriptAnchorFormatter.line)
-        + [volatileSegment].compactMap { $0 }.map(TranscriptAnchorFormatter.line)
-    )
+    (finalSegments.map(TranscriptAnchorFormatter.line)
+      + [volatileSegment].compactMap { $0 }.map(TranscriptAnchorFormatter.line))
       .joined(separator: "\n")
   }
 }
@@ -63,7 +68,13 @@ public protocol RecordingUseCase: TranscriptionRecoveryUseCase {
   func liveTranscript(
     meetingID: MeetingID
   ) async -> AsyncStream<LiveTranscriptSnapshot>
+  func captureEvents(
+    meetingID: MeetingID
+  ) async -> AsyncStream<RecordingCaptureEvent>
+  func catchUpLiveTranscript() async
   func stop() async throws -> RecordingCompletion
+  func resumeInterrupted() async throws -> RecordingSnapshot
+  func finishInterrupted() async throws -> RecordingCompletion
 }
 
 extension RecordingUseCase {
@@ -71,5 +82,19 @@ extension RecordingUseCase {
     meetingID: MeetingID
   ) async -> AsyncStream<LiveTranscriptSnapshot> {
     AsyncStream { $0.finish() }
+  }
+
+  public func captureEvents(
+    meetingID: MeetingID
+  ) async -> AsyncStream<RecordingCaptureEvent> {
+    AsyncStream { $0.finish() }
+  }
+
+  public func finishInterrupted() async throws -> RecordingCompletion {
+    throw RecordingError.noActiveRecording
+  }
+
+  public func resumeInterrupted() async throws -> RecordingSnapshot {
+    throw RecordingError.noActiveRecording
   }
 }

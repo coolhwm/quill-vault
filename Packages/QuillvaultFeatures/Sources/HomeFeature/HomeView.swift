@@ -167,6 +167,55 @@ public struct HomeView: View {
   @ViewBuilder
   private var resultCard: some View {
     switch model.state {
+    case .interrupted(_, let audio):
+      Label {
+        VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
+          Text("recording.interrupted.title")
+            .font(.headline)
+          Text(
+            Duration.seconds(audio.durationSeconds),
+            format: .time(pattern: .minuteSecond)
+          )
+          .foregroundStyle(.secondary)
+          Text("recording.interrupted.message")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+          if !model.interruptionGaps.isEmpty {
+            Divider()
+            RecordingInterruptionTimelineView(gaps: model.interruptionGaps)
+          }
+          Button {
+            Task {
+              await model.resumeInterrupted()
+            }
+          } label: {
+            Label(
+              "recording.interrupted.resume",
+              systemImage: "record.circle"
+            )
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("recording.interrupted.resume")
+          Button {
+            Task {
+              await model.finishInterrupted()
+            }
+          } label: {
+            Label(
+              "recording.interrupted.finish",
+              systemImage: "checkmark.circle"
+            )
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("recording.interrupted.finish")
+        }
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .foregroundStyle(.orange)
+      }
+      .padding()
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(.regularMaterial, in: .rect(cornerRadius: 20))
     case .completed(let completion):
       Label {
         VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {

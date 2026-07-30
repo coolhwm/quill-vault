@@ -7,6 +7,7 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   private let speech: any SpeechTranscriptionEngine
   private let transcription: any TranscriptionUseCase
   private let localeIdentifier: String
+  private let maxLiveTranscriptSegments: Int
 
   private var pendingCompletion: RecordingCompletion?
   private var liveTasks: [MeetingID: Task<Void, Never>] = [:]
@@ -15,25 +16,31 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   private var recoveryTask: Task<[TranscriptionRecoveryResult], Error>?
   private var successfulRecoveryResults: [MeetingID: TranscriptionRecoveryResult] = [:]
   private var didStartRecovery = false
+  private var activeMeetingID: MeetingID?
+  private var catchUpMeetingIDs = Set<MeetingID>()
 
   public init(
     recording: any RecordingUseCase,
     capture: any AudioCapture,
     speech: any SpeechTranscriptionEngine,
     transcription: any TranscriptionUseCase,
-    localeIdentifier: String
+    localeIdentifier: String,
+    maxLiveTranscriptSegments: Int = 500
   ) {
+    precondition(maxLiveTranscriptSegments > 0)
     self.recording = recording
     self.capture = capture
     self.speech = speech
     self.transcription = transcription
     self.localeIdentifier = localeIdentifier
+    self.maxLiveTranscriptSegments = maxLiveTranscriptSegments
   }
 
   public func restore() async throws -> RecordingSnapshot? {
     let snapshot = try await recording.restore()
     startRecoveryIfNeeded()
     if let snapshot, snapshot.activity == .recording {
+      activeMeetingID = snapshot.session.meetingID
       startLiveTranscription(for: snapshot.session.meetingID)
     }
     return snapshot
@@ -46,6 +53,7 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   public func start() async throws -> RecordingSnapshot {
     startRecoveryIfNeeded()
     let snapshot = try await recording.start()
+    activeMeetingID = snapshot.session.meetingID
     startLiveTranscription(for: snapshot.session.meetingID)
     return snapshot
   }
@@ -72,6 +80,92 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     return pair.stream
   }
 
+  public func captureEvents(
+    meetingID: MeetingID
+  ) async -> AsyncStream<RecordingCaptureEvent> {
+    await recording.captureEvents(meetingID: meetingID)
+  }
+
+  public func catchUpLiveTranscript() async {
+    guard
+      let meetingID = activeMeetingID,
+      catchUpMeetingIDs.insert(meetingID).inserted
+    else {
+      return
+    }
+    defer {
+      catchUpMeetingIDs.remove(meetingID)
+    }
+
+    let audioSegments = await capture.activeRecordingAudioSegments(
+      meetingID: meetingID
+    )
+    guard !audioSegments.isEmpty else {
+      return
+    }
+
+    var caughtUp: [TranscriptSegmentCandidate] = []
+    do {
+      for audioSegment in audioSegments {
+        let results = try await speech.fileResults(
+          at: audioSegment.fileURL,
+          localeIdentifier: localeIdentifier
+        )
+        for try await event in results
+        where event.stability == .final {
+          appendBounded(
+            TranscriptSegmentCandidate(
+              startSeconds:
+                event.segment.startSeconds
+                + audioSegment.timelineOffsetSeconds,
+              endSeconds:
+                event.segment.endSeconds
+                + audioSegment.timelineOffsetSeconds,
+              text: event.segment.text
+            ),
+            to: &caughtUp
+          )
+        }
+      }
+    } catch {
+      return
+    }
+    guard !caughtUp.isEmpty else {
+      return
+    }
+
+    let current = liveSnapshots[meetingID] ?? LiveTranscriptSnapshot()
+    let candidates = current.finalSegments + caughtUp
+    let duration =
+      candidates.max(by: { $0.endSeconds < $1.endSeconds })?.endSeconds
+      ?? current.volatileSegment?.endSeconds
+      ?? 0
+    guard
+      let timeline = try? TranscriptTimeline.normalizing(
+        candidates,
+        audioDurationSeconds: max(duration, 0.001)
+      )
+    else {
+      return
+    }
+    let snapshot = LiveTranscriptSnapshot(
+      finalSegments: Array(
+        timeline.segments.suffix(maxLiveTranscriptSegments)
+      ).map {
+        TranscriptSegmentCandidate(
+          startSeconds: $0.startSeconds,
+          endSeconds: $0.endSeconds,
+          text: $0.text
+        )
+      },
+      volatileSegment: current.volatileSegment
+    )
+    liveSnapshots[meetingID] = snapshot
+    for observer in observers[meetingID]?.values ?? [:].values {
+      observer.yield(snapshot)
+    }
+  }
+
   public func stop() async throws -> RecordingCompletion {
     let completion: RecordingCompletion
     if let pendingCompletion {
@@ -82,26 +176,28 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     }
 
     stopLiveTranscription(meetingID: completion.session.meetingID)
-    var wasEnqueued = false
+    activeMeetingID = nil
     do {
-      try await transcription.enqueue(
-        completion,
-        localeIdentifier: localeIdentifier
-      )
-      pendingCompletion = nil
-      wasEnqueued = true
+      try await enqueueCompletion(completion)
     } catch is CancellationError {
       finishObservers(meetingID: completion.session.meetingID)
       throw CancellationError()
-    } catch {
-      // Keep the completion in memory so a manual retry can enqueue it
-      // without stopping audio a second time.
     }
     finishObservers(meetingID: completion.session.meetingID)
-    if wasEnqueued {
-      startRecovery()
-    }
     return completion
+  }
+
+  public func finishInterrupted() async throws -> RecordingCompletion {
+    let completion = try await recording.finishInterrupted()
+    try await enqueueCompletion(completion)
+    return completion
+  }
+
+  public func resumeInterrupted() async throws -> RecordingSnapshot {
+    let snapshot = try await recording.resumeInterrupted()
+    activeMeetingID = snapshot.session.meetingID
+    startLiveTranscription(for: snapshot.session.meetingID)
+    return snapshot
   }
 
   public func recoverPendingTranscriptions() async throws
@@ -153,6 +249,24 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   private func startRecovery() {
     Task { [weak self] in
       _ = try? await self?.recoverDurableJobs()
+    }
+  }
+
+  private func enqueueCompletion(
+    _ completion: RecordingCompletion
+  ) async throws {
+    pendingCompletion = completion
+    do {
+      try await transcription.enqueue(
+        completion,
+        localeIdentifier: localeIdentifier
+      )
+      pendingCompletion = nil
+      startRecovery()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // The validated recording remains durable and can enqueue on retry.
     }
   }
 
@@ -229,7 +343,7 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     case .final:
       var finals = snapshot.finalSegments
       if !finals.contains(event.segment) {
-        finals.append(event.segment)
+        appendBounded(event.segment, to: &finals)
       }
       snapshot = LiveTranscriptSnapshot(
         finalSegments: finals,
@@ -257,6 +371,17 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     observers[meetingID]?[observerID] = nil
     if observers[meetingID]?.isEmpty == true {
       observers[meetingID] = nil
+    }
+  }
+
+  private func appendBounded(
+    _ candidate: TranscriptSegmentCandidate,
+    to candidates: inout [TranscriptSegmentCandidate]
+  ) {
+    candidates.append(candidate)
+    let overflow = candidates.count - maxLiveTranscriptSegments
+    if overflow > 0 {
+      candidates.removeFirst(overflow)
     }
   }
 

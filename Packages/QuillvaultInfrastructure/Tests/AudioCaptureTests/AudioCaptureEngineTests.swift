@@ -105,6 +105,78 @@ struct AudioCaptureEngineTests {
     #expect(wrongMeetingFrames == 0)
   }
 
+  @Test("Audio-session interruption boundaries are persisted")
+  func persistsInterruptionBoundaries() async throws {
+    let beganAt = Date(timeIntervalSince1970: 1_722_470_430)
+    let endedAt = Date(timeIntervalSince1970: 1_722_470_442)
+    let expected: [RecordingCaptureEvent] = [
+      .interruptionBegan(at: beganAt, reason: .mediaServicesReset),
+      .interruptionEnded(at: endedAt, didResume: false),
+    ]
+    let files = RecordingFilesStub()
+    let drivers = DriverFactorySpy(events: expected)
+    let engine = makeEngine(files: files, drivers: drivers)
+    let session = RecordingSession.fixture()
+
+    _ = try await engine.start(session)
+    while await files.captureEvents.count < expected.count {
+      await Task.yield()
+    }
+
+    #expect(await files.captureEvents == expected)
+  }
+
+  @Test("Stopping retries an interruption boundary that was not persisted")
+  func retriesInterruptionBoundaryBeforePublication() async throws {
+    let event = RecordingCaptureEvent.interruptionBegan(
+      at: Date(timeIntervalSince1970: 1_722_470_430),
+      reason: .routeChange
+    )
+    let files = RecordingFilesStub(captureEventFailures: 1)
+    let drivers = DriverFactorySpy(events: [event])
+    let engine = makeEngine(files: files, drivers: drivers)
+    let session = RecordingSession.fixture()
+
+    _ = try await engine.start(session)
+    while await files.captureEventAttempts == 0 {
+      await Task.yield()
+    }
+    _ = try await engine.stop(meetingID: session.meetingID)
+
+    #expect(await files.captureEventAttempts == 2)
+    #expect(await files.captureEvents == [event])
+    #expect(await files.finishedIDs == [session.meetingID])
+  }
+
+  @Test("Stopping finishes interruption observers")
+  func stopFinishesCaptureEventObservers() async throws {
+    let files = RecordingFilesStub()
+    let drivers = DriverFactorySpy()
+    let engine = makeEngine(files: files, drivers: drivers)
+    let session = RecordingSession.fixture()
+    _ = try await engine.start(session)
+    let events = await engine.captureEvents(meetingID: session.meetingID)
+    let observer = Task {
+      for await _ in events {}
+      return true
+    }
+
+    _ = try await engine.stop(meetingID: session.meetingID)
+    let observerFinished = await withTaskGroup(of: Bool.self) { group in
+      group.addTask { await observer.value }
+      group.addTask {
+        try? await Task.sleep(for: .milliseconds(100))
+        return false
+      }
+      let result = await group.next() ?? false
+      group.cancelAll()
+      return result
+    }
+    observer.cancel()
+
+    #expect(observerFinished)
+  }
+
   @Test("Stopping validates audio and releases directory access")
   func stopValidatesAndFinishes() async throws {
     let audio = RecordedAudio(
@@ -129,7 +201,7 @@ struct AudioCaptureEngineTests {
     #expect(drivers.stopCount == 1)
   }
 
-  @Test("Cold start finalizes a valid interrupted recording")
+  @Test("Cold start inspects before publishing a valid interrupted recording")
   func recoversInterruptedRecording() async throws {
     let session = RecordingSession.fixture()
     let reservation = RecordingFileReservation(
@@ -153,6 +225,11 @@ struct AudioCaptureEngineTests {
     let result = try await engine.recoverInterrupted(session)
 
     #expect(result == audio)
+    #expect(await files.finishedIDs.isEmpty)
+
+    let finished = try await engine.finishInterrupted(session)
+
+    #expect(finished == audio)
     #expect(await files.finishedIDs == [session.meetingID])
   }
 
@@ -177,11 +254,153 @@ struct AudioCaptureEngineTests {
       )
     )
 
+    _ = try? await engine.recoverInterrupted(session)
     await #expect(throws: CancellationError.self) {
-      _ = try await engine.recoverInterrupted(session)
+      _ = try await engine.finishInterrupted(session)
     }
     #expect(await files.finishedIDs.isEmpty)
-    #expect(await files.abandonedIDs == [session.meetingID])
+    #expect(await files.abandonedIDs.isEmpty)
+  }
+
+  @Test("Continuing an interrupted meeting merges through a validated candidate")
+  func resumesInterruptedRecordingWithoutReplacingOriginalEarly() async throws {
+    let session = RecordingSession.fixture()
+    let original = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let continuation = RecordingContinuationReservation(
+      meetingID: session.meetingID,
+      originalRecordingURL: original.recordingURL,
+      continuationURL: original.directoryURL.appending(
+        path: "recording-continuation.m4a"
+      ),
+      candidateURL: original.directoryURL.appending(
+        path: ".recording-merged.m4a"
+      )
+    )
+    let files = RecordingFilesStub(
+      recoveredReservation: original,
+      continuationReservation: continuation
+    )
+    let drivers = DriverFactorySpy()
+    let merger = AudioMergerSpy()
+    let expected = RecordedAudio(
+      durationSeconds: 35,
+      packetCount: 1_600,
+      byteCount: 120_000
+    )
+    let engine = makeEngine(
+      files: files,
+      drivers: drivers,
+      validator: ValidatorStub(audio: expected),
+      merger: merger
+    )
+
+    _ = try await engine.recoverInterrupted(session)
+    _ = try await engine.resumeInterrupted(session)
+    let result = try await engine.stop(meetingID: session.meetingID)
+
+    #expect(result == expected)
+    #expect(drivers.startedURLs == [continuation.continuationURL])
+    #expect(
+      merger.requests == [
+        .init(
+          originalURL: continuation.originalRecordingURL,
+          continuationURL: continuation.continuationURL,
+          candidateURL: continuation.candidateURL
+        )
+      ]
+    )
+    #expect(await files.committedContinuationIDs == [session.meetingID])
+    #expect(await files.finishedIDs == [session.meetingID])
+  }
+
+  @Test("Cold start incorporates a valid continuation left by termination")
+  func coldStartRecoversValidContinuation() async throws {
+    let session = RecordingSession.fixture()
+    let original = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let continuation = RecordingContinuationReservation(
+      meetingID: session.meetingID,
+      originalRecordingURL: original.recordingURL,
+      continuationURL: original.directoryURL.appending(path: ".continuation.m4a"),
+      candidateURL: original.directoryURL.appending(path: ".candidate.m4a")
+    )
+    let files = RecordingFilesStub(
+      recoveredReservation: original,
+      continuationReservation: continuation,
+      recoverContinuation: true
+    )
+    let merger = AudioMergerSpy()
+    let expected = RecordedAudio(
+      durationSeconds: 35,
+      packetCount: 1_600,
+      byteCount: 120_000
+    )
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: ValidatorStub(audio: expected),
+      merger: merger
+    )
+
+    let recovered = try await engine.recoverInterrupted(session)
+
+    #expect(recovered == expected)
+    #expect(merger.requests.count == 1)
+    #expect(await files.committedContinuationIDs == [session.meetingID])
+  }
+
+  @Test("Ending reconciles continuation audio left by a failed resume")
+  func finishInterruptedReconcilesFailedResume() async throws {
+    let session = RecordingSession.fixture()
+    let original = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let continuation = RecordingContinuationReservation(
+      meetingID: session.meetingID,
+      originalRecordingURL: original.recordingURL,
+      continuationURL: original.directoryURL.appending(path: ".continuation.m4a"),
+      candidateURL: original.directoryURL.appending(path: ".candidate.m4a")
+    )
+    let files = RecordingFilesStub(
+      recoveredReservation: original,
+      continuationReservation: continuation,
+      captureEventFailures: 1
+    )
+    let merger = AudioMergerSpy()
+    let expected = RecordedAudio(
+      durationSeconds: 35,
+      packetCount: 1_600,
+      byteCount: 120_000
+    )
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: ValidatorStub(audio: expected),
+      merger: merger
+    )
+
+    _ = try await engine.recoverInterrupted(session)
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      _ = try await engine.resumeInterrupted(session)
+    }
+    let finished = try await engine.finishInterrupted(session)
+
+    #expect(finished == expected)
+    #expect(merger.requests.count == 1)
+    #expect(await files.committedContinuationIDs == [session.meetingID])
+    #expect(await files.finishedIDs == [session.meetingID])
   }
 
   @Test("Transient validation failure remains retryable")
@@ -204,7 +423,7 @@ struct AudioCaptureEngineTests {
       _ = try await engine.recoverInterrupted(session)
     }
     #expect(await files.finishedIDs.isEmpty)
-    #expect(await files.abandonedIDs == [session.meetingID])
+    #expect(await files.abandonedIDs.isEmpty)
   }
 
   @Test("A truncated local m4a clears the interrupted recording lock")
@@ -390,11 +609,43 @@ struct AudioCaptureEngineTests {
     #expect(audio.byteCount > 0)
   }
 
+  @Test("The AV merger produces one playable file containing both recordings")
+  func mergerProducesPlayableCombinedM4A() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(
+      path: UUID().uuidString,
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    defer {
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let originalURL = directory.appending(path: "original.m4a")
+    let continuationURL = directory.appending(path: "continuation.m4a")
+    let candidateURL = directory.appending(path: "candidate.m4a")
+    try Self.writeOneSecondM4A(to: originalURL)
+    try Self.writeOneSecondM4A(to: continuationURL)
+
+    try await AVRecordedAudioMerger().merge(
+      originalURL: originalURL,
+      continuationURL: continuationURL,
+      candidateURL: candidateURL
+    )
+    let audio = try AVRecordedAudioValidator().validate(candidateURL)
+
+    #expect(audio.durationSeconds > 1.8)
+    #expect(audio.packetCount > 0)
+    #expect(audio.byteCount > 0)
+  }
+
   private func makeEngine(
     files: RecordingFilesStub,
     drivers: DriverFactorySpy,
     permission: any MicrophonePermissionAuthorizing = GrantedPermission(),
-    validator: any RecordedAudioValidating = ValidatorStub()
+    validator: any RecordedAudioValidating = ValidatorStub(),
+    merger: any RecordedAudioMerging = AudioMergerSpy()
   ) -> AudioCaptureEngine {
     AudioCaptureEngine(
       files: files,
@@ -402,8 +653,36 @@ struct AudioCaptureEngineTests {
       makeRecorder: {
         drivers.make()
       },
-      validator: validator
+      validator: validator,
+      merger: merger
     )
+  }
+
+  private static func writeOneSecondM4A(to url: URL) throws {
+    let settings: [String: Any] = [
+      AVFormatIDKey: kAudioFormatMPEG4AAC,
+      AVSampleRateKey: 44_100,
+      AVNumberOfChannelsKey: 1,
+      AVEncoderBitRateKey: 64_000,
+    ]
+    let file = try AVAudioFile(forWriting: url, settings: settings)
+    let format = try #require(
+      AVAudioFormat(
+        standardFormatWithSampleRate: 44_100,
+        channels: 1
+      )
+    )
+    let buffer = try #require(
+      AVAudioPCMBuffer(
+        pcmFormat: format,
+        frameCapacity: 44_100
+      )
+    )
+    buffer.frameLength = 44_100
+    if let samples = buffer.floatChannelData?[0] {
+      samples.initialize(repeating: 0, count: Int(buffer.frameLength))
+    }
+    try file.write(from: buffer)
   }
 }
 
@@ -432,18 +711,31 @@ private actor SuspendingPermission: MicrophonePermissionAuthorizing {
 
 private actor RecordingFilesStub: RecordingFileStore {
   private let recoveredReservation: RecordingFileReservation?
+  private let continuationReservation: RecordingContinuationReservation?
+  private let recoverContinuation: Bool
   private let finishError: (any Error & Sendable)?
+  private var captureEventFailures: Int
+  private var hasPendingContinuation = false
   private(set) var publishedIDs: [MeetingID] = []
   private(set) var finishedIDs: [MeetingID] = []
   private(set) var abandonedIDs: [MeetingID] = []
   private(set) var cancelledIDs: [MeetingID] = []
+  private(set) var captureEvents: [RecordingCaptureEvent] = []
+  private(set) var captureEventAttempts = 0
+  private(set) var committedContinuationIDs: [MeetingID] = []
 
   init(
     recoveredReservation: RecordingFileReservation? = nil,
-    finishError: (any Error & Sendable)? = nil
+    continuationReservation: RecordingContinuationReservation? = nil,
+    recoverContinuation: Bool = false,
+    finishError: (any Error & Sendable)? = nil,
+    captureEventFailures: Int = 0
   ) {
     self.recoveredReservation = recoveredReservation
+    self.continuationReservation = continuationReservation
+    self.recoverContinuation = recoverContinuation
     self.finishError = finishError
+    self.captureEventFailures = captureEventFailures
   }
 
   func reserveRecording(
@@ -474,11 +766,59 @@ private actor RecordingFilesStub: RecordingFileStore {
     recoveredReservation
   }
 
+  func reserveRecordingContinuation(
+    for session: RecordingSession
+  ) async throws -> RecordingContinuationReservation {
+    guard let continuationReservation else {
+      throw RecordingError.recordingWriteFailed
+    }
+    return continuationReservation
+  }
+
+  func recoverRecordingContinuation(
+    for session: RecordingSession
+  ) async throws -> RecordingContinuationReservation? {
+    recoverContinuation || hasPendingContinuation
+      ? continuationReservation
+      : nil
+  }
+
+  func commitRecordingContinuation(
+    _ reservation: RecordingContinuationReservation
+  ) async throws {
+    hasPendingContinuation = false
+    committedContinuationIDs.append(reservation.meetingID)
+  }
+
+  func cancelRecordingContinuation(
+    _ reservation: RecordingContinuationReservation
+  ) async {
+    hasPendingContinuation = true
+  }
+
   func finishRecording(meetingID: MeetingID) async throws {
     if let finishError {
       throw finishError
     }
     finishedIDs.append(meetingID)
+  }
+
+  func recordCaptureEvent(
+    _ event: RecordingCaptureEvent,
+    meetingID: MeetingID
+  ) async throws {
+    captureEventAttempts += 1
+    if captureEventFailures > 0 {
+      captureEventFailures -= 1
+      throw RecordingError.recordingWriteFailed
+    }
+    captureEvents.append(event)
+  }
+
+  func recordingCaptureEvents(
+    meetingID: MeetingID
+  ) async throws -> [RecordingCaptureEvent] {
+    captureEvents
   }
 
   func abandonRecording(meetingID: MeetingID) async {
@@ -500,15 +840,19 @@ private final class DriverFactorySpy: @unchecked Sendable {
   private let lock = NSLock()
   private let startError: (any Error)?
   private let capturedFrames: [AudioFrame]
+  private let capturedEvents: [RecordingCaptureEvent]
   private var driverCount = 0
   private var stops = 0
+  private var starts: [URL] = []
 
   init(
     startError: (any Error)? = nil,
-    frames: [AudioFrame] = []
+    frames: [AudioFrame] = [],
+    events: [RecordingCaptureEvent] = []
   ) {
     self.startError = startError
     capturedFrames = frames
+    capturedEvents = events
   }
 
   var count: Int {
@@ -519,6 +863,10 @@ private final class DriverFactorySpy: @unchecked Sendable {
     lock.withLock { stops }
   }
 
+  var startedURLs: [URL] {
+    lock.withLock { starts }
+  }
+
   func make() -> any AudioRecorderDriving {
     lock.withLock {
       driverCount += 1
@@ -526,6 +874,12 @@ private final class DriverFactorySpy: @unchecked Sendable {
     return DriverStub(
       startError: startError,
       frames: capturedFrames,
+      events: capturedEvents,
+      didStart: { [weak self] url in
+        self?.lock.withLock {
+          self?.starts.append(url)
+        }
+      },
       didStop: { [weak self] in
         self?.lock.withLock {
           self?.stops += 1
@@ -538,19 +892,26 @@ private final class DriverFactorySpy: @unchecked Sendable {
 private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
   private let startError: (any Error)?
   private let capturedFrames: [AudioFrame]
+  private let capturedEvents: [RecordingCaptureEvent]
+  private let didStart: @Sendable (URL) -> Void
   private let didStop: @Sendable () -> Void
 
   init(
     startError: (any Error)?,
     frames: [AudioFrame],
+    events: [RecordingCaptureEvent],
+    didStart: @escaping @Sendable (URL) -> Void,
     didStop: @escaping @Sendable () -> Void
   ) {
     self.startError = startError
     capturedFrames = frames
+    capturedEvents = events
+    self.didStart = didStart
     self.didStop = didStop
   }
 
   func start(at url: URL) async throws -> Date {
+    didStart(url)
     if let startError {
       throw startError
     }
@@ -566,8 +927,48 @@ private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
     }
   }
 
+  func events() -> AsyncStream<RecordingCaptureEvent> {
+    AsyncStream { continuation in
+      for event in capturedEvents {
+        continuation.yield(event)
+      }
+      continuation.finish()
+    }
+  }
+
   func stop() {
     didStop()
+  }
+}
+
+private final class AudioMergerSpy: RecordedAudioMerging, @unchecked Sendable {
+  struct Request: Equatable {
+    let originalURL: URL
+    let continuationURL: URL
+    let candidateURL: URL
+  }
+
+  private let lock = NSLock()
+  private var capturedRequests: [Request] = []
+
+  var requests: [Request] {
+    lock.withLock { capturedRequests }
+  }
+
+  func merge(
+    originalURL: URL,
+    continuationURL: URL,
+    candidateURL: URL
+  ) async throws {
+    lock.withLock {
+      capturedRequests.append(
+        Request(
+          originalURL: originalURL,
+          continuationURL: continuationURL,
+          candidateURL: candidateURL
+        )
+      )
+    }
   }
 }
 

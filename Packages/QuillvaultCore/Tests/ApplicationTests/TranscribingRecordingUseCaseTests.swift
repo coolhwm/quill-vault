@@ -50,6 +50,34 @@ struct TranscribingRecordingUseCaseTests {
     #expect(last?.volatileSegment == nil)
   }
 
+  @Test("Live transcript retains only a bounded recent window")
+  func boundsLiveTranscript() async throws {
+    let speech = SpeechEngineDouble(
+      liveEvents: [
+        event(0, 1, "一", .final),
+        event(1, 2, "二", .final),
+        event(2, 3, "三", .final),
+      ]
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      speech: speech,
+      maxLiveTranscriptSegments: 2
+    )
+    _ = try await useCase.start()
+    let snapshots = await useCase.liveTranscript(meetingID: meetingID)
+
+    var last: LiveTranscriptSnapshot?
+    for await snapshot in snapshots {
+      last = snapshot
+      if snapshot.finalSegments.last?.text == "三" {
+        break
+      }
+    }
+
+    #expect(last?.finalSegments.map(\.text) == ["二", "三"])
+  }
+
   @Test("Live transcription retries when Speech resources become available")
   func retriesLiveTranscriptionPreparation() async throws {
     let speech = SpeechEngineDouble(
@@ -136,6 +164,38 @@ struct TranscribingRecordingUseCaseTests {
     #expect(completion.transcriptRevision == nil)
   }
 
+  @Test("Ending an interrupted recording enqueues full-audio catch-up")
+  func interruptedCompletionEnqueuesTranscription() async throws {
+    let base = RecordingUseCaseDouble(meetingID: meetingID)
+    let transcription = TranscriptionUseCaseDouble()
+    let useCase = makeUseCase(
+      base: base,
+      transcription: transcription
+    )
+
+    let completion = try await useCase.finishInterrupted()
+
+    #expect(completion.session.meetingID == meetingID)
+    #expect(await base.finishInterruptedCount == 1)
+    #expect(await transcription.enqueueCount == 1)
+  }
+
+  @Test("Continuing an interrupted recording restarts live transcription")
+  func interruptedContinuationRestartsLiveTranscription() async throws {
+    let base = RecordingUseCaseDouble(meetingID: meetingID)
+    let speech = SpeechEngineDouble()
+    let useCase = makeUseCase(base: base, speech: speech)
+
+    let snapshot = try await useCase.resumeInterrupted()
+    while await speech.liveCallCount == 0 {
+      await Task.yield()
+    }
+
+    #expect(snapshot.activity == .recording)
+    #expect(await base.resumeInterruptedCount == 1)
+    #expect(await speech.liveCallCount == 1)
+  }
+
   @Test("Stopping returns after durable enqueue without awaiting catch-up")
   func stopDoesNotAwaitCatchUp() async throws {
     let transcription = TranscriptionUseCaseDouble(
@@ -203,17 +263,55 @@ struct TranscribingRecordingUseCaseTests {
     #expect(await transcription.recoveryCount == 1)
   }
 
+  @Test("Returning to foreground catches live text up from durable audio")
+  func foregroundCatchUpUsesRecordingFile() async throws {
+    let recordingURL = URL(fileURLWithPath: "/tmp/active-recording.m4a")
+    let capture = AudioCaptureDouble(
+      activeSegments: [
+        ActiveRecordingAudioSegment(
+          fileURL: recordingURL,
+          timelineOffsetSeconds: 0
+        )
+      ]
+    )
+    let speech = SpeechEngineDouble(
+      fileEvents: [
+        event(0, 1, "补齐一", .final),
+        event(1, 2, "补齐二", .final),
+        event(2, 3, "补齐三", .final),
+      ]
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      capture: capture,
+      speech: speech,
+      maxLiveTranscriptSegments: 2
+    )
+    _ = try await useCase.start()
+
+    await useCase.catchUpLiveTranscript()
+    let snapshots = await useCase.liveTranscript(meetingID: meetingID)
+    let snapshot = await snapshots.first { _ in true }
+
+    #expect(snapshot?.finalSegments.map(\.text) == ["补齐二", "补齐三"])
+    #expect(await speech.fileCallCount == 1)
+    #expect(await speech.fileURLs == [recordingURL])
+  }
+
   private func makeUseCase(
     base: RecordingUseCaseDouble,
+    capture: AudioCaptureDouble = AudioCaptureDouble(),
     speech: SpeechEngineDouble = SpeechEngineDouble(),
-    transcription: TranscriptionUseCaseDouble = TranscriptionUseCaseDouble()
+    transcription: TranscriptionUseCaseDouble = TranscriptionUseCaseDouble(),
+    maxLiveTranscriptSegments: Int = 500
   ) -> TranscribingRecordingUseCase {
     TranscribingRecordingUseCase(
       recording: base,
-      capture: AudioCaptureDouble(),
+      capture: capture,
       speech: speech,
       transcription: transcription,
-      localeIdentifier: "zh-CN"
+      localeIdentifier: "zh-CN",
+      maxLiveTranscriptSegments: maxLiveTranscriptSegments
     )
   }
 
@@ -249,6 +347,8 @@ private actor RecordingUseCaseDouble: RecordingUseCase {
   private let meetingID: MeetingID
   private(set) var startCount = 0
   private(set) var stopCount = 0
+  private(set) var resumeInterruptedCount = 0
+  private(set) var finishInterruptedCount = 0
 
   init(meetingID: MeetingID) {
     self.meetingID = meetingID
@@ -259,6 +359,8 @@ private actor RecordingUseCaseDouble: RecordingUseCase {
   }
 
   func acknowledgeRecordingNotice() {}
+
+  func catchUpLiveTranscript() {}
 
   func start() -> RecordingSnapshot {
     startCount += 1
@@ -278,6 +380,24 @@ private actor RecordingUseCaseDouble: RecordingUseCase {
     )
   }
 
+  func finishInterrupted() -> RecordingCompletion {
+    finishInterruptedCount += 1
+    return RecordingCompletion(
+      session: session,
+      audio: RecordedAudio(
+        durationSeconds: 10,
+        packetCount: 100,
+        byteCount: 1_000,
+        fileURL: URL(fileURLWithPath: "/tmp/recording.m4a")
+      )
+    )
+  }
+
+  func resumeInterrupted() -> RecordingSnapshot {
+    resumeInterruptedCount += 1
+    return RecordingSnapshot(session: session, activity: .recording)
+  }
+
   func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
     []
   }
@@ -291,6 +411,12 @@ private actor RecordingUseCaseDouble: RecordingUseCase {
 }
 
 private actor AudioCaptureDouble: AudioCapture {
+  private let activeSegments: [ActiveRecordingAudioSegment]
+
+  init(activeSegments: [ActiveRecordingAudioSegment] = []) {
+    self.activeSegments = activeSegments
+  }
+
   func start(_ session: RecordingSession) -> Date {
     session.startedAt
   }
@@ -310,6 +436,18 @@ private actor AudioCaptureDouble: AudioCapture {
     }
   }
 
+  func activeRecordingAudioSegments(
+    meetingID: MeetingID
+  ) -> [ActiveRecordingAudioSegment] {
+    activeSegments
+  }
+
+  func recordingCaptureEvents(
+    meetingID: MeetingID
+  ) -> [RecordingCaptureEvent] {
+    []
+  }
+
   func stop(meetingID: MeetingID) -> RecordedAudio {
     RecordedAudio(durationSeconds: 1, packetCount: 1, byteCount: 1)
   }
@@ -319,16 +457,21 @@ private actor AudioCaptureDouble: AudioCapture {
 
 private actor SpeechEngineDouble: SpeechTranscriptionEngine {
   private let liveEvents: [SpeechRecognitionEvent]
+  private let fileEvents: [SpeechRecognitionEvent]
   private let livePreparationDelay: Duration?
   private var liveFailuresRemaining: Int
   private(set) var liveCallCount = 0
+  private(set) var fileCallCount = 0
+  private(set) var fileURLs: [URL] = []
 
   init(
     liveEvents: [SpeechRecognitionEvent] = [],
+    fileEvents: [SpeechRecognitionEvent] = [],
     livePreparationDelay: Duration? = nil,
     liveFailuresRemaining: Int = 0
   ) {
     self.liveEvents = liveEvents
+    self.fileEvents = fileEvents
     self.livePreparationDelay = livePreparationDelay
     self.liveFailuresRemaining = liveFailuresRemaining
   }
@@ -358,7 +501,15 @@ private actor SpeechEngineDouble: SpeechTranscriptionEngine {
     at recordingURL: URL,
     localeIdentifier: String
   ) async throws -> SpeechRecognitionStream {
-    AsyncThrowingStream { $0.finish() }
+    fileCallCount += 1
+    fileURLs.append(recordingURL)
+    let events = fileEvents
+    return AsyncThrowingStream { continuation in
+      for event in events {
+        continuation.yield(event)
+      }
+      continuation.finish()
+    }
   }
 }
 

@@ -191,26 +191,80 @@ struct RecordingWorkflowTests {
     #expect(await capture.startCount == 0)
   }
 
-  @Test("Cold start finalizes a valid interrupted recording and clears its lock")
-  func coldStartFinalizesInterruptedRecording() async throws {
+  @Test("Cold start presents a valid interrupted recording without ending it")
+  func coldStartPresentsInterruptedRecording() async throws {
     let existing = RecordingSession(meetingID: meetingID, startedAt: startedAt)
     let recoveredAudio = RecordedAudio(
       durationSeconds: 4,
       packetCount: 128,
       byteCount: 4_096
     )
-    let capture = AudioCaptureStub(recoveredAudio: recoveredAudio)
+    let captureEvents: [RecordingCaptureEvent] = [
+      .interruptionBegan(
+        at: startedAt.addingTimeInterval(2),
+        reason: .processTermination
+      )
+    ]
+    let capture = AudioCaptureStub(
+      recoveredAudio: recoveredAudio,
+      recoveredCaptureEvents: captureEvents
+    )
     let store = RecordingSessionStoreStub(active: existing)
     let workflow = makeWorkflow(capture: capture, store: store)
 
     let snapshot = try await workflow.restore()
 
-    #expect(snapshot == nil)
+    #expect(snapshot?.session == existing)
+    #expect(snapshot?.activity == .interrupted(recoveredAudio))
+    #expect(snapshot?.captureEvents == captureEvents)
     #expect(await capture.recoverCount == 1)
-    #expect(await store.finishedAudio == recoveredAudio)
+    #expect(await store.finishedAudio == nil)
+    #expect(try await store.activeSession() == existing)
+  }
 
-    _ = try await workflow.start()
-    #expect(await capture.startCount == 1)
+  @Test("An interrupted recording can end without starting a new capture")
+  func finishesInterruptedRecording() async throws {
+    let existing = RecordingSession(meetingID: meetingID, startedAt: startedAt)
+    let recoveredAudio = RecordedAudio(
+      durationSeconds: 30,
+      packetCount: 1_400,
+      byteCount: 96_000
+    )
+    let capture = AudioCaptureStub(recoveredAudio: recoveredAudio)
+    let store = RecordingSessionStoreStub(active: existing)
+    let workflow = makeWorkflow(capture: capture, store: store)
+    _ = try await workflow.restore()
+
+    let completion = try await workflow.finishInterrupted()
+
+    #expect(completion.session == existing)
+    #expect(completion.audio == recoveredAudio)
+    #expect(await capture.finishInterruptedCount == 1)
+    #expect(await capture.startCount == 0)
+    #expect(await store.finishedAudio == recoveredAudio)
+    #expect(try await store.activeSession() == nil)
+  }
+
+  @Test("An interrupted recording can continue the same persisted meeting")
+  func resumesInterruptedRecording() async throws {
+    let existing = RecordingSession(meetingID: meetingID, startedAt: startedAt)
+    let recoveredAudio = RecordedAudio(
+      durationSeconds: 30,
+      packetCount: 1_400,
+      byteCount: 96_000
+    )
+    let capture = AudioCaptureStub(recoveredAudio: recoveredAudio)
+    let store = RecordingSessionStoreStub(active: existing)
+    let workflow = makeWorkflow(capture: capture, store: store)
+    _ = try await workflow.restore()
+
+    let snapshot = try await workflow.resumeInterrupted()
+
+    #expect(snapshot.session == existing)
+    #expect(snapshot.activity == .recording)
+    #expect(await capture.resumeInterruptedCount == 1)
+    #expect(await capture.startCount == 0)
+    #expect(try await store.activeSession() == existing)
   }
 
   @Test("Cold start clears an interrupted lock when no valid audio remains")
@@ -300,12 +354,15 @@ private actor AudioCaptureStub: AudioCapture {
   private let acknowledgedAt: Date?
   private let stoppedAudio: RecordedAudio
   private let recoveredAudio: RecordedAudio?
+  private let recoveredCaptureEvents: [RecordingCaptureEvent]
   private let recoveryError: RecordingError?
   private let cancelRecovery: Bool
 
   private(set) var startCount = 0
   private(set) var cancelCount = 0
   private(set) var recoverCount = 0
+  private(set) var resumeInterruptedCount = 0
+  private(set) var finishInterruptedCount = 0
 
   init(
     events: RecordingEvents? = nil,
@@ -313,6 +370,7 @@ private actor AudioCaptureStub: AudioCapture {
     startError: RecordingError? = nil,
     acknowledgedAt: Date? = nil,
     recoveredAudio: RecordedAudio? = nil,
+    recoveredCaptureEvents: [RecordingCaptureEvent] = [],
     recoveryError: RecordingError? = nil,
     cancelRecovery: Bool = false,
     stoppedAudio: RecordedAudio = RecordedAudio(
@@ -326,6 +384,7 @@ private actor AudioCaptureStub: AudioCapture {
     self.startError = startError
     self.acknowledgedAt = acknowledgedAt
     self.recoveredAudio = recoveredAudio
+    self.recoveredCaptureEvents = recoveredCaptureEvents
     self.recoveryError = recoveryError
     self.cancelRecovery = cancelRecovery
     self.stoppedAudio = stoppedAudio
@@ -358,6 +417,30 @@ private actor AudioCaptureStub: AudioCapture {
       throw recoveryError
     }
     return recoveredAudio
+  }
+
+  func recordingCaptureEvents(
+    meetingID: MeetingID
+  ) async throws -> [RecordingCaptureEvent] {
+    recoveredCaptureEvents
+  }
+
+  func finishInterrupted(
+    _ session: RecordingSession
+  ) async throws -> RecordedAudio {
+    finishInterruptedCount += 1
+    guard let recoveredAudio else {
+      throw RecordingError.invalidRecordedAudio
+    }
+    return recoveredAudio
+  }
+
+  func resumeInterrupted(_ session: RecordingSession) async throws -> Date {
+    resumeInterruptedCount += 1
+    guard recoveredAudio != nil else {
+      throw RecordingError.invalidRecordedAudio
+    }
+    return session.startedAt
   }
 
   func cancel(meetingID: MeetingID) async {

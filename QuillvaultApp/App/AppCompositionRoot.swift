@@ -17,6 +17,7 @@ final class AppCompositionRoot {
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
   let settingsModel: SettingsModel
+  let lifecycleCoordinator: AppLifecycleCoordinator
 
   init(
     router: AppRouter = AppRouter(),
@@ -35,6 +36,9 @@ final class AppCompositionRoot {
     recordingModel = HomeRecordingModel(
       recording: resolvedRecording,
       directory: directoryAuthorization
+    )
+    lifecycleCoordinator = AppLifecycleCoordinator(
+      recordingModel: recordingModel
     )
     meetingsModel = MeetingsModel(
       library: resolvedMeetingLibrary,
@@ -57,22 +61,18 @@ final class AppCompositionRoot {
   private static func makeDefaultMeetingLibrary(
     fileStore: MeetingFileStore
   ) -> any MeetingLibraryUseCase {
-    #if DEBUG
-      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
-        return UITestMeetingLibraryUseCase()
-      }
-    #endif
+    if isRecordingUITest {
+      return UITestMeetingLibraryUseCase()
+    }
     return makeMeetingLibrary(fileStore: fileStore)
   }
 
   private static func makeDefaultDirectoryAuthorization(
     fileStore: MeetingFileStore
   ) -> any AuthoritativeDirectoryUseCase {
-    #if DEBUG
-      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
-        return UITestAuthoritativeDirectoryUseCase()
-      }
-    #endif
+    if isRecordingUITest {
+      return UITestAuthoritativeDirectoryUseCase()
+    }
     return AuthoritativeDirectoryWorkflow(access: fileStore)
   }
 
@@ -104,12 +104,17 @@ final class AppCompositionRoot {
   private static func makeDefaultRecording(
     fileStore: MeetingFileStore
   ) -> any RecordingUseCase {
-    #if DEBUG
-      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
-        return UITestRecordingUseCase()
-      }
-    #endif
+    if isRecordingUITest {
+      return UITestRecordingUseCase()
+    }
     return makeRecording(fileStore: fileStore)
+  }
+
+  private static var isRecordingUITest: Bool {
+    ProcessInfo.processInfo.arguments.contains("-ui-test-recording")
+      && ProcessInfo.processInfo.environment[
+        "QUILLVAULT_RECORDING_UI_TEST"
+      ] == "1"
   }
 
   nonisolated private static func buildRecording(
@@ -165,101 +170,122 @@ final class AppCompositionRoot {
   }
 }
 
-#if DEBUG
-  private struct UITestAuthoritativeDirectoryUseCase:
-    AuthoritativeDirectoryUseCase
-  {
-    private let directory = AuthoritativeDirectory(
+private struct UITestAuthoritativeDirectoryUseCase:
+  AuthoritativeDirectoryUseCase
+{
+  private let directory = AuthoritativeDirectory(
+    id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
+    displayName: "UI Test Vault",
+    kind: .userSelected
+  )
+
+  func restore() async throws -> AuthoritativeDirectory? {
+    directory
+  }
+
+  func authorize(
+    _ selection: AuthoritativeDirectorySelection
+  ) async throws -> AuthoritativeDirectory {
+    directory
+  }
+}
+
+private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
+  private let snapshot = MeetingLibrarySnapshot(
+    directory: AuthoritativeDirectory(
       id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
       displayName: "UI Test Vault",
       kind: .userSelected
-    )
+    ),
+    meetings: [],
+    diagnosticCount: 0
+  )
 
-    func restore() async throws -> AuthoritativeDirectory? {
-      directory
-    }
+  func restore() async throws -> MeetingLibrarySnapshot {
+    snapshot
+  }
 
-    func authorize(
-      _ selection: AuthoritativeDirectorySelection
-    ) async throws -> AuthoritativeDirectory {
-      directory
+  func select(
+    _ selection: AuthoritativeDirectorySelection
+  ) async throws -> MeetingLibrarySnapshot {
+    snapshot
+  }
+
+  func rebuild() async throws -> MeetingLibrarySnapshot {
+    snapshot
+  }
+}
+
+private actor UITestRecordingUseCase: RecordingUseCase {
+  private var hasAcknowledgedNotice = false
+  private var activeSession: RecordingSession?
+
+  func restore() async throws -> RecordingSnapshot? {
+    activeSession.map {
+      RecordingSnapshot(session: $0, activity: .recording)
     }
   }
 
-  private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
-    private let snapshot = MeetingLibrarySnapshot(
-      directory: AuthoritativeDirectory(
-        id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
-        displayName: "UI Test Vault",
-        kind: .userSelected
+  func acknowledgeRecordingNotice() async throws {
+    hasAcknowledgedNotice = true
+  }
+
+  func start() async throws -> RecordingSnapshot {
+    guard hasAcknowledgedNotice else {
+      throw RecordingError.recordingConsentRequired
+    }
+    guard activeSession == nil else {
+      throw RecordingError.alreadyRecording
+    }
+    let session = RecordingSession(
+      meetingID: MeetingID(
+        rawValue: UUID(uuidString: "A8480D38-FBA5-49F4-B396-ED63BB96FA7C")!
       ),
-      meetings: [],
-      diagnosticCount: 0
+      startedAt: Date()
     )
-
-    func restore() async throws -> MeetingLibrarySnapshot {
-      snapshot
-    }
-
-    func select(
-      _ selection: AuthoritativeDirectorySelection
-    ) async throws -> MeetingLibrarySnapshot {
-      snapshot
-    }
-
-    func rebuild() async throws -> MeetingLibrarySnapshot {
-      snapshot
-    }
+    activeSession = session
+    return RecordingSnapshot(session: session, activity: .recording)
   }
 
-  private actor UITestRecordingUseCase: RecordingUseCase {
-    private var hasAcknowledgedNotice = false
-    private var activeSession: RecordingSession?
-
-    func restore() async throws -> RecordingSnapshot? {
-      activeSession.map {
-        RecordingSnapshot(session: $0, activity: .recording)
-      }
+  func stop() async throws -> RecordingCompletion {
+    guard let session = activeSession else {
+      throw RecordingError.noActiveRecording
     }
-
-    func acknowledgeRecordingNotice() async throws {
-      hasAcknowledgedNotice = true
-    }
-
-    func start() async throws -> RecordingSnapshot {
-      guard hasAcknowledgedNotice else {
-        throw RecordingError.recordingConsentRequired
-      }
-      guard activeSession == nil else {
-        throw RecordingError.alreadyRecording
-      }
-      let session = RecordingSession(
-        meetingID: MeetingID(
-          rawValue: UUID(uuidString: "A8480D38-FBA5-49F4-B396-ED63BB96FA7C")!
-        ),
-        startedAt: Date()
+    activeSession = nil
+    return RecordingCompletion(
+      session: session,
+      audio: RecordedAudio(
+        durationSeconds: 1,
+        packetCount: 1,
+        byteCount: 1
       )
-      activeSession = session
-      return RecordingSnapshot(session: session, activity: .recording)
-    }
+    )
+  }
 
-    func stop() async throws -> RecordingCompletion {
-      guard let session = activeSession else {
-        throw RecordingError.noActiveRecording
-      }
-      activeSession = nil
-      return RecordingCompletion(
-        session: session,
-        audio: RecordedAudio(
-          durationSeconds: 1,
-          packetCount: 1,
-          byteCount: 1
+  func captureEvents(
+    meetingID: MeetingID
+  ) -> AsyncStream<RecordingCaptureEvent> {
+    let interruptedAt = Date(timeIntervalSince1970: 1_722_470_420)
+    return AsyncStream { continuation in
+      continuation.yield(
+        .interruptionBegan(
+          at: interruptedAt,
+          reason: .routeChange
         )
       )
-    }
-
-    func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
-      []
+      continuation.yield(
+        .interruptionEnded(
+          at: interruptedAt.addingTimeInterval(5),
+          didResume: true
+        )
+      )
+      continuation.finish()
     }
   }
-#endif
+
+  func catchUpLiveTranscript() async {}
+
+  func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
+    []
+  }
+}

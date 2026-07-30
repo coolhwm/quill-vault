@@ -34,8 +34,35 @@ public actor RetryingRecordingUseCase: RecordingUseCase {
     }
   }
 
+  public func captureEvents(
+    meetingID: MeetingID
+  ) async -> AsyncStream<RecordingCaptureEvent> {
+    do {
+      return try await resolve().captureEvents(meetingID: meetingID)
+    } catch {
+      return AsyncStream { $0.finish() }
+    }
+  }
+
+  public func catchUpLiveTranscript() async {
+    do {
+      try await resolve().catchUpLiveTranscript()
+    } catch {
+      // Foreground catch-up is best effort. The durable finalization job remains
+      // authoritative and will retry after initialization becomes available.
+    }
+  }
+
   public func stop() async throws -> RecordingCompletion {
     try await resolve().stop()
+  }
+
+  public func finishInterrupted() async throws -> RecordingCompletion {
+    try await resolve().finishInterrupted()
+  }
+
+  public func resumeInterrupted() async throws -> RecordingSnapshot {
+    try await resolve().resumeInterrupted()
   }
 
   public func recoverPendingTranscriptions() async throws

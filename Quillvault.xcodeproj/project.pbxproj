@@ -21,6 +21,7 @@
 		920F0BC333020C91F21D608C /* Domain in Frameworks */ = {isa = PBXBuildFile; productRef = 8B0862626BC69050D8B0730F /* Domain */; };
 		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
 		961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */; };
+		A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */; };
 		A3181EAC5B3B4EB29B0B39AA /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */; };
 		B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 721031C655B87E518827D0EC /* DesignSystem */; };
 		B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */; };
@@ -51,6 +52,7 @@
 		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
 		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
+		B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLifecycleCoordinator.swift; sourceTree = "<group>"; };
 		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
 		DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 			children = (
 				C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */,
 				9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */,
+				B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */,
 				07DD9DE903D6014F01C42586 /* AppRouter.swift */,
 				957B75AE625AD703BD1D6A0D /* AppRootView.swift */,
 			);
@@ -291,6 +294,7 @@
 			files = (
 				B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */,
 				781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */,
+				A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */,
 				C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */,
 				9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */,
 			);
@@ -316,18 +320,17 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = QuillvaultApp/SupportingFiles/Quillvault.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4P52DV9MBN;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault records face-to-face meetings you start and saves the audio in your chosen meeting folder.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Quillvault transcribes meeting audio on this device to create a timestamped transcript.";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = QuillvaultApp/SupportingFiles/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.Quillvault;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -435,18 +438,17 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = QuillvaultApp/SupportingFiles/Quillvault.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4P52DV9MBN;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Quillvault;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Quillvault records face-to-face meetings you start and saves the audio in your chosen meeting folder.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Quillvault transcribes meeting audio on this device to create a timestamped transcript.";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = QuillvaultApp/SupportingFiles/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.coolhwm.Quillvault;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

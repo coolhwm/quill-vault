@@ -6,10 +6,12 @@ import Foundation
 final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendable {
   private final class CaptureState: @unchecked Sendable {
     private let lock = NSLock()
-    private var writeError: (any Error)?
-    private var didWrite = false
+    private var framePosition: AVAudioFramePosition = 0
+    let writeMonitor = AudioCaptureWriteMonitor()
     let continuation: AsyncStream<AudioFrame>.Continuation
     let stream: AsyncStream<AudioFrame>
+    let eventContinuation: AsyncStream<RecordingCaptureEvent>.Continuation
+    let eventStream: AsyncStream<RecordingCaptureEvent>
 
     init() {
       var capturedContinuation: AsyncStream<AudioFrame>.Continuation?
@@ -17,39 +19,56 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
         capturedContinuation = $0
       }
       continuation = capturedContinuation!
+
+      var capturedEventContinuation: AsyncStream<RecordingCaptureEvent>.Continuation?
+      eventStream = AsyncStream(bufferingPolicy: .bufferingNewest(32)) {
+        capturedEventContinuation = $0
+      }
+      eventContinuation = capturedEventContinuation!
     }
 
     func recordWriteSuccess() {
-      lock.withLock {
-        didWrite = true
-      }
+      writeMonitor.recordWriteSuccess()
     }
 
     func recordWriteFailure(_ error: any Error) {
-      lock.withLock {
-        writeError = error
-      }
+      writeMonitor.recordWriteFailure(error)
     }
 
     func status() -> (didWrite: Bool, error: (any Error)?) {
+      writeMonitor.status()
+    }
+
+    func takeFramePosition(
+      advancingBy frameCount: AVAudioFrameCount
+    ) -> AVAudioFramePosition {
       lock.withLock {
-        (didWrite, writeError)
+        let position = framePosition
+        framePosition += AVAudioFramePosition(frameCount)
+        return position
       }
     }
   }
 
   private let firstWriteTimeout: Duration
   private let pollingInterval: Duration
+  private let now: @Sendable () -> Date
+  private let lifecycleLock = NSRecursiveLock()
   private var engine: AVAudioEngine?
   private var audioFile: AVAudioFile?
   private var state: CaptureState?
+  #if os(iOS)
+    private var lifecycleObservers: [NSObjectProtocol] = []
+  #endif
 
   init(
     firstWriteTimeout: Duration = .milliseconds(800),
-    pollingInterval: Duration = .milliseconds(10)
+    pollingInterval: Duration = .milliseconds(10),
+    now: @escaping @Sendable () -> Date = Date.init
   ) {
     self.firstWriteTimeout = firstWriteTimeout
     self.pollingInterval = pollingInterval
+    self.now = now
   }
 
   func start(at url: URL) async throws -> Date {
@@ -61,13 +80,7 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
     }
 
     #if os(iOS)
-      let session = AVAudioSession.sharedInstance()
-      try session.setCategory(
-        .record,
-        mode: .measurement,
-        options: [.allowBluetoothHFP]
-      )
-      try session.setActive(true)
+      try configureAndActivateAudioSession()
     #endif
 
     let engine = AVAudioEngine()
@@ -89,38 +102,17 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
       interleaved: inputFormat.isInterleaved
     )
     let state = CaptureState()
-    var framePosition: AVAudioFramePosition = 0
-
-    input.installTap(
-      onBus: 0,
-      bufferSize: 2_048,
-      format: inputFormat
-    ) { buffer, _ in
-      do {
-        try audioFile.write(from: buffer)
-        state.recordWriteSuccess()
-      } catch {
-        state.recordWriteFailure(error)
-        return
-      }
-
-      if let frame = Self.copyFrame(
-        buffer,
-        startFrame: framePosition
-      ) {
-        state.continuation.yield(frame)
-      }
-      framePosition += AVAudioFramePosition(buffer.frameLength)
-    }
+    installTap(on: engine, audioFile: audioFile, state: state)
 
     do {
       engine.prepare()
-      let startedAt = Date()
+      let startedAt = now()
       try engine.start()
       self.engine = engine
       self.audioFile = audioFile
       self.state = state
       try await waitForFirstWrite(state)
+      observeAudioSessionLifecycle()
       return startedAt
     } catch is CancellationError {
       stop()
@@ -141,17 +133,25 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
     state?.stream ?? AsyncStream { $0.finish() }
   }
 
+  func events() -> AsyncStream<RecordingCaptureEvent> {
+    state?.eventStream ?? AsyncStream { $0.finish() }
+  }
+
   func stop() {
-    guard let engine else {
-      return
+    lifecycleLock.withLock {
+      removeAudioSessionLifecycleObservers()
+      guard let engine else {
+        return
+      }
+      engine.inputNode.removeTap(onBus: 0)
+      engine.stop()
+      state?.continuation.finish()
+      state?.eventContinuation.finish()
+      self.engine = nil
+      audioFile = nil
+      state = nil
+      deactivateAudioSession()
     }
-    engine.inputNode.removeTap(onBus: 0)
-    engine.stop()
-    state?.continuation.finish()
-    self.engine = nil
-    audioFile = nil
-    state = nil
-    deactivateAudioSession()
   }
 
   private func waitForFirstWrite(_ state: CaptureState) async throws {
@@ -207,6 +207,262 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
       )
     }
   }
+
+  private func installTap(
+    on engine: AVAudioEngine,
+    audioFile: AVAudioFile,
+    state: CaptureState
+  ) {
+    let input = engine.inputNode
+    let inputFormat = input.outputFormat(forBus: 0)
+    input.installTap(
+      onBus: 0,
+      bufferSize: 2_048,
+      format: inputFormat
+    ) { buffer, _ in
+      do {
+        try audioFile.write(from: buffer)
+        state.recordWriteSuccess()
+      } catch {
+        state.recordWriteFailure(error)
+        return
+      }
+
+      let framePosition = state.takeFramePosition(
+        advancingBy: buffer.frameLength
+      )
+      if let frame = Self.copyFrame(
+        buffer,
+        startFrame: framePosition
+      ) {
+        state.continuation.yield(frame)
+      }
+    }
+  }
+
+  #if os(iOS)
+    private func observeAudioSessionLifecycle() {
+      let center = NotificationCenter.default
+      lifecycleObservers = [
+        center.addObserver(
+          forName: AVAudioSession.interruptionNotification,
+          object: AVAudioSession.sharedInstance(),
+          queue: nil
+        ) { [weak self] notification in
+          self?.handleInterruption(notification)
+        },
+        center.addObserver(
+          forName: AVAudioSession.routeChangeNotification,
+          object: AVAudioSession.sharedInstance(),
+          queue: nil
+        ) { [weak self] notification in
+          self?.handleRouteChange(notification)
+        },
+        center.addObserver(
+          forName: AVAudioSession.mediaServicesWereResetNotification,
+          object: AVAudioSession.sharedInstance(),
+          queue: nil
+        ) { [weak self] _ in
+          self?.recoverCapture(reason: .mediaServicesReset, rebuildEngine: true)
+        },
+      ]
+    }
+
+    private func removeAudioSessionLifecycleObservers() {
+      let center = NotificationCenter.default
+      lifecycleObservers.forEach(center.removeObserver)
+      lifecycleObservers.removeAll()
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+      guard
+        let rawType = notification.userInfo?[
+          AVAudioSessionInterruptionTypeKey
+        ] as? UInt,
+        let type = AVAudioSession.InterruptionType(rawValue: rawType)
+      else {
+        return
+      }
+
+      switch type {
+      case .began:
+        lifecycleLock.withLock {
+          state?.eventContinuation.yield(
+            .interruptionBegan(
+              at: now(),
+              reason: .systemInterruption
+            )
+          )
+        }
+      case .ended:
+        let rawOptions =
+          notification.userInfo?[AVAudioSessionInterruptionOptionKey]
+          as? UInt ?? 0
+        let mayResume = AVAudioSession.InterruptionOptions(
+          rawValue: rawOptions
+        ).contains(.shouldResume)
+        guard mayResume else {
+          lifecycleLock.withLock {
+            state?.eventContinuation.yield(
+              .interruptionEnded(at: now(), didResume: false)
+            )
+          }
+          return
+        }
+        resumeCapture()
+      @unknown default:
+        break
+      }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+      guard
+        let rawReason = notification.userInfo?[
+          AVAudioSessionRouteChangeReasonKey
+        ] as? UInt,
+        let reason = AVAudioSession.RouteChangeReason(rawValue: rawReason)
+      else {
+        return
+      }
+
+      switch reason {
+      case .newDeviceAvailable, .oldDeviceUnavailable,
+        .noSuitableRouteForCategory, .routeConfigurationChange:
+        recoverCapture(reason: .routeChange, rebuildEngine: true)
+      case .categoryChange, .override, .wakeFromSleep, .unknown:
+        break
+      @unknown default:
+        break
+      }
+    }
+
+    private func resumeCapture() {
+      lifecycleLock.withLock {
+        guard let engine, let state else {
+          return
+        }
+        do {
+          try configureAndActivateAudioSession()
+          let attempt = state.writeMonitor.beginRecovery()
+          if !engine.isRunning {
+            engine.prepare()
+            try engine.start()
+          }
+          guard engine.isRunning else {
+            throw RecordingError.recordingWriteFailed
+          }
+          confirmRecoveryWrite(attempt, state: state)
+        } catch {
+          state.recordWriteFailure(error)
+          state.eventContinuation.yield(
+            .interruptionEnded(at: now(), didResume: false)
+          )
+        }
+      }
+    }
+
+    private func recoverCapture(
+      reason: RecordingInterruptionReason,
+      rebuildEngine: Bool
+    ) {
+      lifecycleLock.withLock {
+        guard let currentEngine = engine, let audioFile, let state else {
+          return
+        }
+        state.eventContinuation.yield(
+          .interruptionBegan(at: now(), reason: reason)
+        )
+
+        do {
+          try configureAndActivateAudioSession()
+          let attempt: AudioCaptureWriteMonitor.RecoveryAttempt
+          if rebuildEngine {
+            currentEngine.inputNode.removeTap(onBus: 0)
+            currentEngine.stop()
+            attempt = state.writeMonitor.beginRecovery()
+            let replacement = AVAudioEngine()
+            installTap(
+              on: replacement,
+              audioFile: audioFile,
+              state: state
+            )
+            replacement.prepare()
+            try replacement.start()
+            engine = replacement
+            guard replacement.isRunning else {
+              throw RecordingError.recordingWriteFailed
+            }
+          } else {
+            attempt = state.writeMonitor.beginRecovery()
+            if !currentEngine.isRunning {
+              currentEngine.prepare()
+              try currentEngine.start()
+            }
+            guard currentEngine.isRunning else {
+              throw RecordingError.recordingWriteFailed
+            }
+          }
+          confirmRecoveryWrite(attempt, state: state)
+        } catch {
+          state.recordWriteFailure(error)
+          state.eventContinuation.yield(
+            .interruptionEnded(at: now(), didResume: false)
+          )
+        }
+      }
+    }
+
+    private func confirmRecoveryWrite(
+      _ attempt: AudioCaptureWriteMonitor.RecoveryAttempt,
+      state: CaptureState
+    ) {
+      Task { [weak self] in
+        guard let self else {
+          return
+        }
+        let confirmation: AudioCaptureWriteMonitor.RecoveryConfirmation
+        do {
+          confirmation = try await state.writeMonitor.waitForRecoveryWrite(
+            attempt,
+            timeout: firstWriteTimeout,
+            pollingInterval: pollingInterval
+          )
+        } catch {
+          return
+        }
+        guard confirmation != .superseded else {
+          return
+        }
+        if confirmation == .failed {
+          state.recordWriteFailure(RecordingError.recordingWriteFailed)
+        }
+        lifecycleLock.withLock {
+          guard self.state === state else {
+            return
+          }
+          state.eventContinuation.yield(
+            .interruptionEnded(
+              at: now(),
+              didResume: confirmation == .resumed
+            )
+          )
+        }
+      }
+    }
+
+    private func configureAndActivateAudioSession() throws {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(
+        .record,
+        mode: .measurement,
+        options: [.allowBluetoothHFP]
+      )
+      try session.setActive(true)
+    }
+  #else
+    private func observeAudioSessionLifecycle() {}
+    private func removeAudioSessionLifecycleObservers() {}
+  #endif
 
   private func deactivateAudioSession() {
     #if os(iOS)

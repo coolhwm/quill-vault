@@ -7,6 +7,9 @@ struct MeetingFileStoreDependencies: Sendable {
   let ubiquitousStatus: any UbiquitousItemStatusChecking
   let minimumRecordingCapacityBytes: Int64
   let availableCapacity: @Sendable (URL) throws -> Int64?
+  let makeUUID: @Sendable () -> UUID
+  let recordingDigest: @Sendable (URL) throws -> String
+  let fileMutator: any RecordingFileMutating
 
   static func live() -> Self {
     Self(
@@ -19,7 +22,10 @@ struct MeetingFileStoreDependencies: Sendable {
         try url.resourceValues(
           forKeys: [.volumeAvailableCapacityForImportantUsageKey]
         ).volumeAvailableCapacityForImportantUsage
-      }
+      },
+      makeUUID: UUID.init,
+      recordingDigest: RecordingContinuationManifest.digest,
+      fileMutator: FoundationRecordingFileMutator()
     )
   }
 
@@ -34,7 +40,12 @@ struct MeetingFileStoreDependencies: Sendable {
     minimumRecordingCapacityBytes: Int64 = 512 * 1_024 * 1_024,
     availableCapacity: @escaping @Sendable (URL) throws -> Int64? = { _ in
       Int64.max
-    }
+    },
+    makeUUID: @escaping @Sendable () -> UUID = UUID.init,
+    recordingDigest: @escaping @Sendable (URL) throws -> String =
+      RecordingContinuationManifest.digest,
+    fileMutator: any RecordingFileMutating =
+      FoundationRecordingFileMutator()
   ) -> Self {
     let resolvedBookmarkStore: any DirectoryBookmarkStoring
     if let bookmarkStore {
@@ -45,7 +56,7 @@ struct MeetingFileStoreDependencies: Sendable {
       )
     } else {
       resolvedBookmarkStore = UserDefaultsDirectoryBookmarkStore(
-        suiteName: UUID().uuidString
+        suiteName: makeUUID().uuidString
       )
     }
 
@@ -55,7 +66,10 @@ struct MeetingFileStoreDependencies: Sendable {
       scopeAccess: scopeAccess,
       ubiquitousStatus: ubiquitousStatus,
       minimumRecordingCapacityBytes: minimumRecordingCapacityBytes,
-      availableCapacity: availableCapacity
+      availableCapacity: availableCapacity,
+      makeUUID: makeUUID,
+      recordingDigest: recordingDigest,
+      fileMutator: fileMutator
     )
   }
 }

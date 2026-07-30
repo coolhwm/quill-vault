@@ -71,6 +71,9 @@ final class RootNavigationUITests: XCTestCase {
     consent.buttons["I understand — start"].tap()
 
     XCTAssertTrue(screen("recording.screen").waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      screen("recording.interruption.timeline").waitForExistence(timeout: 2)
+    )
     let stop = app.buttons["recording.stop"]
     XCTAssertTrue(stop.waitForExistence(timeout: 2))
     XCTAssertTrue(stop.isHittable)
@@ -94,6 +97,9 @@ final class RootNavigationUITests: XCTestCase {
         "-AppleLanguages", "(\(language))",
         "-AppleLocale", locale,
       ] + extraArguments
+    if extraArguments.contains("-ui-test-recording") {
+      app.launchEnvironment["QUILLVAULT_RECORDING_UI_TEST"] = "1"
+    }
     app.launch()
   }
 

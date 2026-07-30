@@ -10,6 +10,7 @@ public actor RecordingWorkflow: RecordingUseCase {
     case checking
     case starting(RecordingSession)
     case recording(RecordingSession)
+    case interrupted(RecordingSession, RecordedAudio)
     case finishing(RecordingSession)
   }
 
@@ -19,6 +20,7 @@ public actor RecordingWorkflow: RecordingUseCase {
   private let makeMeetingID: MeetingIDGenerator
   private let now: Clock
   private var phase = Phase.idle
+  private var interruptedCaptureEvents: [RecordingCaptureEvent] = []
 
   public init(
     capture: any AudioCapture,
@@ -53,8 +55,17 @@ public actor RecordingWorkflow: RecordingUseCase {
         }
         let recoveredAudio = try await capture.recoverInterrupted(session)
         if let recoveredAudio, recoveredAudio.isValid {
-          try await store.finish(session, audio: recoveredAudio)
+          interruptedCaptureEvents = try await capture.recordingCaptureEvents(
+            meetingID: session.meetingID
+          )
+          phase = .interrupted(session, recoveredAudio)
+          return RecordingSnapshot(
+            session: session,
+            activity: .interrupted(recoveredAudio),
+            captureEvents: interruptedCaptureEvents
+          )
         } else {
+          interruptedCaptureEvents = []
           try await store.abandon(session)
         }
         phase = .idle
@@ -70,6 +81,12 @@ public actor RecordingWorkflow: RecordingUseCase {
       return RecordingSnapshot(session: session, activity: .recording)
     case .finishing(let session):
       return RecordingSnapshot(session: session, activity: .finishing)
+    case .interrupted(let session, let audio):
+      return RecordingSnapshot(
+        session: session,
+        activity: .interrupted(audio),
+        captureEvents: interruptedCaptureEvents
+      )
     case .checking:
       throw RecordingError.alreadyRecording
     }
@@ -135,6 +152,7 @@ public actor RecordingWorkflow: RecordingUseCase {
     }
 
     phase = .recording(session)
+    interruptedCaptureEvents = []
     return RecordingSnapshot(session: session, activity: .recording)
   }
 
@@ -143,7 +161,7 @@ public actor RecordingWorkflow: RecordingUseCase {
     switch phase {
     case .recording(let active), .finishing(let active):
       session = active
-    case .idle, .checking, .starting:
+    case .idle, .checking, .starting, .interrupted:
       throw RecordingError.noActiveRecording
     }
     phase = .finishing(session)
@@ -180,12 +198,68 @@ public actor RecordingWorkflow: RecordingUseCase {
     }
 
     phase = .idle
+    interruptedCaptureEvents = []
     return RecordingCompletion(session: session, audio: audio)
+  }
+
+  public func finishInterrupted() async throws -> RecordingCompletion {
+    guard case .interrupted(let session, let inspectedAudio) = phase else {
+      throw RecordingError.noActiveRecording
+    }
+    phase = .finishing(session)
+
+    let audio: RecordedAudio
+    do {
+      audio = try await capture.finishInterrupted(session)
+    } catch {
+      phase = .interrupted(session, inspectedAudio)
+      throw mapCaptureError(error)
+    }
+    guard audio.isValid else {
+      phase = .interrupted(session, inspectedAudio)
+      throw RecordingError.invalidRecordedAudio
+    }
+
+    do {
+      try await store.finish(session, audio: audio)
+    } catch {
+      phase = .interrupted(session, inspectedAudio)
+      throw RecordingError.statePersistenceFailed
+    }
+
+    phase = .idle
+    interruptedCaptureEvents = []
+    return RecordingCompletion(session: session, audio: audio)
+  }
+
+  public func resumeInterrupted() async throws -> RecordingSnapshot {
+    guard case .interrupted(let session, let inspectedAudio) = phase else {
+      throw RecordingError.noActiveRecording
+    }
+
+    do {
+      _ = try await capture.resumeInterrupted(session)
+    } catch {
+      phase = .interrupted(session, inspectedAudio)
+      throw mapCaptureError(error)
+    }
+
+    phase = .recording(session)
+    interruptedCaptureEvents = []
+    return RecordingSnapshot(session: session, activity: .recording)
   }
 
   public func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
     []
   }
+
+  public func captureEvents(
+    meetingID: MeetingID
+  ) async -> AsyncStream<RecordingCaptureEvent> {
+    await capture.captureEvents(meetingID: meetingID)
+  }
+
+  public func catchUpLiveTranscript() async {}
 
   private func mapCaptureError(_ error: any Error) -> RecordingError {
     return error as? RecordingError ?? .recordingWriteFailed

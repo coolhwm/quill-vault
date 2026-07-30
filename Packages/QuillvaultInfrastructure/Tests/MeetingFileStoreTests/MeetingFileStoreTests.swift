@@ -455,6 +455,272 @@ struct MeetingFileStoreTests {
     )
   }
 
+  @Test("Recording interruptions survive without polluting identity manifest")
+  func persistsRecordingInterruptions() async throws {
+    let root = try TemporaryDirectory()
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
+    )
+    let session = RecordingSession.fixture()
+    let reservation = try await store.reserveRecording(for: session)
+    try Data("audio-header".utf8).write(to: reservation.recordingURL)
+    try await store.publishRecordingStart(
+      reservation,
+      startedAt: session.startedAt
+    )
+    let events: [RecordingCaptureEvent] = [
+      .interruptionBegan(
+        at: session.startedAt.addingTimeInterval(20),
+        reason: .systemInterruption
+      ),
+      .interruptionEnded(
+        at: session.startedAt.addingTimeInterval(27),
+        didResume: true
+      ),
+    ]
+
+    for event in events {
+      try await store.recordCaptureEvent(
+        event,
+        meetingID: session.meetingID
+      )
+    }
+    #expect(
+      try await store.recordingCaptureEvents(
+        meetingID: session.meetingID
+      ) == events
+    )
+    try await store.finishRecording(meetingID: session.meetingID)
+
+    let data = try Data(
+      contentsOf: reservation.directoryURL.appending(path: "meeting.json")
+    )
+    let identity = try #require(
+      JSONSerialization.jsonObject(with: data) as? [String: Any]
+    )
+    #expect(Set(identity.keys) == ["schemaVersion", "meetingID", "createdAt"])
+
+    let eventData = try Data(
+      contentsOf: reservation.directoryURL.appending(
+        path: ".recording-events.json"
+      )
+    )
+    let eventLog = try JSONDecoder().decode(
+      RecordingCaptureEventLog.self,
+      from: eventData
+    )
+    #expect(eventLog.meetingID == session.meetingID.rawValue)
+    #expect(eventLog.events == events)
+  }
+
+  @Test("A continuation replaces recording only after its candidate exists")
+  func commitsRecordingContinuationAtomically() async throws {
+    let root = try TemporaryDirectory()
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
+    )
+    let session = RecordingSession.fixture()
+    let original = try await store.reserveRecording(for: session)
+    let originalBytes = Data("original-audio".utf8)
+    try originalBytes.write(to: original.recordingURL)
+    try await store.publishRecordingStart(
+      original,
+      startedAt: session.startedAt
+    )
+    let continuation = try await store.reserveRecordingContinuation(
+      for: session
+    )
+    let mergedBytes = Data("validated-merged-audio".utf8)
+    try Data("continuation-audio".utf8).write(
+      to: continuation.continuationURL
+    )
+
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      try await store.commitRecordingContinuation(continuation)
+    }
+    #expect(try Data(contentsOf: original.recordingURL) == originalBytes)
+
+    try mergedBytes.write(to: continuation.candidateURL)
+    try await store.commitRecordingContinuation(continuation)
+
+    #expect(try Data(contentsOf: original.recordingURL) == mergedBytes)
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: continuation.continuationURL.path
+      )
+    )
+  }
+
+  @Test("A failed post-replace confirmation restores original audio")
+  func continuationConfirmationFailureRollsBack() async throws {
+    let root = try TemporaryDirectory()
+    let digest = RecordingDigestFault()
+    let store = MeetingFileStore(
+      dependencies: .testing(
+        authorizedDirectory: root.url,
+        recordingDigest: digest.digest
+      )
+    )
+    let session = RecordingSession.fixture()
+    let original = try await store.reserveRecording(for: session)
+    let originalBytes = Data("original-audio".utf8)
+    try originalBytes.write(to: original.recordingURL)
+    try await store.publishRecordingStart(
+      original,
+      startedAt: session.startedAt
+    )
+    let continuation = try await store.reserveRecordingContinuation(
+      for: session
+    )
+    try Data("continuation-audio".utf8).write(
+      to: continuation.continuationURL
+    )
+    try Data("candidate-audio".utf8).write(
+      to: continuation.candidateURL
+    )
+
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      try await store.commitRecordingContinuation(continuation)
+    }
+
+    #expect(try Data(contentsOf: original.recordingURL) == originalBytes)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: continuation.continuationURL.path
+      )
+    )
+  }
+
+  @Test(
+    "Continuation commit faults never replace existing audio",
+    arguments: [
+      RecordingMutationFault.writeBefore,
+      .writeDuring,
+      .replace(afterSuccessfulMatches: 1),
+    ]
+  )
+  fileprivate func continuationMutationFaultPreservesOriginal(
+    fault: RecordingMutationFault
+  ) async throws {
+    let root = try TemporaryDirectory()
+    let mutator = FaultInjectingRecordingFileMutator()
+    let store = MeetingFileStore(
+      dependencies: .testing(
+        authorizedDirectory: root.url,
+        fileMutator: mutator
+      )
+    )
+    let session = RecordingSession.fixture()
+    let original = try await store.reserveRecording(for: session)
+    let originalBytes = Data("original-audio".utf8)
+    try originalBytes.write(to: original.recordingURL)
+    try await store.publishRecordingStart(
+      original,
+      startedAt: session.startedAt
+    )
+    let continuation = try await store.reserveRecordingContinuation(
+      for: session
+    )
+    try Data("continuation-audio".utf8).write(
+      to: continuation.continuationURL
+    )
+    try Data("candidate-audio".utf8).write(
+      to: continuation.candidateURL
+    )
+    mutator.arm(fault)
+
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      try await store.commitRecordingContinuation(continuation)
+    }
+
+    #expect(try Data(contentsOf: original.recordingURL) == originalBytes)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: continuation.continuationURL.path
+      )
+    )
+  }
+
+  @Test("A continuation reservation survives process recreation")
+  func recoversRecordingContinuationReservation() async throws {
+    let root = try TemporaryDirectory()
+    let dependencies = MeetingFileStoreDependencies.testing(
+      authorizedDirectory: root.url
+    )
+    let session = RecordingSession.fixture()
+    let firstStore = MeetingFileStore(dependencies: dependencies)
+    let original = try await firstStore.reserveRecording(for: session)
+    try Data("original-audio".utf8).write(to: original.recordingURL)
+    try await firstStore.publishRecordingStart(
+      original,
+      startedAt: session.startedAt
+    )
+    let continuation = try await firstStore.reserveRecordingContinuation(
+      for: session
+    )
+    try Data("continuation-audio".utf8).write(
+      to: continuation.continuationURL
+    )
+
+    let recoveredStore = MeetingFileStore(dependencies: dependencies)
+    _ = try #require(
+      try await recoveredStore.recoverInterruptedRecording(for: session)
+    )
+    let recovered =
+      try await recoveredStore
+      .recoverRecordingContinuation(for: session)
+
+    let recoveredReservation = try #require(recovered)
+    #expect(recoveredReservation.meetingID == continuation.meetingID)
+    #expect(
+      recoveredReservation.originalRecordingURL.resolvingSymlinksInPath()
+        == continuation.originalRecordingURL.resolvingSymlinksInPath()
+    )
+    #expect(
+      recoveredReservation.continuationURL.resolvingSymlinksInPath()
+        == continuation.continuationURL.resolvingSymlinksInPath()
+    )
+    #expect(
+      recoveredReservation.candidateURL.lastPathComponent
+        == continuation.candidateURL.lastPathComponent
+    )
+    #expect(
+      recoveredReservation.candidateURL.deletingLastPathComponent()
+        .resolvingSymlinksInPath()
+        == continuation.candidateURL.deletingLastPathComponent()
+        .resolvingSymlinksInPath()
+    )
+    #expect(try Data(contentsOf: original.recordingURL) == Data("original-audio".utf8))
+  }
+
+  @Test("A tampered continuation transaction cannot target original audio")
+  func rejectsContinuationManifestPathCollision() throws {
+    let meetingID = UUID()
+    let data = Data(
+      """
+      {
+        "schemaVersion": 1,
+        "meetingID": "\(meetingID.uuidString)",
+        "continuationFileName": "recording.m4a",
+        "candidateFileName": ".recording-merged-safe.m4a",
+        "state": "recording"
+      }
+      """.utf8
+    )
+    let manifest = try JSONDecoder().decode(
+      RecordingContinuationManifest.self,
+      from: data
+    )
+    let directory = URL(fileURLWithPath: "/authorized/meeting")
+
+    #expect(throws: RecordingError.recordingWriteFailed) {
+      _ = try manifest.reservation(
+        directoryURL: directory,
+        originalRecordingURL: directory.appending(path: "recording.m4a")
+      )
+    }
+  }
+
   @Test("Cold start reopens an interrupted recording without replacing its audio")
   func reopensInterruptedRecording() async throws {
     let root = try TemporaryDirectory()
@@ -466,12 +732,24 @@ struct MeetingFileStoreTests {
     let original = try await firstStore.reserveRecording(for: session)
     let audio = Data("interrupted-audio".utf8)
     try audio.write(to: original.recordingURL)
+    let terminationBoundary = session.startedAt.addingTimeInterval(18)
+    try FileManager.default.setAttributes(
+      [.modificationDate: terminationBoundary],
+      ofItemAtPath: original.recordingURL.path
+    )
     try await firstStore.publishRecordingStart(
       original,
       startedAt: session.startedAt
     )
+    #expect(
+      try await firstStore.recordingCaptureEvents(
+        meetingID: session.meetingID
+      ).isEmpty
+    )
 
-    let recovered = try await MeetingFileStore(dependencies: dependencies)
+    let recoveredStore = MeetingFileStore(dependencies: dependencies)
+    let recovered =
+      try await recoveredStore
       .recoverInterruptedRecording(for: session)
 
     let reopened = try #require(recovered)
@@ -486,6 +764,16 @@ struct MeetingFileStoreTests {
         == original.recordingURL.standardizedFileURL
     )
     #expect(try Data(contentsOf: reopened.recordingURL) == audio)
+    #expect(
+      try await recoveredStore.recordingCaptureEvents(
+        meetingID: session.meetingID
+      ) == [
+        .interruptionBegan(
+          at: terminationBoundary,
+          reason: .processTermination
+        )
+      ]
+    )
   }
 
   @Test("A tampered pending manifest is never published as a meeting")
@@ -656,6 +944,113 @@ private struct MeetingDirectoryFixture {
       }
     }
     return result
+  }
+}
+
+private final class RecordingDigestFault: @unchecked Sendable {
+  private let lock = NSLock()
+  private var originalReadCount = 0
+
+  func digest(_ url: URL) throws -> String {
+    if url.lastPathComponent == "recording.m4a" {
+      let shouldFailConfirmation = lock.withLock {
+        originalReadCount += 1
+        return originalReadCount == 2
+      }
+      if shouldFailConfirmation {
+        return "forced-confirmation-mismatch"
+      }
+    }
+    return try RecordingContinuationManifest.digest(of: url)
+  }
+}
+
+private enum RecordingMutationFault: Sendable {
+  case writeBefore
+  case writeDuring
+  case replace(afterSuccessfulMatches: Int)
+}
+
+private struct InjectedRecordingMutationError: Error {}
+
+private final class FaultInjectingRecordingFileMutator:
+  RecordingFileMutating,
+  @unchecked Sendable
+{
+  private enum Action {
+    case failBefore
+    case writePartially
+  }
+
+  private let lock = NSLock()
+  private let base = FoundationRecordingFileMutator()
+  private var fault: RecordingMutationFault?
+
+  func arm(_ fault: RecordingMutationFault) {
+    lock.withLock {
+      self.fault = fault
+    }
+  }
+
+  func writeSynced(_ data: Data, to url: URL) throws {
+    let action: Action? = lock.withLock {
+      switch fault {
+      case .writeBefore:
+        fault = nil
+        return .failBefore
+      case .writeDuring:
+        fault = nil
+        return .writePartially
+      case .replace, nil:
+        return nil
+      }
+    }
+    switch action {
+    case .failBefore:
+      throw InjectedRecordingMutationError()
+    case .writePartially:
+      let prefixCount = max(1, data.count / 2)
+      try base.writeSynced(Data(data.prefix(prefixCount)), to: url)
+      throw InjectedRecordingMutationError()
+    case nil:
+      try base.writeSynced(data, to: url)
+    }
+  }
+
+  func replace(
+    itemAt destinationURL: URL,
+    with sourceURL: URL,
+    backupItemName: String?,
+    keepBackup: Bool
+  ) throws {
+    let shouldFail: Bool = lock.withLock {
+      guard case .replace(let remaining)? = fault else {
+        return false
+      }
+      if remaining > 0 {
+        fault = .replace(afterSuccessfulMatches: remaining - 1)
+        return false
+      }
+      fault = nil
+      return true
+    }
+    if shouldFail {
+      throw InjectedRecordingMutationError()
+    }
+    try base.replace(
+      itemAt: destinationURL,
+      with: sourceURL,
+      backupItemName: backupItemName,
+      keepBackup: keepBackup
+    )
+  }
+
+  func move(itemAt sourceURL: URL, to destinationURL: URL) throws {
+    try base.move(itemAt: sourceURL, to: destinationURL)
+  }
+
+  func removeItem(at url: URL) throws {
+    try base.removeItem(at: url)
   }
 }
 

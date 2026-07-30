@@ -28,18 +28,51 @@ public actor MeetingFileStore:
   }
 
   private let dependencies: MeetingFileStoreDependencies
+  private let coordinatedFiles: CoordinatedRecordingFileAccess
+  private let captureEventStore: RecordingCaptureEventStore
+  private let continuationTransaction: RecordingContinuationTransaction
   private var resolvedRoots: [AuthoritativeDirectoryID: ResolvedRoot] = [:]
   private var recordingReservations: [MeetingID: ActiveRecordingReservation] = [:]
+  private var continuationReservations: [MeetingID: RecordingContinuationReservation] = [:]
   private var transcriptionAccessMeetings = Set<MeetingID>()
   private var transcriptionScopedRoots: [MeetingID: URL] = [:]
   private var transcriptionRecordingURLs: [MeetingID: URL] = [:]
 
   public init() {
-    dependencies = .live()
+    let dependencies = MeetingFileStoreDependencies.live()
+    let coordinatedFiles = CoordinatedRecordingFileAccess(
+      mutator: dependencies.fileMutator,
+      digest: dependencies.recordingDigest
+    )
+    self.dependencies = dependencies
+    self.coordinatedFiles = coordinatedFiles
+    captureEventStore = RecordingCaptureEventStore(
+      files: coordinatedFiles,
+      makeUUID: dependencies.makeUUID
+    )
+    continuationTransaction = RecordingContinuationTransaction(
+      files: coordinatedFiles,
+      mutator: dependencies.fileMutator,
+      makeUUID: dependencies.makeUUID
+    )
   }
 
   init(dependencies: MeetingFileStoreDependencies) {
+    let coordinatedFiles = CoordinatedRecordingFileAccess(
+      mutator: dependencies.fileMutator,
+      digest: dependencies.recordingDigest
+    )
     self.dependencies = dependencies
+    self.coordinatedFiles = coordinatedFiles
+    captureEventStore = RecordingCaptureEventStore(
+      files: coordinatedFiles,
+      makeUUID: dependencies.makeUUID
+    )
+    continuationTransaction = RecordingContinuationTransaction(
+      files: coordinatedFiles,
+      mutator: dependencies.fileMutator,
+      makeUUID: dependencies.makeUUID
+    )
   }
 
   public func restoreSelectedDirectory() async throws -> AuthoritativeDirectory? {
@@ -114,7 +147,9 @@ public actor MeetingFileStore:
     }
     do {
       let bookmark = try dependencies.bookmarkCodec.create(for: url)
-      let id = await existingDirectoryID(matching: url) ?? UUID()
+      let id =
+        await existingDirectoryID(matching: url)
+        ?? dependencies.makeUUID()
       try await dependencies.bookmarkStore.save(
         try JSONEncoder().encode(
           PersistedDirectoryAuthorization(id: id, bookmark: bookmark)
@@ -230,51 +265,20 @@ public actor MeetingFileStore:
     let data = try JSONEncoder.quillvaultManifest.encode(manifest)
     let manifestURL = reservation.directoryURL.appending(path: ".recording.json")
     let candidateURL = reservation.directoryURL.appending(
-      path: ".meeting-\(UUID().uuidString).tmp"
+      path: ".meeting-\(dependencies.makeUUID().uuidString).tmp"
     )
 
     do {
-      guard
-        FileManager.default.createFile(
-          atPath: candidateURL.path,
-          contents: nil
-        )
-      else {
-        throw RecordingError.recordingWriteFailed
-      }
-      let handle = try FileHandle(forWritingTo: candidateURL)
-      try handle.write(contentsOf: data)
-      try handle.synchronize()
-      try handle.close()
-
-      var coordinationError: NSError?
-      var replacementError: (any Error)?
-      NSFileCoordinator().coordinate(
-        writingItemAt: manifestURL,
-        options: .forReplacing,
-        error: &coordinationError
-      ) { coordinatedURL in
-        do {
-          guard !FileManager.default.fileExists(atPath: coordinatedURL.path)
-          else {
-            throw RecordingError.captureCouldNotStart
-          }
-          try FileManager.default.moveItem(
-            at: candidateURL,
-            to: coordinatedURL
-          )
-        } catch {
-          replacementError = error
-        }
-      }
-      if let coordinationError {
-        throw coordinationError
-      }
-      if let replacementError {
-        throw replacementError
-      }
-
-      let published = try Data(contentsOf: manifestURL)
+      try captureEventStore.create(
+        meetingID: reservation.meetingID,
+        directoryURL: reservation.directoryURL
+      )
+      try coordinatedFiles.create(
+        data,
+        destinationURL: manifestURL,
+        candidateURL: candidateURL
+      )
+      let published = try coordinatedFiles.readData(at: manifestURL)
       let decoded = try JSONDecoder().decode(MeetingManifest.self, from: published)
       guard
         decoded.schemaVersion == 1,
@@ -283,7 +287,8 @@ public actor MeetingFileStore:
         throw RecordingError.recordingWriteFailed
       }
     } catch {
-      try? FileManager.default.removeItem(at: candidateURL)
+      try? removeCoordinatedItemIfPresent(at: candidateURL)
+      try? captureEventStore.remove(directoryURL: reservation.directoryURL)
       throw error as? RecordingError ?? .recordingWriteFailed
     }
   }
@@ -353,11 +358,131 @@ public actor MeetingFileStore:
         reservation: reservation,
         securityScopedRoot: root.url
       )
+      let existingEvents = try await recordingCaptureEvents(
+        meetingID: session.meetingID
+      )
+      let openGap = RecordingCaptureTimeline.gaps(in: existingEvents).last
+      if openGap?.reason != .processTermination || openGap?.endedAt != nil {
+        try await recordCaptureEvent(
+          .interruptionBegan(
+            at: try readCoordinatedModificationDate(at: recordingURL),
+            reason: .processTermination
+          ),
+          meetingID: session.meetingID
+        )
+      }
       return reservation
     } catch {
+      recordingReservations[session.meetingID] = nil
       await dependencies.scopeAccess.stopAccessing(root.url)
       throw error as? RecordingError ?? .recordingWriteFailed
     }
+  }
+
+  public func recordCaptureEvent(
+    _ event: RecordingCaptureEvent,
+    meetingID: MeetingID
+  ) async throws {
+    guard let active = recordingReservations[meetingID] else {
+      throw RecordingError.noActiveRecording
+    }
+    do {
+      try captureEventStore.append(
+        event,
+        meetingID: meetingID,
+        directoryURL: active.reservation.directoryURL
+      )
+    } catch {
+      throw error as? RecordingError ?? .recordingWriteFailed
+    }
+  }
+
+  public func recordingCaptureEvents(
+    meetingID: MeetingID
+  ) async throws -> [RecordingCaptureEvent] {
+    guard let active = recordingReservations[meetingID] else {
+      throw RecordingError.noActiveRecording
+    }
+    return try captureEventStore.events(
+      meetingID: meetingID,
+      directoryURL: active.reservation.directoryURL
+    )
+  }
+
+  public func reserveRecordingContinuation(
+    for session: RecordingSession
+  ) async throws -> RecordingContinuationReservation {
+    guard
+      let active = recordingReservations[session.meetingID],
+      continuationReservations[session.meetingID] == nil
+    else {
+      throw RecordingError.noActiveRecording
+    }
+    let reservation = try continuationTransaction.reserve(
+      session: session,
+      originalRecordingURL: active.reservation.recordingURL,
+      directoryURL: active.reservation.directoryURL
+    )
+    continuationReservations[session.meetingID] = reservation
+    return reservation
+  }
+
+  public func recoverRecordingContinuation(
+    for session: RecordingSession
+  ) async throws -> RecordingContinuationReservation? {
+    guard let active = recordingReservations[session.meetingID] else {
+      throw RecordingError.noActiveRecording
+    }
+    if let cached = continuationReservations[session.meetingID] {
+      return cached
+    }
+    let reservation = try continuationTransaction.recover(
+      session: session,
+      originalRecordingURL: active.reservation.recordingURL,
+      directoryURL: active.reservation.directoryURL
+    )
+    if let reservation {
+      continuationReservations[session.meetingID] = reservation
+    }
+    return reservation
+  }
+
+  public func commitRecordingContinuation(
+    _ reservation: RecordingContinuationReservation
+  ) async throws {
+    guard
+      continuationReservations[reservation.meetingID] == reservation
+    else {
+      throw RecordingError.recordingWriteFailed
+    }
+    try continuationTransaction.commit(reservation)
+    continuationReservations[reservation.meetingID] = nil
+  }
+
+  public func cancelRecordingContinuation(
+    _ reservation: RecordingContinuationReservation
+  ) async {
+    guard continuationReservations[reservation.meetingID] == reservation else {
+      return
+    }
+    continuationTransaction.cancel(reservation)
+    continuationReservations[reservation.meetingID] = nil
+  }
+
+  public func quarantineRecordingContinuation(
+    _ reservation: RecordingContinuationReservation
+  ) async {
+    guard
+      continuationReservations[reservation.meetingID] == reservation
+        || continuationTransaction.exists(
+          directoryURL: reservation.originalRecordingURL
+            .deletingLastPathComponent()
+        )
+    else {
+      return
+    }
+    continuationTransaction.quarantine(reservation)
+    continuationReservations[reservation.meetingID] = nil
   }
 
   public func finishRecording(
@@ -394,8 +519,8 @@ public actor MeetingFileStore:
           at: coordinatedPendingURL,
           meetingID: meetingID
         )
-        try FileManager.default.moveItem(
-          at: coordinatedPendingURL,
+        try dependencies.fileMutator.move(
+          itemAt: coordinatedPendingURL,
           to: coordinatedManifestURL
         )
         do {
@@ -404,8 +529,8 @@ public actor MeetingFileStore:
             meetingID: meetingID
           )
         } catch {
-          try? FileManager.default.moveItem(
-            at: coordinatedManifestURL,
+          try? dependencies.fileMutator.move(
+            itemAt: coordinatedManifestURL,
             to: coordinatedPendingURL
           )
           throw error
@@ -446,7 +571,9 @@ public actor MeetingFileStore:
     else {
       return
     }
-    try? FileManager.default.removeItem(at: active.reservation.directoryURL)
+    try? removeCoordinatedItemIfPresent(
+      at: active.reservation.directoryURL
+    )
     if let securityScopedRoot = active.securityScopedRoot {
       await dependencies.scopeAccess.stopAccessing(securityScopedRoot)
     }
@@ -569,6 +696,14 @@ public actor MeetingFileStore:
     transcriptionRecordingURLs[meetingID] = nil
   }
 
+  private func removeCoordinatedItemIfPresent(at url: URL) throws {
+    try coordinatedFiles.removeIfPresent(at: url)
+  }
+
+  private func readCoordinatedModificationDate(at url: URL) throws -> Date {
+    try coordinatedFiles.readModificationDate(at: url)
+  }
+
   private var scanner: MeetingDirectoryScanner {
     MeetingDirectoryScanner(
       ubiquitousStatus: dependencies.ubiquitousStatus
@@ -605,7 +740,7 @@ public actor MeetingFileStore:
     ), persisted.schemaVersion == 1 {
       return (persisted.id, persisted.bookmark, false)
     }
-    return (UUID(), data, true)
+    return (dependencies.makeUUID(), data, true)
   }
 
   private func existingDirectoryID(matching url: URL) async -> UUID? {
@@ -716,7 +851,7 @@ extension MeetingFileStore: RecordingFileStore {}
 extension MeetingFileStore: RecordingAssetAccess {}
 
 extension JSONEncoder {
-  fileprivate static var quillvaultManifest: JSONEncoder {
+  static var quillvaultManifest: JSONEncoder {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     return encoder

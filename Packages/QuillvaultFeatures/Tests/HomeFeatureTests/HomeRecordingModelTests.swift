@@ -133,6 +133,82 @@ struct HomeRecordingModelTests {
     #expect(!model.isSessionPresented)
   }
 
+  @Test("An interrupted meeting offers ending and transcript recovery")
+  func interruptedMeetingCanEnd() async {
+    let audio = RecordedAudio(
+      durationSeconds: 45,
+      packetCount: 2_000,
+      byteCount: 256_000
+    )
+    let interruptedAt = RecordingSession.fixture().startedAt
+      .addingTimeInterval(40)
+    let useCase = RecordingUseCaseStub(
+      restoredSnapshot: RecordingSnapshot(
+        session: .fixture(),
+        activity: .interrupted(audio),
+        captureEvents: [
+          .interruptionBegan(
+            at: interruptedAt,
+            reason: .processTermination
+          )
+        ]
+      )
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.restore()
+    #expect(model.state == .interrupted(.fixture(), audio))
+    #expect(
+      model.interruptionGaps == [
+        RecordingInterruptionGap(
+          startedAt: interruptedAt,
+          endedAt: nil,
+          reason: .processTermination,
+          didResume: false
+        )
+      ]
+    )
+    #expect(!model.isSessionPresented)
+
+    await model.finishInterrupted()
+
+    guard case .completed(let completion) = model.state else {
+      Issue.record("Expected the interrupted recording to complete")
+      return
+    }
+    #expect(completion.audio == audio)
+    #expect(await useCase.finishInterruptedCount == 1)
+  }
+
+  @Test("An interrupted meeting can continue in the recording screen")
+  func interruptedMeetingCanResume() async {
+    let audio = RecordedAudio(
+      durationSeconds: 45,
+      packetCount: 2_000,
+      byteCount: 256_000
+    )
+    let useCase = RecordingUseCaseStub(
+      restoredSnapshot: RecordingSnapshot(
+        session: .fixture(),
+        activity: .interrupted(audio)
+      )
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.restore()
+    await model.resumeInterrupted()
+
+    #expect(model.state == .recording(.fixture()))
+    #expect(model.isSessionPresented)
+    #expect(await useCase.resumeInterruptedCount == 1)
+  }
+
   @Test("Live transcript projection follows the use-case stream")
   func liveTranscriptProjection() async {
     let useCase = RecordingUseCaseStub(
@@ -167,6 +243,65 @@ struct HomeRecordingModelTests {
       model.liveTranscriptText
         == "- [000.0–001.0] 已确认\n- [001.0–002.0] 临时"
     )
+  }
+
+  @Test("Audio interruption is retained as a visible gap after recovery")
+  func captureInterruptionProjection() async {
+    let interruptedAt = Date(timeIntervalSince1970: 1_722_470_420)
+    let resumedAt = interruptedAt.addingTimeInterval(5)
+    let began = RecordingCaptureEvent.interruptionBegan(
+      at: interruptedAt,
+      reason: .routeChange
+    )
+    let ended = RecordingCaptureEvent.interruptionEnded(
+      at: resumedAt,
+      didResume: true
+    )
+    let useCase = RecordingUseCaseStub(captureEvents: [began, ended])
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.start()
+    for _ in 0..<100 {
+      if model.interruptionGaps.first?.endedAt != nil {
+        break
+      }
+      await Task.yield()
+    }
+
+    #expect(model.captureStatus == .active)
+    #expect(
+      model.interruptionGaps == [
+        RecordingInterruptionGap(
+          startedAt: interruptedAt,
+          endedAt: resumedAt,
+          reason: .routeChange,
+          didResume: true
+        )
+      ]
+    )
+  }
+
+  @Test("Failed automatic audio recovery is visible while recording")
+  func captureResumeFailureProjection() async {
+    let ended = RecordingCaptureEvent.interruptionEnded(
+      at: Date(timeIntervalSince1970: 1_722_470_430),
+      didResume: false
+    )
+    let useCase = RecordingUseCaseStub(captureEvents: [ended])
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.start()
+    while model.captureStatus == .active {
+      await Task.yield()
+    }
+
+    #expect(model.captureStatus == .resumeFailed)
   }
 
   @Test("Missing directory authorization prevents recording")
@@ -210,27 +345,36 @@ private actor RecordingUseCaseStub: RecordingUseCase {
   private let liveSnapshots: [LiveTranscriptSnapshot]
   private let recoveryResults: [TranscriptionRecoveryResult]
   private let stopDelay: Duration?
+  private let restoredSnapshot: RecordingSnapshot?
+  private let capturedCaptureEvents: [RecordingCaptureEvent]
   private(set) var acknowledgementCount = 0
   private(set) var startCount = 0
   private(set) var stopCount = 0
+  private(set) var resumeInterruptedCount = 0
+  private(set) var finishInterruptedCount = 0
   private(set) var recoveryCount = 0
+  private(set) var deliveredCaptureEventCount = 0
 
   init(
     startErrors: [RecordingError] = [],
     stopError: RecordingError? = nil,
     liveSnapshots: [LiveTranscriptSnapshot] = [],
     recoveryResults: [TranscriptionRecoveryResult] = [],
-    stopDelay: Duration? = nil
+    stopDelay: Duration? = nil,
+    restoredSnapshot: RecordingSnapshot? = nil,
+    captureEvents: [RecordingCaptureEvent] = []
   ) {
     self.startErrors = startErrors
     self.stopError = stopError
     self.liveSnapshots = liveSnapshots
     self.recoveryResults = recoveryResults
     self.stopDelay = stopDelay
+    self.restoredSnapshot = restoredSnapshot
+    capturedCaptureEvents = captureEvents
   }
 
   func restore() async throws -> RecordingSnapshot? {
-    nil
+    restoredSnapshot
   }
 
   func acknowledgeRecordingNotice() async throws {
@@ -266,6 +410,31 @@ private actor RecordingUseCaseStub: RecordingUseCase {
     )
   }
 
+  func finishInterrupted() async throws -> RecordingCompletion {
+    finishInterruptedCount += 1
+    guard
+      let restoredSnapshot,
+      case .interrupted(let audio) = restoredSnapshot.activity
+    else {
+      throw RecordingError.noActiveRecording
+    }
+    return RecordingCompletion(
+      session: restoredSnapshot.session,
+      audio: audio
+    )
+  }
+
+  func resumeInterrupted() async throws -> RecordingSnapshot {
+    resumeInterruptedCount += 1
+    guard let restoredSnapshot else {
+      throw RecordingError.noActiveRecording
+    }
+    return RecordingSnapshot(
+      session: restoredSnapshot.session,
+      activity: .recording
+    )
+  }
+
   func liveTranscript(
     meetingID: MeetingID
   ) -> AsyncStream<LiveTranscriptSnapshot> {
@@ -277,6 +446,23 @@ private actor RecordingUseCaseStub: RecordingUseCase {
       continuation.finish()
     }
   }
+
+  func captureEvents(
+    meetingID: MeetingID
+  ) -> AsyncStream<RecordingCaptureEvent> {
+    let events = capturedCaptureEvents
+    return AsyncStream { continuation in
+      Task {
+        for event in events {
+          continuation.yield(event)
+          deliveredCaptureEventCount += 1
+        }
+        continuation.finish()
+      }
+    }
+  }
+
+  func catchUpLiveTranscript() async {}
 
   func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
     recoveryCount += 1

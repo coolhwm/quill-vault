@@ -5,10 +5,12 @@ import SettingsFeature
 import SwiftUI
 
 struct AppRootView: View {
+  @Environment(\.scenePhase) private var scenePhase
   @Bindable var router: AppRouter
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
   let settingsModel: SettingsModel
+  let lifecycleCoordinator: AppLifecycleCoordinator
 
   var body: some View {
     TabView(selection: $router.selectedTab) {
@@ -47,6 +49,14 @@ struct AppRootView: View {
         case .settings:
           await settingsModel.load()
         }
+      }
+    }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .active else {
+        return
+      }
+      Task {
+        await lifecycleCoordinator.didBecomeActive()
       }
     }
   }

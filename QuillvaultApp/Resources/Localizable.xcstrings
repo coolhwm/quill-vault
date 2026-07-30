@@ -91,6 +91,72 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存" } }
       }
     },
+    "recording.capture.interruption.media" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio services restarted. Restoring recording…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "音频服务已重启，正在恢复录音…" } }
+      }
+    },
+    "recording.capture.interruption.process" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The previous recording process was interrupted." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上一次录音进程曾中断。" } }
+      }
+    },
+    "recording.capture.interruption.route" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio route changed. Restoring recording…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "音频设备发生变化，正在恢复录音…" } }
+      }
+    },
+    "recording.capture.interruption.system" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording was interrupted by the system. Waiting to resume…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音被系统暂时中断，正在等待恢复…" } }
+      }
+    },
+    "recording.capture.resume.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording could not resume automatically. End and save now; existing audio is safe." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音无法自动恢复。请结束并保存；已有录音仍安全保留。" } }
+      }
+    },
+    "recording.interrupted.timeline" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Interruption timeline" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "中断时间轴" } }
+      }
+    },
+    "recording.interrupted.timeline.unresolved" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not resumed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未恢复" } }
+      }
+    },
+    "recording.interrupted.finish" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "End and process" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束并整理" } }
+      }
+    },
+    "recording.interrupted.message" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Existing audio is safe. End this meeting now or continue it without replacing what was recorded." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "既有录音已安全保留。你可以结束本次会议，或继续录音且不会覆盖已有内容。" } }
+      }
+    },
+    "recording.interrupted.resume" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue this meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "继续本次会议" } }
+      }
+    },
+    "recording.interrupted.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording interrupted" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已中断" } }
+      }
+    },
     "recording.transcript.pending" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },

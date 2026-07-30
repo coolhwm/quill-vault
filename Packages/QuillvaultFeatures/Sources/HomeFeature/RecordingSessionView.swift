@@ -9,6 +9,10 @@ struct RecordingSessionView: View {
     NavigationStack {
       VStack(spacing: QuillvaultSpacing.spacious) {
         status
+        captureStatusNotice
+        if !model.interruptionGaps.isEmpty {
+          RecordingInterruptionTimelineView(gaps: model.interruptionGaps)
+        }
         elapsedTime
         liveTranscript
         stopAction
@@ -18,6 +22,27 @@ struct RecordingSessionView: View {
       .recordingNavigationTitleStyle()
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("recording.screen")
+    }
+  }
+
+  @ViewBuilder
+  private var captureStatusNotice: some View {
+    switch model.captureStatus {
+    case .active:
+      EmptyView()
+    case .interrupted(let reason):
+      Label(reason.messageKey, systemImage: "waveform.badge.exclamationmark")
+        .font(.subheadline)
+        .foregroundStyle(.orange)
+        .accessibilityIdentifier("recording.capture.interrupted")
+    case .resumeFailed:
+      Label(
+        "recording.capture.resume.failed",
+        systemImage: "exclamationmark.triangle.fill"
+      )
+      .font(.subheadline)
+      .foregroundStyle(.red)
+      .accessibilityIdentifier("recording.capture.resume.failed")
     }
   }
 
@@ -102,7 +127,7 @@ struct RecordingSessionView: View {
           await model.stop()
         }
       }
-    case .idle, .starting, .completed, .startFailed:
+    case .idle, .starting, .interrupted, .completed, .startFailed:
       EmptyView()
     }
   }
@@ -113,7 +138,7 @@ struct RecordingSessionView: View {
       .finishing(let session),
       .finishFailed(let session, _):
       session
-    case .idle, .starting, .completed, .startFailed:
+    case .idle, .starting, .interrupted, .completed, .startFailed:
       nil
     }
   }
@@ -126,7 +151,7 @@ struct RecordingSessionView: View {
       "recording.finishing"
     case .finishFailed:
       "recording.finish.failed"
-    case .idle, .starting, .completed, .startFailed:
+    case .idle, .starting, .interrupted, .completed, .startFailed:
       "recording.active"
     }
   }
@@ -139,7 +164,7 @@ struct RecordingSessionView: View {
       "hourglass"
     case .finishFailed:
       "exclamationmark.triangle.fill"
-    case .idle, .starting, .completed, .startFailed:
+    case .idle, .starting, .interrupted, .completed, .startFailed:
       "record.circle.fill"
     }
   }
@@ -152,8 +177,23 @@ struct RecordingSessionView: View {
       .orange
     case .finishFailed:
       .red
-    case .idle, .starting, .completed, .startFailed:
+    case .idle, .starting, .interrupted, .completed, .startFailed:
       .red
+    }
+  }
+}
+
+extension RecordingInterruptionReason {
+  var messageKey: LocalizedStringKey {
+    switch self {
+    case .systemInterruption:
+      "recording.capture.interruption.system"
+    case .routeChange:
+      "recording.capture.interruption.route"
+    case .mediaServicesReset:
+      "recording.capture.interruption.media"
+    case .processTermination:
+      "recording.capture.interruption.process"
     }
   }
 }
