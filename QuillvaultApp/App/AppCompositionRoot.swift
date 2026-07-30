@@ -18,6 +18,7 @@ final class AppCompositionRoot {
   let meetingsModel: MeetingsModel
   let settingsModel: SettingsModel
   let lifecycleCoordinator: AppLifecycleCoordinator
+  let actionButtonCoordinator: ActionButtonRecordingCoordinator
 
   init(
     router: AppRouter = AppRouter(),
@@ -33,9 +34,19 @@ final class AppCompositionRoot {
     )
     let resolvedRecording =
       recording ?? Self.makeDefaultRecording(fileStore: fileStore)
-    recordingModel = HomeRecordingModel(
+    let recordingQuickStart = RecordingQuickStartWorkflow(
       recording: resolvedRecording,
       directory: directoryAuthorization
+    )
+    recordingModel = HomeRecordingModel(
+      recording: resolvedRecording,
+      directory: directoryAuthorization,
+      quickStart: recordingQuickStart
+    )
+    actionButtonCoordinator = ActionButtonRecordingCoordinator(
+      router: router,
+      recordingModel: recordingModel,
+      quickStart: recordingQuickStart
     )
     lifecycleCoordinator = AppLifecycleCoordinator(
       recordingModel: recordingModel

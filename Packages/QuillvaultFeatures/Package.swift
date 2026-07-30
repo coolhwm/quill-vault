@@ -7,10 +7,11 @@ let package = Package(
   defaultLocalization: "en",
   platforms: [
     .iOS(.v26),
-    // Enables SwiftPM host tests; the distributable app remains iOS-only.
-    .macOS(.v14),
+    // App Intents uses the iOS/macOS 26 execution-mode API in host tests.
+    .macOS(.v26),
   ],
   products: [
+    .library(name: "ActionButtonFeature", targets: ["ActionButtonFeature"]),
     .library(name: "AppNavigation", targets: ["AppNavigation"]),
     .library(name: "HomeFeature", targets: ["HomeFeature"]),
     .library(name: "MeetingsFeature", targets: ["MeetingsFeature"]),
@@ -21,6 +22,12 @@ let package = Package(
     .package(path: "../QuillvaultCore"),
   ],
   targets: [
+    .target(
+      name: "ActionButtonFeature",
+      dependencies: [
+        .product(name: "Application", package: "QuillvaultCore")
+      ]
+    ),
     .target(name: "AppNavigation"),
     .target(
       name: "HomeFeature",
@@ -44,6 +51,13 @@ let package = Package(
         .product(name: "DesignSystem", package: "QuillvaultDesignSystem"),
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),
+      ]
+    ),
+    .testTarget(
+      name: "ActionButtonFeatureTests",
+      dependencies: [
+        "ActionButtonFeature",
+        .product(name: "Application", package: "QuillvaultCore"),
       ]
     ),
     .testTarget(

@@ -22,6 +22,40 @@ struct HomeRecordingModelTests {
     #expect(model.isSessionPresented)
   }
 
+  @Test("A shortcut start immediately projects the shared recording state")
+  func shortcutStartProjectsRecordingState() {
+    let snapshot = RecordingSnapshot(
+      session: .fixture(),
+      activity: .recording
+    )
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(),
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    model.presentQuickStartOutcome(.started(snapshot))
+
+    #expect(model.state == .recording(.fixture()))
+    #expect(model.isSessionPresented)
+  }
+
+  @Test("A shortcut authorization failure opens the matching app recovery")
+  func shortcutFailureProjectsAuthorizationRecovery() {
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(),
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    model.presentQuickStartOutcome(
+      .requiresAppAttention(.authoritativeDirectory(.renewAccess))
+    )
+
+    #expect(model.directoryState == .recoveryRequired(.renewAccess))
+    #expect(
+      model.state == .startFailed(.authoritativeDirectoryUnavailable)
+    )
+  }
+
   @Test("First recording presents notice before retrying start")
   func noticeIsAcknowledged() async {
     let useCase = RecordingUseCaseStub(startErrors: [.recordingConsentRequired])
@@ -207,6 +241,32 @@ struct HomeRecordingModelTests {
     #expect(model.state == .recording(.fixture()))
     #expect(model.isSessionPresented)
     #expect(await useCase.resumeInterruptedCount == 1)
+  }
+
+  @Test("An interrupted meeting can be preserved before starting a new one")
+  func interruptedMeetingCanStartNew() async {
+    let audio = RecordedAudio(
+      durationSeconds: 45,
+      packetCount: 2_000,
+      byteCount: 256_000
+    )
+    let useCase = RecordingUseCaseStub(
+      restoredSnapshot: RecordingSnapshot(
+        session: .fixture(),
+        activity: .interrupted(audio)
+      )
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.restore()
+    await model.startNewAfterInterruption()
+
+    #expect(model.state == .recording(.fixture()))
+    #expect(await useCase.finishInterruptedCount == 1)
+    #expect(await useCase.startCount == 1)
   }
 
   @Test("Live transcript projection follows the use-case stream")

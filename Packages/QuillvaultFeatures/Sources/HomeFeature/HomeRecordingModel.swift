@@ -45,16 +45,24 @@ public final class HomeRecordingModel {
 
   private let recording: any RecordingUseCase
   private let directory: any AuthoritativeDirectoryUseCase
+  private let quickStart: any RecordingQuickStartUseCase
   private var liveTranscriptTask: Task<Void, Never>?
   private var captureEventTask: Task<Void, Never>?
   private var captureEvents: [RecordingCaptureEvent] = []
 
   public init(
     recording: any RecordingUseCase,
-    directory: any AuthoritativeDirectoryUseCase
+    directory: any AuthoritativeDirectoryUseCase,
+    quickStart: (any RecordingQuickStartUseCase)? = nil
   ) {
     self.recording = recording
     self.directory = directory
+    self.quickStart =
+      quickStart
+      ?? RecordingQuickStartWorkflow(
+        recording: recording,
+        directory: directory
+      )
   }
 
   public var isSessionPresented: Bool {
@@ -71,26 +79,8 @@ public final class HomeRecordingModel {
       return
     }
     await restoreDirectory()
-    do {
-      guard let snapshot = try await recording.restore() else {
-        return
-      }
-      captureEvents = snapshot.captureEvents
-      interruptionGaps = RecordingCaptureTimeline.gaps(in: captureEvents)
-      switch snapshot.activity {
-      case .recording:
-        state = .recording(snapshot.session)
-        observeLiveTranscript(for: snapshot.session.meetingID)
-        observeCaptureEvents(for: snapshot.session.meetingID)
-      case .finishing:
-        state = .finishing(snapshot.session)
-      case .interrupted(let audio):
-        state = .interrupted(snapshot.session, audio)
-      }
-    } catch let error as RecordingError {
-      state = .startFailed(error)
-    } catch {
-      state = .startFailed(.statePersistenceFailed)
+    if let outcome = await quickStart.restore() {
+      presentQuickStartOutcome(outcome)
     }
   }
 
@@ -98,27 +88,35 @@ public final class HomeRecordingModel {
     guard !isSessionPresented, state != .starting else {
       return
     }
-    guard await ensureDirectoryIsAuthorized() else {
-      return
-    }
     captureEvents = []
     interruptionGaps = []
     state = .starting
-    do {
-      let snapshot = try await recording.start()
-      state = .recording(snapshot.session)
-      observeLiveTranscript(for: snapshot.session.meetingID)
-      observeCaptureEvents(for: snapshot.session.meetingID)
-    } catch RecordingError.recordingConsentRequired {
+    presentQuickStartOutcome(await quickStart.start())
+  }
+
+  public func presentQuickStartOutcome(
+    _ outcome: RecordingQuickStartOutcome
+  ) {
+    switch outcome {
+    case .started(let snapshot), .alreadyActive(let snapshot),
+      .requiresInterruptedDecision(let snapshot):
+      present(snapshot)
+    case .requiresAppAttention(.recordingNotice):
       state = .idle
       isRecordingNoticePresented = true
-    } catch RecordingError.authoritativeDirectoryUnavailable {
-      directoryState = .recoveryRequired(.renewAccess)
+    case .requiresAppAttention(.microphonePermission):
+      state = .startFailed(.microphonePermissionDenied)
+    case .requiresAppAttention(.authoritativeDirectory(let recovery)):
+      directoryState = .recoveryRequired(recovery)
       state = .startFailed(.authoritativeDirectoryUnavailable)
-    } catch let error as RecordingError {
-      state = .startFailed(error)
-    } catch {
+    case .requiresAppAttention(.insufficientStorage):
+      state = .startFailed(.insufficientStorage)
+    case .requiresAppAttention(.retry):
       state = .startFailed(.captureCouldNotStart)
+    case .alreadyStarting, .cancelled:
+      if state == .starting {
+        state = .idle
+      }
     }
   }
 
@@ -227,6 +225,15 @@ public final class HomeRecordingModel {
     }
   }
 
+  public func startNewAfterInterruption() async {
+    guard case .interrupted = state else {
+      return
+    }
+    presentQuickStartOutcome(
+      await quickStart.startNewAfterInterruption()
+    )
+  }
+
   private func observeCaptureEvents(for meetingID: MeetingID) {
     captureEventTask?.cancel()
     captureStatus = .active
@@ -249,6 +256,21 @@ public final class HomeRecordingModel {
           self?.captureStatus = didResume ? .active : .resumeFailed
         }
       }
+    }
+  }
+
+  private func present(_ snapshot: RecordingSnapshot) {
+    captureEvents = snapshot.captureEvents
+    interruptionGaps = RecordingCaptureTimeline.gaps(in: captureEvents)
+    switch snapshot.activity {
+    case .recording:
+      state = .recording(snapshot.session)
+      observeLiveTranscript(for: snapshot.session.meetingID)
+      observeCaptureEvents(for: snapshot.session.meetingID)
+    case .finishing:
+      state = .finishing(snapshot.session)
+    case .interrupted(let audio):
+      state = .interrupted(snapshot.session, audio)
     }
   }
 
@@ -329,21 +351,6 @@ public final class HomeRecordingModel {
       directoryState = .authorized(authorized)
     } catch {
       directoryState = .recoveryRequired(recovery(for: error))
-    }
-  }
-
-  private func ensureDirectoryIsAuthorized() async -> Bool {
-    switch directoryState {
-    case .authorized:
-      return true
-    case .checking:
-      await restoreDirectory()
-      if case .authorized = directoryState {
-        return true
-      }
-      return false
-    case .recoveryRequired:
-      return false
     }
   }
 

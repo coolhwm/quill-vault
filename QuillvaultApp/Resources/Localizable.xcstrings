@@ -1,6 +1,84 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "actionButton.result.alreadyActive" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording is already active." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已经在进行中。" } }
+      }
+    },
+    "actionButton.result.cancelled" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording was not started." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音未开始。" } }
+      }
+    },
+    "actionButton.result.directory" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose or reauthorize the meeting folder in the app." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在应用中选择或重新授权会议目录。" } }
+      }
+    },
+    "actionButton.result.interrupted" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose whether to continue the interrupted meeting or start a new one." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请选择继续中断的会议，或保存后开始新会议。" } }
+      }
+    },
+    "actionButton.result.microphone" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Allow microphone access in the app before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先在应用中允许麦克风访问。" } }
+      }
+    },
+    "actionButton.result.notice" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Review the recording notice in the app to continue." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在应用中确认录音说明后继续。" } }
+      }
+    },
+    "actionButton.result.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording could not start. Review the app and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音无法开始，请检查应用后重试。" } }
+      }
+    },
+    "actionButton.result.started" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording started." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已开始。" } }
+      }
+    },
+    "actionButton.result.starting" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording is already starting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音正在启动。" } }
+      }
+    },
+    "actionButton.result.storage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Free some device storage before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请释放设备存储空间后再录音。" } }
+      }
+    },
+    "actionButton.start.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Quillvault and start a face-to-face meeting recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开墨匣并开始面对面会议录音。" } }
+      }
+    },
+    "actionButton.start.shortTitle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start Meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始会议录音" } }
+      }
+    },
+    "actionButton.start.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start a Face-to-Face Meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始面对面会议" } }
+      }
+    },
     "home.empty.description" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording will be available from the primary action on this screen." } },
@@ -149,6 +227,12 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue this meeting" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "继续本次会议" } }
+      }
+    },
+    "recording.interrupted.startNew" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Save and start a new meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存并开始新会议" } }
       }
     },
     "recording.interrupted.title" : {

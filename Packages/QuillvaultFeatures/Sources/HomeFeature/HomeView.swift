@@ -198,6 +198,18 @@ public struct HomeView: View {
           .accessibilityIdentifier("recording.interrupted.resume")
           Button {
             Task {
+              await model.startNewAfterInterruption()
+            }
+          } label: {
+            Label(
+              "recording.interrupted.startNew",
+              systemImage: "plus.circle"
+            )
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("recording.interrupted.startNew")
+          Button {
+            Task {
               await model.finishInterrupted()
             }
           } label: {

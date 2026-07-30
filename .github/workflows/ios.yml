@@ -61,6 +61,19 @@ jobs:
           test "$(plutil -extract CFBundleDisplayName raw "$app/zh-Hans.lproj/InfoPlist.strings")" = "墨匣"
           test "$(plutil -extract UIBackgroundModes.0 raw "$app/Info.plist")" = "audio"
 
+      - name: Verify Action Button shortcut metadata
+        run: |
+          metadata="$RUNNER_TEMP/DebugDerivedData/Build/Products/Debug-iphonesimulator/Quillvault.app/Metadata.appintents/extract.actionsdata"
+          test -f "$metadata"
+          jq -e '
+            .actions.StartFaceToFaceSessionIntent.supportedModes == 2
+            and any(
+              .autoShortcuts[];
+              .actionIdentifier == "StartFaceToFaceSessionIntent"
+              and .systemImageName == "record.circle"
+            )
+          ' "$metadata"
+
       - name: Build Release
         run: >-
           xcodebuild

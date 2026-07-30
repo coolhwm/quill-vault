@@ -86,6 +86,24 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Retry transcript"].exists)
   }
 
+  func testActionButtonColdLaunchUsesTheSharedRecordingWorkflow() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-recording",
+        "-ui-test-action-button",
+      ]
+    )
+
+    let consent = app.alerts["Before your first recording"]
+    XCTAssertTrue(consent.waitForExistence(timeout: 5))
+    consent.buttons["I understand — start"].tap()
+
+    XCTAssertTrue(screen("recording.screen").waitForExistence(timeout: 2))
+    XCTAssertTrue(app.buttons["recording.stop"].isHittable)
+  }
+
   private func launch(
     language: String,
     locale: String,
