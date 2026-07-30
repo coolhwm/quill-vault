@@ -38,6 +38,14 @@ struct RecordingFailureCard: View {
       "recording.failure.invalid"
     case .recordingConsentRequired:
       "recording.notice.message"
+    case .unsupportedTranscriptionLocale:
+      "recording.failure.transcription.locale"
+    case .speechAssetsUnavailable:
+      "recording.failure.transcription.assets"
+    case .transcriptPublicationFailed:
+      "recording.failure.transcription.publish"
+    case .transcriptionFailed:
+      "recording.failure.transcription.generic"
     case .captureCouldNotStart, .recordingWriteFailed,
       .statePersistenceFailed, .noActiveRecording:
       "recording.failure.generic"

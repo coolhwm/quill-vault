@@ -51,12 +51,12 @@ public final class MeetingsModel {
       return .tryAgain
     }
     switch accessError {
-    case .bookmarkMissing, .bookmarkStale, .directoryMoved, .permissionDenied:
+    case .bookmarkMissing:
+      return .chooseDirectory
+    case .bookmarkStale, .directoryMoved, .permissionDenied:
       return .renewAccess
     case .itemNotDownloaded:
       return .downloadRequired
-    case .iCloudUnavailable:
-      return .chooseDirectory
     case .coordinationFailed, .invalidSelection, .unreadableDirectory:
       return .tryAgain
     }

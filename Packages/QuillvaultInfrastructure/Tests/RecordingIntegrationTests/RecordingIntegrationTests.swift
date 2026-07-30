@@ -11,7 +11,7 @@ struct RecordingIntegrationTests {
   func startFailureLeavesNoGhost() async throws {
     let root = try TemporaryDirectory()
     let files = MeetingFileStore(
-      dependencies: .testing(defaultDirectory: root.url)
+      dependencies: .testing(authorizedDirectory: root.url)
     )
     let engine = AudioCaptureEngine(
       files: files,
@@ -34,9 +34,9 @@ struct RecordingIntegrationTests {
   func invalidAudioIsNotPublished() async throws {
     let root = try TemporaryDirectory()
     let files = MeetingFileStore(
-      dependencies: .testing(defaultDirectory: root.url)
+      dependencies: .testing(authorizedDirectory: root.url)
     )
-    let directory = try await files.resolveDefaultDirectory()
+    let directory = try #require(await files.restoreSelectedDirectory())
     let engine = AudioCaptureEngine(
       files: files,
       permission: GrantedPermission(),

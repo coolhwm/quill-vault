@@ -8,10 +8,9 @@ struct RecordingSessionView: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: QuillvaultSpacing.spacious) {
-        Spacer()
         status
         elapsedTime
-        Spacer()
+        liveTranscript
         stopAction
       }
       .padding(QuillvaultSpacing.spacious)
@@ -20,6 +19,25 @@ struct RecordingSessionView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("recording.screen")
     }
+  }
+
+  private var liveTranscript: some View {
+    GroupBox("recording.transcript.title") {
+      ScrollView {
+        Text(
+          model.liveTranscriptText.isEmpty
+            ? String(localized: "recording.transcript.waiting")
+            : model.liveTranscriptText
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(
+          model.liveTranscriptText.isEmpty ? .secondary : .primary
+        )
+        .textSelection(.enabled)
+      }
+      .frame(maxHeight: .infinity)
+    }
+    .accessibilityIdentifier("recording.transcript")
   }
 
   private var status: some View {

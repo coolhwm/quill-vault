@@ -34,6 +34,19 @@ struct MeetingsModelTests {
     #expect(model.state == .failed(.renewAccess))
   }
 
+  @Test("Maps a missing bookmark to initial directory selection")
+  func missingBookmarkRecovery() async {
+    let model = MeetingsModel(
+      library: MeetingLibraryUseCaseStub(
+        restoreResult: .failure(DirectoryAccessError.bookmarkMissing)
+      )
+    )
+
+    await model.load()
+
+    #expect(model.state == .failed(.chooseDirectory))
+  }
+
   @Test("Maps an unavailable iCloud item to a download recovery")
   func iCloudDownloadRecovery() async {
     let model = MeetingsModel(

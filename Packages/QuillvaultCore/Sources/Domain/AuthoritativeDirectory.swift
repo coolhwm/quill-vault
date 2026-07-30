@@ -7,7 +7,6 @@ public struct AuthoritativeDirectoryID: Hashable, Codable, Sendable {
 }
 
 public enum AuthoritativeDirectoryKind: String, Codable, Sendable {
-  case iCloudDefault
   case userSelected
 }
 

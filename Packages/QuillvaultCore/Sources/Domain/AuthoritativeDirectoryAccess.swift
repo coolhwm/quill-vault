@@ -8,7 +8,6 @@ public struct AuthoritativeDirectorySelection: Sendable {
 
 public protocol AuthoritativeDirectoryAccess: Sendable {
   func restoreSelectedDirectory() async throws -> AuthoritativeDirectory?
-  func resolveDefaultDirectory() async throws -> AuthoritativeDirectory
   func authorizeSelectedDirectory(
     _ selection: AuthoritativeDirectorySelection
   ) async throws -> AuthoritativeDirectory

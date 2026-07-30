@@ -7,6 +7,10 @@ public enum RecordingError: Error, Equatable, Sendable {
   case captureCouldNotStart
   case recordingWriteFailed
   case invalidRecordedAudio
+  case transcriptionFailed
+  case unsupportedTranscriptionLocale
+  case speechAssetsUnavailable
+  case transcriptPublicationFailed
   case statePersistenceFailed
   case noActiveRecording
 }

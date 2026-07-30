@@ -13,12 +13,11 @@ public struct MeetingLibraryWorkflow: MeetingLibraryUseCase {
   }
 
   public func restore() async throws -> MeetingLibrarySnapshot {
-    let directory =
-      if let selectedDirectory = try await directoryAccess.restoreSelectedDirectory() {
-        selectedDirectory
-      } else {
-        try await directoryAccess.resolveDefaultDirectory()
-      }
+    guard
+      let directory = try await directoryAccess.restoreSelectedDirectory()
+    else {
+      throw DirectoryAccessError.bookmarkMissing
+    }
     return try await load(directory)
   }
 

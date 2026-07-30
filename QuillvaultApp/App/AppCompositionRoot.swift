@@ -7,6 +7,8 @@ import MeetingFileStore
 import MeetingsFeature
 import Observation
 import PersistenceGRDB
+import SettingsFeature
+import SpeechTranscription
 
 @MainActor
 @Observable
@@ -14,6 +16,7 @@ final class AppCompositionRoot {
   let router: AppRouter
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
+  let settingsModel: SettingsModel
 
   init(
     router: AppRouter = AppRouter(),
@@ -22,12 +25,21 @@ final class AppCompositionRoot {
   ) {
     self.router = router
     let fileStore = MeetingFileStore()
+    let resolvedMeetingLibrary =
+      meetingLibrary ?? Self.makeDefaultMeetingLibrary(fileStore: fileStore)
+    let directoryAuthorization = Self.makeDefaultDirectoryAuthorization(
+      fileStore: fileStore
+    )
     recordingModel = HomeRecordingModel(
-      recording: recording ?? Self.makeDefaultRecording(fileStore: fileStore)
+      recording: recording ?? Self.makeDefaultRecording(fileStore: fileStore),
+      directory: directoryAuthorization
     )
     meetingsModel = MeetingsModel(
-      library: meetingLibrary
-        ?? Self.makeMeetingLibrary(fileStore: fileStore)
+      library: resolvedMeetingLibrary
+    )
+    settingsModel = SettingsModel(
+      directory: directoryAuthorization,
+      library: resolvedMeetingLibrary
     )
   }
 
@@ -37,6 +49,28 @@ final class AppCompositionRoot {
     RetryingMeetingLibraryUseCase {
       try buildMeetingLibrary(fileStore: fileStore)
     }
+  }
+
+  private static func makeDefaultMeetingLibrary(
+    fileStore: MeetingFileStore
+  ) -> any MeetingLibraryUseCase {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
+        return UITestMeetingLibraryUseCase()
+      }
+    #endif
+    return makeMeetingLibrary(fileStore: fileStore)
+  }
+
+  private static func makeDefaultDirectoryAuthorization(
+    fileStore: MeetingFileStore
+  ) -> any AuthoritativeDirectoryUseCase {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("-ui-test-recording") {
+        return UITestAuthoritativeDirectoryUseCase()
+      }
+    #endif
+    return AuthoritativeDirectoryWorkflow(access: fileStore)
   }
 
   nonisolated private static func buildMeetingLibrary(
@@ -78,12 +112,13 @@ final class AppCompositionRoot {
   nonisolated private static func buildRecording(
     fileStore: MeetingFileStore
   ) throws -> any RecordingUseCase {
-    let stateURL =
+    let stateDirectory =
       try applicationSupportDirectory()
       .appending(path: "Quillvault", directoryHint: .isDirectory)
-      .appending(path: "recording-state.sqlite")
-    return RecordingWorkflow(
-      capture: AudioCaptureEngine(fileStore: fileStore),
+    let stateURL = stateDirectory.appending(path: "recording-state.sqlite")
+    let capture = AudioCaptureEngine(fileStore: fileStore)
+    let recording = RecordingWorkflow(
+      capture: capture,
       store: try GRDBRecordingSessionStore.open(at: stateURL),
       consentStore: UserDefaultsRecordingConsentStore(),
       makeMeetingID: {
@@ -92,6 +127,21 @@ final class AppCompositionRoot {
       now: {
         Date()
       }
+    )
+    let transcription = TranscriptionWorkflow(
+      engine: SpeechAnalyzerTranscriptionEngine(),
+      publisher: FileTranscriptPublisher(),
+      jobs: try GRDBTranscriptionJobStore.open(
+        at: stateDirectory.appending(path: "transcription-state.sqlite")
+      ),
+      assetAccess: fileStore
+    )
+    return TranscribingRecordingUseCase(
+      recording: recording,
+      capture: capture,
+      speech: SpeechAnalyzerTranscriptionEngine(),
+      transcription: transcription,
+      localeIdentifier: Locale.current.identifier
     )
   }
 
@@ -106,6 +156,52 @@ final class AppCompositionRoot {
 }
 
 #if DEBUG
+  private struct UITestAuthoritativeDirectoryUseCase:
+    AuthoritativeDirectoryUseCase
+  {
+    private let directory = AuthoritativeDirectory(
+      id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
+      displayName: "UI Test Vault",
+      kind: .userSelected
+    )
+
+    func restore() async throws -> AuthoritativeDirectory? {
+      directory
+    }
+
+    func authorize(
+      _ selection: AuthoritativeDirectorySelection
+    ) async throws -> AuthoritativeDirectory {
+      directory
+    }
+  }
+
+  private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
+    private let snapshot = MeetingLibrarySnapshot(
+      directory: AuthoritativeDirectory(
+        id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
+        displayName: "UI Test Vault",
+        kind: .userSelected
+      ),
+      meetings: [],
+      diagnosticCount: 0
+    )
+
+    func restore() async throws -> MeetingLibrarySnapshot {
+      snapshot
+    }
+
+    func select(
+      _ selection: AuthoritativeDirectorySelection
+    ) async throws -> MeetingLibrarySnapshot {
+      snapshot
+    }
+
+    func rebuild() async throws -> MeetingLibrarySnapshot {
+      snapshot
+    }
+  }
+
   private actor UITestRecordingUseCase: RecordingUseCase {
     private var hasAcknowledgedNotice = false
     private var activeSession: RecordingSession?

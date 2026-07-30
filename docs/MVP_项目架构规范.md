@@ -302,6 +302,9 @@ schema_metadata
 ## 9. 文件系统规范
 
 - 权威目录访问集中在 `MeetingFileStore` Actor；
+- MVP 不申请应用自有 iCloud 容器；首次使用必须通过系统文件夹选择器获得
+  外部目录授权，没有有效授权时不得创建录音或回退到私有目录；
+- 用户授权目录可位于 iCloud Drive、Obsidian Vault、本机或其他 Files Provider；
 - 安全作用域 URL 必须成对调用开始/停止访问；
 - 使用持久安全书签恢复用户目录；
 - 使用 `NSFileCoordinator` 协调与 Obsidian、Files 和 iCloud 的并发访问；
@@ -340,6 +343,23 @@ AVAudioSession 会通过通知报告中断与路由变化，应用需要显式�
 - 结束后从录音执行确定性追平与归并；
 - locale 和模型资产作为显式前置条件；
 - 取消、错误和资源缺失映射为领域原因。
+
+落地约束：
+
+- `AVAudioEngineRecorderDriver` 在输入回调内先写 `recording.m4a`，写入成功后才复制
+  `AudioFrame` 到有界、丢旧值的实时流；实时消费者永远不拥有或反压权威录音；
+- 停止录音并校验音频后，`TranscriptionWorkflow` 先持久化
+  `TranscriptionJob`，再从完整 `recording.m4a` 重新分析，因此前后台切换造成的实时结果
+  缺口不会成为最终逐字稿缺口；
+- final 结果逐条 flush/sync 到 `.transcript-final.jsonl`；volatile 结果不写入文件；
+- 时间线统一执行排序、精确重复消除、重叠裁剪和音频边界裁剪；相同输入生成稳定的
+  `TranscriptRevision.id` 与内容指纹；
+- `transcript.md` 只能通过同目录候选文件、flush/sync、`NSFileCoordinator`
+  协调替换和逐字节读回确认发布；
+- 发布确认后才从 `pending_transcription` 删除恢复任务；识别失败、取消、进程退出、
+  写入失败或确认失败都保留录音与待恢复任务，不进入“待生成纪要”。
+- 冷启动恢复必须先由 `MeetingFileStore` 重新解析权威目录书签并获取安全作用域；
+  实际录音路径按 MeetingID 在当前解析根目录中重建，不能信任数据库中的旧绝对路径。
 
 `SpeechAnalyzer` 本身是 Actor，并将输入、输出和会话控制解耦为异步序列，适合放在独立基础设施边界内。[SpeechAnalyzer](https://developer.apple.com/documentation/speech/speechanalyzer)
 

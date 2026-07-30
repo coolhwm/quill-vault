@@ -1,8 +1,19 @@
-import CryptoKit
 import Domain
 import Foundation
 
 public actor MeetingFileStore: AuthoritativeDirectoryAccess {
+  private struct PersistedDirectoryAuthorization: Codable, Sendable {
+    let schemaVersion: Int
+    let id: UUID
+    let bookmark: Data
+
+    init(id: UUID, bookmark: Data) {
+      schemaVersion = 1
+      self.id = id
+      self.bookmark = bookmark
+    }
+  }
+
   private struct ResolvedRoot: Sendable {
     let url: URL
     let directory: AuthoritativeDirectory
@@ -16,6 +27,9 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
   private let dependencies: MeetingFileStoreDependencies
   private var resolvedRoots: [AuthoritativeDirectoryID: ResolvedRoot] = [:]
   private var recordingReservations: [MeetingID: ActiveRecordingReservation] = [:]
+  private var transcriptionAccessMeetings = Set<MeetingID>()
+  private var transcriptionScopedRoots: [MeetingID: URL] = [:]
+  private var transcriptionRecordingURLs: [MeetingID: URL] = [:]
 
   public init() {
     dependencies = .live()
@@ -26,37 +40,62 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
   }
 
   public func restoreSelectedDirectory() async throws -> AuthoritativeDirectory? {
-    guard let data = await dependencies.bookmarkStore.load() else {
+    guard let storedData = await dependencies.bookmarkStore.load() else {
       return nil
     }
+    let persisted = decodeAuthorization(storedData)
     let bookmark: ResolvedDirectoryBookmark
     do {
-      bookmark = try dependencies.bookmarkCodec.resolve(data)
+      bookmark = try dependencies.bookmarkCodec.resolve(persisted.bookmark)
     } catch {
       throw DirectoryAccessError.bookmarkMissing
     }
     guard !bookmark.isStale else {
       throw DirectoryAccessError.bookmarkStale
     }
-    let directory = selectedDirectory(url: bookmark.url, bookmark: data)
+    guard await dependencies.scopeAccess.startAccessing(bookmark.url) else {
+      throw DirectoryAccessError.permissionDenied
+    }
+    guard isDirectory(bookmark.url) else {
+      await dependencies.scopeAccess.stopAccessing(bookmark.url)
+      throw DirectoryAccessError.directoryMoved
+    }
+    do {
+      guard try dependencies.ubiquitousStatus.isDownloaded(bookmark.url) else {
+        await dependencies.scopeAccess.stopAccessing(bookmark.url)
+        throw DirectoryAccessError.itemNotDownloaded
+      }
+    } catch let error as DirectoryAccessError {
+      throw error
+    } catch {
+      await dependencies.scopeAccess.stopAccessing(bookmark.url)
+      throw DirectoryAccessError.unreadableDirectory
+    }
+    await dependencies.scopeAccess.stopAccessing(bookmark.url)
+    if persisted.requiresMigration {
+      try await dependencies.bookmarkStore.save(
+        try JSONEncoder().encode(
+          PersistedDirectoryAuthorization(
+            id: persisted.id,
+            bookmark: persisted.bookmark
+          )
+        )
+      )
+    }
+    let directory = selectedDirectory(url: bookmark.url, id: persisted.id)
     resolvedRoots[directory.id] = ResolvedRoot(url: bookmark.url, directory: directory)
-    return directory
-  }
-
-  public func resolveDefaultDirectory() async throws -> AuthoritativeDirectory {
-    let url = try await dependencies.defaultDirectoryProvider.resolve()
-    let directory = AuthoritativeDirectory(
-      id: AuthoritativeDirectoryID(rawValue: "icloud-default"),
-      displayName: "Quillvault",
-      kind: .iCloudDefault
-    )
-    resolvedRoots[directory.id] = ResolvedRoot(url: url, directory: directory)
     return directory
   }
 
   public func authorizeSelectedDirectory(
     _ selection: AuthoritativeDirectorySelection
   ) async throws -> AuthoritativeDirectory {
+    guard
+      recordingReservations.isEmpty,
+      transcriptionAccessMeetings.isEmpty
+    else {
+      throw DirectoryAccessError.coordinationFailed
+    }
     guard
       let url = URL(string: selection.opaqueReference),
       url.isFileURL
@@ -72,9 +111,14 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
     }
     do {
       let bookmark = try dependencies.bookmarkCodec.create(for: url)
-      try await dependencies.bookmarkStore.save(bookmark)
+      let id = await existingDirectoryID(matching: url) ?? UUID()
+      try await dependencies.bookmarkStore.save(
+        try JSONEncoder().encode(
+          PersistedDirectoryAuthorization(id: id, bookmark: bookmark)
+        )
+      )
       await dependencies.scopeAccess.stopAccessing(url)
-      let directory = selectedDirectory(url: url, bookmark: bookmark)
+      let directory = selectedDirectory(url: url, id: id)
       resolvedRoots[directory.id] = ResolvedRoot(url: url, directory: directory)
       return directory
     } catch {
@@ -89,23 +133,21 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
     guard let root = resolvedRoots[directory.id] else {
       throw DirectoryAccessError.directoryMoved
     }
+    guard await dependencies.scopeAccess.startAccessing(root.url) else {
+      throw DirectoryAccessError.permissionDenied
+    }
     guard isDirectory(root.url) else {
+      await dependencies.scopeAccess.stopAccessing(root.url)
       throw DirectoryAccessError.directoryMoved
     }
-    if directory.kind == .userSelected {
-      guard await dependencies.scopeAccess.startAccessing(root.url) else {
-        throw DirectoryAccessError.permissionDenied
-      }
-      do {
-        let result = try scanner.scan(root.url)
-        await dependencies.scopeAccess.stopAccessing(root.url)
-        return result
-      } catch {
-        await dependencies.scopeAccess.stopAccessing(root.url)
-        throw error
-      }
+    do {
+      let result = try scanner.scan(root.url)
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      return result
+    } catch {
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      throw error
     }
-    return try scanner.scan(root.url)
   }
 
   public func reserveRecording(
@@ -115,15 +157,19 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
       throw RecordingError.alreadyRecording
     }
 
-    let root = try await recordingRoot()
-    let securityScopedRoot: URL?
-    if root.directory.kind == .userSelected {
-      guard await dependencies.scopeAccess.startAccessing(root.url) else {
-        throw RecordingError.authoritativeDirectoryUnavailable
-      }
-      securityScopedRoot = root.url
-    } else {
-      securityScopedRoot = nil
+    let root: ResolvedRoot
+    do {
+      root = try await recordingRoot()
+    } catch {
+      throw RecordingError.authoritativeDirectoryUnavailable
+    }
+    guard await dependencies.scopeAccess.startAccessing(root.url) else {
+      throw RecordingError.authoritativeDirectoryUnavailable
+    }
+    let securityScopedRoot = root.url
+    guard isDirectory(root.url) else {
+      await dependencies.scopeAccess.stopAccessing(securityScopedRoot)
+      throw RecordingError.authoritativeDirectoryUnavailable
     }
 
     do {
@@ -157,9 +203,7 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
       )
       return reservation
     } catch {
-      if let securityScopedRoot {
-        await dependencies.scopeAccess.stopAccessing(securityScopedRoot)
-      }
+      await dependencies.scopeAccess.stopAccessing(securityScopedRoot)
       throw error as? RecordingError ?? .authoritativeDirectoryUnavailable
     }
   }
@@ -336,6 +380,68 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
     }
   }
 
+  public func beginTranscriptionAccess(
+    meetingID: MeetingID,
+    recordingURL: URL
+  ) async throws -> URL {
+    guard !transcriptionAccessMeetings.contains(meetingID) else {
+      guard let resolved = transcriptionRecordingURLs[meetingID] else {
+        throw TranscriptError.recordingUnavailable
+      }
+      return resolved
+    }
+    let root: ResolvedRoot
+    do {
+      root = try await recordingRoot()
+    } catch {
+      throw TranscriptError.recordingUnavailable
+    }
+    let rootComponents = root.url.standardizedFileURL.pathComponents
+    let resolvedRecordingURL = root.url.appending(
+      path: "meeting-\(meetingID.rawValue.uuidString.lowercased())",
+      directoryHint: .isDirectory
+    ).appending(path: "recording.m4a")
+    let storedParentName = recordingURL.deletingLastPathComponent().lastPathComponent
+    guard
+      recordingURL.isFileURL,
+      recordingURL.lastPathComponent == "recording.m4a",
+      storedParentName
+        == "meeting-\(meetingID.rawValue.uuidString.lowercased())",
+      resolvedRecordingURL.standardizedFileURL.pathComponents.count
+        > rootComponents.count
+    else {
+      throw TranscriptError.recordingUnavailable
+    }
+
+    guard await dependencies.scopeAccess.startAccessing(root.url) else {
+      throw TranscriptError.recordingUnavailable
+    }
+    let scopedRoot = root.url
+    guard isDirectory(root.url) else {
+      await dependencies.scopeAccess.stopAccessing(scopedRoot)
+      throw TranscriptError.recordingUnavailable
+    }
+
+    guard FileManager.default.fileExists(atPath: resolvedRecordingURL.path) else {
+      await dependencies.scopeAccess.stopAccessing(scopedRoot)
+      throw TranscriptError.recordingUnavailable
+    }
+    transcriptionAccessMeetings.insert(meetingID)
+    transcriptionScopedRoots[meetingID] = scopedRoot
+    transcriptionRecordingURLs[meetingID] = resolvedRecordingURL
+    return resolvedRecordingURL
+  }
+
+  public func endTranscriptionAccess(meetingID: MeetingID) async {
+    guard transcriptionAccessMeetings.remove(meetingID) != nil else {
+      return
+    }
+    if let root = transcriptionScopedRoots.removeValue(forKey: meetingID) {
+      await dependencies.scopeAccess.stopAccessing(root)
+    }
+    transcriptionRecordingURLs[meetingID] = nil
+  }
+
   private var scanner: MeetingDirectoryScanner {
     MeetingDirectoryScanner(
       ubiquitousStatus: dependencies.ubiquitousStatus
@@ -343,13 +449,10 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
   }
 
   private func recordingRoot() async throws -> ResolvedRoot {
-    let directory: AuthoritativeDirectory
-    if let selected = try await restoreSelectedDirectory() {
-      directory = selected
-    } else {
-      directory = try await resolveDefaultDirectory()
+    guard let directory = try await restoreSelectedDirectory() else {
+      throw RecordingError.authoritativeDirectoryUnavailable
     }
-    guard let root = resolvedRoots[directory.id], isDirectory(root.url) else {
+    guard let root = resolvedRoots[directory.id] else {
       throw RecordingError.authoritativeDirectoryUnavailable
     }
     return root
@@ -357,17 +460,41 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
 
   private func selectedDirectory(
     url: URL,
-    bookmark: Data
+    id: UUID
   ) -> AuthoritativeDirectory {
-    let digest = SHA256.hash(data: bookmark)
-      .prefix(16)
-      .map { String(format: "%02x", $0) }
-      .joined()
     return AuthoritativeDirectory(
-      id: AuthoritativeDirectoryID(rawValue: "selected-\(digest)"),
+      id: AuthoritativeDirectoryID(rawValue: id.uuidString.lowercased()),
       displayName: url.lastPathComponent,
       kind: .userSelected
     )
+  }
+
+  private func decodeAuthorization(
+    _ data: Data
+  ) -> (id: UUID, bookmark: Data, requiresMigration: Bool) {
+    if let persisted = try? JSONDecoder().decode(
+      PersistedDirectoryAuthorization.self,
+      from: data
+    ), persisted.schemaVersion == 1 {
+      return (persisted.id, persisted.bookmark, false)
+    }
+    return (UUID(), data, true)
+  }
+
+  private func existingDirectoryID(matching url: URL) async -> UUID? {
+    guard let data = await dependencies.bookmarkStore.load() else {
+      return nil
+    }
+    let persisted = decodeAuthorization(data)
+    guard
+      let resolved = try? dependencies.bookmarkCodec.resolve(
+        persisted.bookmark
+      ),
+      resolved.url.standardizedFileURL == url.standardizedFileURL
+    else {
+      return nil
+    }
+    return persisted.id
   }
 
   private func isDirectory(_ url: URL) -> Bool {
@@ -395,6 +522,7 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
 }
 
 extension MeetingFileStore: RecordingFileStore {}
+extension MeetingFileStore: RecordingAssetAccess {}
 
 extension JSONEncoder {
   fileprivate static var quillvaultManifest: JSONEncoder {

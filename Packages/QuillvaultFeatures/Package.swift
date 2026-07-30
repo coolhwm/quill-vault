@@ -41,7 +41,9 @@ let package = Package(
     .target(
       name: "SettingsFeature",
       dependencies: [
-        .product(name: "DesignSystem", package: "QuillvaultDesignSystem")
+        .product(name: "DesignSystem", package: "QuillvaultDesignSystem"),
+        .product(name: "Application", package: "QuillvaultCore"),
+        .product(name: "Domain", package: "QuillvaultCore"),
       ]
     ),
     .testTarget(
@@ -60,6 +62,14 @@ let package = Package(
       name: "MeetingsFeatureTests",
       dependencies: [
         "MeetingsFeature",
+        .product(name: "Application", package: "QuillvaultCore"),
+        .product(name: "Domain", package: "QuillvaultCore"),
+      ]
+    ),
+    .testTarget(
+      name: "SettingsFeatureTests",
+      dependencies: [
+        "SettingsFeature",
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),
       ]

@@ -1,5 +1,4 @@
 public enum DirectoryAccessError: Error, Equatable, Sendable {
-  case iCloudUnavailable
   case bookmarkMissing
   case bookmarkStale
   case permissionDenied

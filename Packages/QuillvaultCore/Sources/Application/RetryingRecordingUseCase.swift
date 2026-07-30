@@ -1,3 +1,5 @@
+import Domain
+
 public actor RetryingRecordingUseCase: RecordingUseCase {
   public typealias Factory = @Sendable () async throws -> any RecordingUseCase
 
@@ -20,6 +22,16 @@ public actor RetryingRecordingUseCase: RecordingUseCase {
 
   public func start() async throws -> RecordingSnapshot {
     try await resolve().start()
+  }
+
+  public func liveTranscript(
+    meetingID: MeetingID
+  ) async -> AsyncStream<LiveTranscriptSnapshot> {
+    do {
+      return try await resolve().liveTranscript(meetingID: meetingID)
+    } catch {
+      return AsyncStream { $0.finish() }
+    }
   }
 
   public func stop() async throws -> RecordingCompletion {

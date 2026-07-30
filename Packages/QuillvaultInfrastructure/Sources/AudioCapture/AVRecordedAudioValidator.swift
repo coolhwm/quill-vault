@@ -16,7 +16,8 @@ struct AVRecordedAudioValidator: RecordedAudioValidating {
     let audio = RecordedAudio(
       durationSeconds: duration,
       packetCount: packetCount,
-      byteCount: byteCount
+      byteCount: byteCount,
+      fileURL: url
     )
     guard audio.isValid else {
       throw RecordingError.invalidRecordedAudio

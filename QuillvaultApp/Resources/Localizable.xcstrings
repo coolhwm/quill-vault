@@ -31,6 +31,54 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "记录面对面会议" } }
       }
     },
+    "home.directory.checking" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking meeting folder access…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查会议目录访问权限…" } }
+      }
+    },
+    "home.directory.choose" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose Meeting Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择会议目录" } }
+      }
+    },
+    "home.directory.required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a folder before recording. Quillvault will not create a private fallback." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音前请选择目录；Quillvault 不会创建私有回退副本。" } }
+      }
+    },
+    "home.directory.reauthorize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reauthorize Meeting Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新授权会议目录" } }
+      }
+    },
+    "home.directory.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check Folder Again" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新检查目录" } }
+      }
+    },
+    "home.directory.access.expired" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder access has expired. Reauthorize it before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "目录授权已失效，请重新授权后再录音。" } }
+      }
+    },
+    "home.directory.download.required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This folder is not available offline. Download it in Files, then check again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "该目录尚未下载到本机，请先在“文件”中下载，然后重新检查。" } }
+      }
+    },
+    "home.directory.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The meeting folder is temporarily unavailable. Check again before recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录暂不可用，请重新检查后再录音。" } }
+      }
+    },
     "recording.active" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording" } },
@@ -67,6 +115,30 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音操作未能完成，已有音频不会被覆盖。" } }
       }
     },
+    "recording.failure.transcription.assets" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Speech assets are not ready. Connect to the network and retry; the recording is safe." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语音识别资源尚未就绪，请联网后重试；录音已安全保留。" } }
+      }
+    },
+    "recording.failure.transcription.generic" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be completed. The recording is safe and can be retried." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿未能完成；录音已安全保留，可重试生成。" } }
+      }
+    },
+    "recording.failure.transcription.locale" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This transcription language is unavailable on this device. The recording is safe." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此设备不支持当前转写语言；录音已安全保留。" } }
+      }
+    },
+    "recording.failure.transcription.publish" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be published safely. The recording is safe; retry to finish." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿未能安全发布；录音已保留，请重试完成。" } }
+      }
+    },
     "recording.failure.invalid" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "The audio file did not pass duration and packet validation. Keep the app open and retry." } },
@@ -99,8 +171,8 @@
     },
     "recording.finishing" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Validating and saving audio…" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在校验并保存音频…" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Saving audio and completing transcript…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在保存音频并整理完整逐字稿…" } }
       }
     },
     "recording.navigation.title" : {
@@ -167,6 +239,18 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Stops capture, validates the audio container, duration, and packets, then saves the meeting." } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "停止采集，校验音频容器、时长和音频包后保存会议。" } }
+      }
+    },
+    "recording.transcript.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live transcript" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "实时逐字稿" } }
+      }
+    },
+    "recording.transcript.waiting" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Waiting for speech… The recording continues even if live text is delayed." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "等待语音…即使实时文字延迟，录音也会继续保存。" } }
       }
     },
     "minutes.empty.description" : {
@@ -259,16 +343,16 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录暂不可用" } }
       }
     },
-    "minutes.recovery.icloud.description" : {
+    "minutes.recovery.directory.description" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable iCloud Drive for Quillvault, or choose an Obsidian meeting folder." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请为 Quillvault 启用 iCloud Drive，或选择 Obsidian 中的会议目录。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a folder in iCloud Drive, Obsidian, On My iPhone, or another Files provider." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请选择 iCloud Drive、Obsidian、“我的 iPhone”或其他文件提供方中的目录。" } }
       }
     },
-    "minutes.recovery.icloud.title" : {
+    "minutes.recovery.directory.title" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "iCloud Drive is unavailable" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "iCloud Drive 不可用" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose your meeting folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择会议目录" } }
       }
     },
     "minutes.retry" : {
@@ -281,6 +365,54 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } }
+      }
+    },
+    "settings.directory.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录" } }
+      }
+    },
+    "settings.directory.checking" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking folder access…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查目录访问权限…" } }
+      }
+    },
+    "settings.directory.choose" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose or Reauthorize Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择或重新授权目录" } }
+      }
+    },
+    "settings.directory.current" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前目录" } }
+      }
+    },
+    "settings.directory.required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No meeting folder is authorized" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未授权会议目录" } }
+      }
+    },
+    "settings.directory.access.expired" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder access expired. Choose the folder again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "目录授权已失效，请重新选择目录。" } }
+      }
+    },
+    "settings.directory.download.required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder must be downloaded in Files before use." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "使用前请先在“文件”中下载该目录。" } }
+      }
+    },
+    "settings.directory.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting folder is temporarily unavailable." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议目录暂不可用。" } }
       }
     },
     "settings.local.first" : {

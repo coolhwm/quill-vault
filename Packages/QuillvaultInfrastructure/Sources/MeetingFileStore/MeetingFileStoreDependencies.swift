@@ -1,7 +1,6 @@
 import Foundation
 
 struct MeetingFileStoreDependencies: Sendable {
-  let defaultDirectoryProvider: any DefaultDirectoryProviding
   let bookmarkStore: any DirectoryBookmarkStoring
   let bookmarkCodec: any DirectoryBookmarkCoding
   let scopeAccess: any SecurityScopedResourceAccessing
@@ -11,7 +10,6 @@ struct MeetingFileStoreDependencies: Sendable {
 
   static func live() -> Self {
     Self(
-      defaultDirectoryProvider: ICloudDefaultDirectoryProvider(),
       bookmarkStore: UserDefaultsDirectoryBookmarkStore(),
       bookmarkCodec: FoundationDirectoryBookmarkCodec(),
       scopeAccess: FoundationSecurityScopedResourceAccess(),
@@ -26,8 +24,7 @@ struct MeetingFileStoreDependencies: Sendable {
   }
 
   static func testing(
-    defaultDirectory: URL? = nil,
-    defaultDirectoryProvider: (any DefaultDirectoryProviding)? = nil,
+    authorizedDirectory: URL? = nil,
     bookmarkStore: (any DirectoryBookmarkStoring)? = nil,
     bookmarkCodec: any DirectoryBookmarkCoding = PlainDirectoryBookmarkCodec(),
     scopeAccess: any SecurityScopedResourceAccessing =
@@ -39,30 +36,42 @@ struct MeetingFileStoreDependencies: Sendable {
       Int64.max
     }
   ) -> Self {
-    let resolvedDefaultDirectoryProvider: any DefaultDirectoryProviding
-    if let defaultDirectoryProvider {
-      resolvedDefaultDirectoryProvider = defaultDirectoryProvider
-    } else if let defaultDirectory {
-      resolvedDefaultDirectoryProvider = FixedDefaultDirectoryProvider(
-        url: defaultDirectory
+    let resolvedBookmarkStore: any DirectoryBookmarkStoring
+    if let bookmarkStore {
+      resolvedBookmarkStore = bookmarkStore
+    } else if let authorizedDirectory {
+      resolvedBookmarkStore = FixedDirectoryBookmarkStore(
+        data: try! bookmarkCodec.create(for: authorizedDirectory)
       )
     } else {
-      preconditionFailure(
-        "Tests must provide either defaultDirectory or defaultDirectoryProvider"
+      resolvedBookmarkStore = UserDefaultsDirectoryBookmarkStore(
+        suiteName: UUID().uuidString
       )
     }
 
     return Self(
-      defaultDirectoryProvider: resolvedDefaultDirectoryProvider,
-      bookmarkStore: bookmarkStore
-        ?? UserDefaultsDirectoryBookmarkStore(
-          suiteName: UUID().uuidString
-        ),
+      bookmarkStore: resolvedBookmarkStore,
       bookmarkCodec: bookmarkCodec,
       scopeAccess: scopeAccess,
       ubiquitousStatus: ubiquitousStatus,
       minimumRecordingCapacityBytes: minimumRecordingCapacityBytes,
       availableCapacity: availableCapacity
     )
+  }
+}
+
+private actor FixedDirectoryBookmarkStore: DirectoryBookmarkStoring {
+  private var data: Data?
+
+  init(data: Data) {
+    self.data = data
+  }
+
+  func load() -> Data? {
+    data
+  }
+
+  func save(_ data: Data) {
+    self.data = data
   }
 }

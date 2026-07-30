@@ -23,7 +23,6 @@ struct MeetingLibraryWorkflowTests {
 
     #expect(snapshot.directory == directory)
     #expect(snapshot.meetings == [meeting])
-    #expect(await directoryAccess.defaultResolutionCount == 0)
     #expect(await index.replacements == [[meeting]])
   }
 
@@ -41,15 +40,12 @@ struct MeetingLibraryWorkflowTests {
     await #expect(throws: DirectoryAccessError.bookmarkStale) {
       _ = try await workflow.restore()
     }
-    #expect(await directoryAccess.defaultResolutionCount == 0)
   }
 
-  @Test("Uses the default iCloud directory only when no user selection exists")
-  func usesDefaultOnlyWithoutSelection() async throws {
-    let defaultDirectory = AuthoritativeDirectory.fixture(kind: .iCloudDefault)
+  @Test("Requires explicit directory authorization when no selection exists")
+  func requiresSelectionWithoutFallback() async {
     let directoryAccess = DirectoryAccessStub(
       restoredDirectory: nil,
-      defaultDirectory: defaultDirectory,
       scanResult: .empty
     )
     let workflow = MeetingLibraryWorkflow(
@@ -57,10 +53,9 @@ struct MeetingLibraryWorkflowTests {
       catalog: MeetingCatalogStub()
     )
 
-    let snapshot = try await workflow.restore()
-
-    #expect(snapshot.directory == defaultDirectory)
-    #expect(await directoryAccess.defaultResolutionCount == 1)
+    await #expect(throws: DirectoryAccessError.bookmarkMissing) {
+      _ = try await workflow.restore()
+    }
   }
 
   @Test("Cancellation never replaces the existing meeting index")
@@ -86,7 +81,7 @@ struct MeetingLibraryWorkflowTests {
   func retriesInitialization() async throws {
     let attempts = LibraryFactoryAttempts()
     let snapshot = MeetingLibrarySnapshot(
-      directory: .fixture(kind: .iCloudDefault),
+      directory: .fixture(kind: .userSelected),
       meetings: [],
       diagnosticCount: 0
     )
@@ -108,7 +103,7 @@ struct MeetingLibraryWorkflowTests {
   func coalescesConcurrentInitialization() async throws {
     let attempts = LibraryFactoryAttempts()
     let snapshot = MeetingLibrarySnapshot(
-      directory: .fixture(kind: .iCloudDefault),
+      directory: .fixture(kind: .userSelected),
       meetings: [],
       diagnosticCount: 0
     )
@@ -143,22 +138,17 @@ struct MeetingLibraryWorkflowTests {
 
 private actor DirectoryAccessStub: AuthoritativeDirectoryAccess {
   private let restoredDirectory: AuthoritativeDirectory?
-  private let defaultDirectory: AuthoritativeDirectory
   private let restoreError: DirectoryAccessError?
   private let scanError: (any Error & Sendable)?
   private let scanResult: MeetingDirectoryScan
 
-  private(set) var defaultResolutionCount = 0
-
   init(
     restoredDirectory: AuthoritativeDirectory? = nil,
-    defaultDirectory: AuthoritativeDirectory = .fixture(kind: .iCloudDefault),
     restoreError: DirectoryAccessError? = nil,
     scanError: (any Error & Sendable)? = nil,
     scanResult: MeetingDirectoryScan
   ) {
     self.restoredDirectory = restoredDirectory
-    self.defaultDirectory = defaultDirectory
     self.restoreError = restoreError
     self.scanError = scanError
     self.scanResult = scanResult
@@ -169,11 +159,6 @@ private actor DirectoryAccessStub: AuthoritativeDirectoryAccess {
       throw restoreError
     }
     return restoredDirectory
-  }
-
-  func resolveDefaultDirectory() async throws -> AuthoritativeDirectory {
-    defaultResolutionCount += 1
-    return defaultDirectory
   }
 
   func authorizeSelectedDirectory(

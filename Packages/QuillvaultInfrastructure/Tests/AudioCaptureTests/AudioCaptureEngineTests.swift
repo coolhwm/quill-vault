@@ -77,6 +77,34 @@ struct AudioCaptureEngineTests {
     #expect(await files.cancelledIDs == [session.meetingID])
   }
 
+  @Test("Best-effort frames are exposed only for the active recording")
+  func exposesLiveFramesForActiveMeeting() async throws {
+    let expected = AudioFrame(
+      samples: Data([0, 0, 0, 0]),
+      sampleRate: 44_100,
+      channelCount: 1,
+      frameCount: 1,
+      startSeconds: 0
+    )
+    let files = RecordingFilesStub()
+    let drivers = DriverFactorySpy(frames: [expected])
+    let engine = makeEngine(files: files, drivers: drivers)
+    let session = RecordingSession.fixture()
+    _ = try await engine.start(session)
+
+    var received: [AudioFrame] = []
+    for await frame in await engine.liveFrames(meetingID: session.meetingID) {
+      received.append(frame)
+    }
+    var wrongMeetingFrames = 0
+    for await _ in await engine.liveFrames(meetingID: MeetingID(rawValue: UUID())) {
+      wrongMeetingFrames += 1
+    }
+
+    #expect(received == [expected])
+    #expect(wrongMeetingFrames == 0)
+  }
+
   @Test("Stopping validates audio and releases directory access")
   func stopValidatesAndFinishes() async throws {
     let audio = RecordedAudio(
@@ -326,11 +354,16 @@ private struct GrantedPermission: MicrophonePermissionAuthorizing {
 private final class DriverFactorySpy: @unchecked Sendable {
   private let lock = NSLock()
   private let startError: (any Error)?
+  private let capturedFrames: [AudioFrame]
   private var driverCount = 0
   private var stops = 0
 
-  init(startError: (any Error)? = nil) {
+  init(
+    startError: (any Error)? = nil,
+    frames: [AudioFrame] = []
+  ) {
     self.startError = startError
+    capturedFrames = frames
   }
 
   var count: Int {
@@ -347,6 +380,7 @@ private final class DriverFactorySpy: @unchecked Sendable {
     }
     return DriverStub(
       startError: startError,
+      frames: capturedFrames,
       didStop: { [weak self] in
         self?.lock.withLock {
           self?.stops += 1
@@ -358,13 +392,16 @@ private final class DriverFactorySpy: @unchecked Sendable {
 
 private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
   private let startError: (any Error)?
+  private let capturedFrames: [AudioFrame]
   private let didStop: @Sendable () -> Void
 
   init(
     startError: (any Error)?,
+    frames: [AudioFrame],
     didStop: @escaping @Sendable () -> Void
   ) {
     self.startError = startError
+    capturedFrames = frames
     self.didStop = didStop
   }
 
@@ -373,6 +410,15 @@ private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
       throw startError
     }
     return Date(timeIntervalSince1970: 1_722_470_400)
+  }
+
+  func frames() -> AsyncStream<AudioFrame> {
+    AsyncStream { continuation in
+      for frame in capturedFrames {
+        continuation.yield(frame)
+      }
+      continuation.finish()
+    }
   }
 
   func stop() {

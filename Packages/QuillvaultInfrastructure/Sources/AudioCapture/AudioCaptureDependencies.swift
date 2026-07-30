@@ -7,7 +7,14 @@ protocol MicrophonePermissionAuthorizing: Sendable {
 
 protocol AudioRecorderDriving: Sendable {
   func start(at url: URL) async throws -> Date
+  func frames() -> AsyncStream<AudioFrame>
   func stop()
+}
+
+extension AudioRecorderDriving {
+  func frames() -> AsyncStream<AudioFrame> {
+    AsyncStream { $0.finish() }
+  }
 }
 
 protocol RecordedAudioValidating: Sendable {

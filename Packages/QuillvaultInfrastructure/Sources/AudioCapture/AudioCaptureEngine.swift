@@ -22,7 +22,7 @@ public actor AudioCaptureEngine: AudioCapture {
   public init(fileStore: any RecordingFileStore) {
     files = fileStore
     permission = SystemMicrophonePermissionAuthorizer()
-    makeRecorder = { AVAudioRecorderDriver() }
+    makeRecorder = { AVAudioEngineRecorderDriver() }
     validator = AVRecordedAudioValidator()
   }
 
@@ -131,6 +131,19 @@ public actor AudioCaptureEngine: AudioCapture {
     activeCapture = nil
     completedRecordings[meetingID] = audio
     return audio
+  }
+
+  public func liveFrames(
+    meetingID: MeetingID
+  ) async -> AsyncStream<AudioFrame> {
+    guard
+      let activeCapture,
+      activeCapture.session.meetingID == meetingID,
+      !activeCapture.hasStopped
+    else {
+      return AsyncStream { $0.finish() }
+    }
+    return activeCapture.recorder.frames()
   }
 
   public func cancel(meetingID: MeetingID) async {

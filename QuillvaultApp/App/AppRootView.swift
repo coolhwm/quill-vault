@@ -8,6 +8,7 @@ struct AppRootView: View {
   @Bindable var router: AppRouter
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
+  let settingsModel: SettingsModel
 
   var body: some View {
     TabView(selection: $router.selectedTab) {
@@ -28,7 +29,7 @@ struct AppRootView: View {
       .tag(AppTab.minutes)
 
       NavigationStack {
-        SettingsView()
+        SettingsView(model: settingsModel)
       }
       .tabItem {
         Label("tab.settings", systemImage: AppTab.settings.systemImage)
@@ -36,5 +37,17 @@ struct AppRootView: View {
       .tag(AppTab.settings)
     }
     .tint(.accentColor)
+    .onChange(of: router.selectedTab) { _, selectedTab in
+      Task {
+        switch selectedTab {
+        case .home:
+          await recordingModel.refreshDirectory()
+        case .minutes:
+          await meetingsModel.load()
+        case .settings:
+          await settingsModel.load()
+        }
+      }
+    }
   }
 }

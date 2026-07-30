@@ -135,7 +135,7 @@ extension MeetingLibraryRecovery {
   fileprivate var titleKey: LocalizedStringKey {
     switch self {
     case .chooseDirectory:
-      "minutes.recovery.icloud.title"
+      "minutes.recovery.directory.title"
     case .renewAccess:
       "minutes.recovery.access.title"
     case .downloadRequired:
@@ -148,7 +148,7 @@ extension MeetingLibraryRecovery {
   fileprivate var descriptionKey: LocalizedStringKey {
     switch self {
     case .chooseDirectory:
-      "minutes.recovery.icloud.description"
+      "minutes.recovery.directory.description"
     case .renewAccess:
       "minutes.recovery.access.description"
     case .downloadRequired:

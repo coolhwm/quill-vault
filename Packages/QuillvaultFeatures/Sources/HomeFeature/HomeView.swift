@@ -1,8 +1,11 @@
+import Application
 import DesignSystem
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct HomeView: View {
   @Bindable private var model: HomeRecordingModel
+  @State private var isDirectoryImporterPresented = false
 
   public init(model: HomeRecordingModel) {
     self.model = model
@@ -25,6 +28,9 @@ public struct HomeView: View {
       ),
       model: model
     )
+    .task {
+      await model.restore()
+    }
     .alert(
       "recording.notice.title",
       isPresented: $model.isRecordingNoticePresented
@@ -37,6 +43,18 @@ public struct HomeView: View {
       Button("recording.notice.cancel", role: .cancel) {}
     } message: {
       Text("recording.notice.message")
+    }
+    .fileImporter(
+      isPresented: $isDirectoryImporterPresented,
+      allowedContentTypes: [.folder],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else {
+        return
+      }
+      Task {
+        await model.selectDirectory(opaqueReference: url.absoluteString)
+      }
     }
   }
 
@@ -63,15 +81,22 @@ public struct HomeView: View {
         .foregroundStyle(.secondary)
 
       Button {
-        Task {
-          await model.start()
+        switch directoryRecovery {
+        case .chooseDirectory, .renewAccess:
+          isDirectoryImporterPresented = true
+        case .downloadRequired, .tryAgain:
+          Task {
+            await model.refreshDirectory()
+          }
+        case nil:
+          Task {
+            await model.start()
+          }
         }
       } label: {
         Label(
-          model.state == .starting
-            ? "recording.starting"
-            : "recording.start",
-          systemImage: "record.circle"
+          recordingActionTitle,
+          systemImage: recordingActionSystemImage
         )
         .font(.headline)
         .frame(maxWidth: .infinity)
@@ -82,10 +107,60 @@ public struct HomeView: View {
       .disabled(model.state == .starting)
       .accessibilityIdentifier("recording.start")
       .accessibilityHint("recording.start.hint")
+
+      directoryStatus
     }
     .padding(QuillvaultSpacing.spacious)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(.regularMaterial, in: .rect(cornerRadius: 24))
+  }
+
+  private var recordingActionTitle: LocalizedStringKey {
+    switch directoryRecovery {
+    case .chooseDirectory:
+      return "home.directory.choose"
+    case .renewAccess:
+      return "home.directory.reauthorize"
+    case .downloadRequired, .tryAgain:
+      return "home.directory.retry"
+    case nil:
+      return model.state == .starting
+        ? "recording.starting"
+        : "recording.start"
+    }
+  }
+
+  private var recordingActionSystemImage: String {
+    switch directoryRecovery {
+    case .chooseDirectory, .renewAccess:
+      "folder.badge.plus"
+    case .downloadRequired, .tryAgain:
+      "arrow.clockwise"
+    case nil:
+      "record.circle"
+    }
+  }
+
+  private var directoryRecovery: AuthoritativeDirectoryRecovery? {
+    guard case .recoveryRequired(let recovery) = model.directoryState else {
+      return nil
+    }
+    return recovery
+  }
+
+  @ViewBuilder
+  private var directoryStatus: some View {
+    switch model.directoryState {
+    case .checking:
+      Label("home.directory.checking", systemImage: "folder")
+        .foregroundStyle(.secondary)
+    case .recoveryRequired(let recovery):
+      Label(recovery.homeStatusKey, systemImage: "exclamationmark.folder")
+        .foregroundStyle(.orange)
+    case .authorized(let directory):
+      Label(directory.displayName, systemImage: "folder.fill")
+        .foregroundStyle(.secondary)
+    }
   }
 
   @ViewBuilder
@@ -117,6 +192,21 @@ public struct HomeView: View {
       }
     case .idle, .starting, .recording, .finishing, .finishFailed:
       EmptyView()
+    }
+  }
+}
+
+extension AuthoritativeDirectoryRecovery {
+  fileprivate var homeStatusKey: LocalizedStringKey {
+    switch self {
+    case .chooseDirectory:
+      "home.directory.required"
+    case .renewAccess:
+      "home.directory.access.expired"
+    case .downloadRequired:
+      "home.directory.download.required"
+    case .tryAgain:
+      "home.directory.unavailable"
     }
   }
 }

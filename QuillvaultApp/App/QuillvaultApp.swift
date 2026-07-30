@@ -9,7 +9,8 @@ struct QuillvaultApp: App {
       AppRootView(
         router: compositionRoot.router,
         recordingModel: compositionRoot.recordingModel,
-        meetingsModel: compositionRoot.meetingsModel
+        meetingsModel: compositionRoot.meetingsModel,
+        settingsModel: compositionRoot.settingsModel
       )
     }
   }

@@ -71,7 +71,7 @@ MVP 仅交付 OpenAI-compatible Provider，但业务层通过 Provider 边界与
 53. As a privacy-conscious user, I want only transcript text sent to my selected BYOK endpoint, so that audio and local paths never leave the device.
 54. As a user, I want the target domain and possible provider cost disclosed, so that BYOK data flow is informed.
 55. As an Obsidian user, I want my selected Vault subdirectory to be authoritative, so that Quillvault does not create a private duplicate.
-56. As an iCloud user, I want a default Quillvault directory, so that the App works without Obsidian setup.
+56. As a first-time user, I want to authorize an external folder before recording, so that Quillvault never silently stores meetings in a private fallback location.
 57. As a user, I want recording, transcript, and minutes stored as ordinary files, so that they remain readable outside Quillvault.
 58. As a user, I want history and search rebuilt from files, so that database loss cannot erase meetings.
 59. As a user, I want external Markdown edits detected and reindexed, so that in-App state reflects authoritative files.

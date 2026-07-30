@@ -15,7 +15,7 @@ struct MeetingLibraryIntegrationTests {
     let bookmarks = IntegrationBookmarkStore()
     let fileStore = MeetingFileStore(
       dependencies: .testing(
-        defaultDirectory: fixture.root,
+        authorizedDirectory: fixture.root,
         bookmarkStore: bookmarks
       )
     )
@@ -35,7 +35,7 @@ struct MeetingLibraryIntegrationTests {
 
     let restoredFileStore = MeetingFileStore(
       dependencies: .testing(
-        defaultDirectory: fixture.root,
+        authorizedDirectory: fixture.root,
         bookmarkStore: bookmarks
       )
     )
@@ -57,7 +57,7 @@ struct MeetingLibraryIntegrationTests {
     let bookmarks = IntegrationBookmarkStore()
     let firstFileStore = MeetingFileStore(
       dependencies: .testing(
-        defaultDirectory: fixture.root,
+        authorizedDirectory: fixture.root,
         bookmarkStore: bookmarks
       )
     )
@@ -81,7 +81,7 @@ struct MeetingLibraryIntegrationTests {
     let rebuilt = try await MeetingLibraryWorkflow(
       directoryAccess: MeetingFileStore(
         dependencies: .testing(
-          defaultDirectory: fixture.root,
+          authorizedDirectory: fixture.root,
           bookmarkStore: bookmarks
         )
       ),

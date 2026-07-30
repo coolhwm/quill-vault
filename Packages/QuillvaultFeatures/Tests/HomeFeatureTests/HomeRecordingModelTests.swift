@@ -11,7 +11,10 @@ struct HomeRecordingModelTests {
   @Test("Successful start presents the recording session")
   func startPresentsSession() async {
     let useCase = RecordingUseCaseStub()
-    let model = HomeRecordingModel(recording: useCase)
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
 
     await model.start()
 
@@ -22,7 +25,10 @@ struct HomeRecordingModelTests {
   @Test("First recording presents notice before retrying start")
   func noticeIsAcknowledged() async {
     let useCase = RecordingUseCaseStub(startErrors: [.recordingConsentRequired])
-    let model = HomeRecordingModel(recording: useCase)
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
 
     await model.start()
     #expect(model.isRecordingNoticePresented)
@@ -35,7 +41,10 @@ struct HomeRecordingModelTests {
   @Test("Stop failure keeps the focused screen available for retry")
   func stopFailureCanRetry() async {
     let useCase = RecordingUseCaseStub(stopError: .recordingWriteFailed)
-    let model = HomeRecordingModel(recording: useCase)
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
     await model.start()
 
     await model.stop()
@@ -49,7 +58,10 @@ struct HomeRecordingModelTests {
   @Test("Invalid audio exits the recording screen without claiming success")
   func invalidAudioExitsFocusedScreen() async {
     let useCase = RecordingUseCaseStub(stopError: .invalidRecordedAudio)
-    let model = HomeRecordingModel(recording: useCase)
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
     await model.start()
 
     await model.stop()
@@ -57,19 +69,90 @@ struct HomeRecordingModelTests {
     #expect(model.state == .startFailed(.invalidRecordedAudio))
     #expect(!model.isSessionPresented)
   }
+
+  @Test("Live transcript projection follows the use-case stream")
+  func liveTranscriptProjection() async {
+    let useCase = RecordingUseCaseStub(
+      liveSnapshots: [
+        LiveTranscriptSnapshot(
+          finalSegments: [
+            TranscriptSegmentCandidate(
+              startSeconds: 0,
+              endSeconds: 1,
+              text: "已确认"
+            )
+          ],
+          volatileSegment: TranscriptSegmentCandidate(
+            startSeconds: 1,
+            endSeconds: 2,
+            text: "临时"
+          )
+        )
+      ]
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.start()
+    while model.liveTranscriptText.isEmpty {
+      await Task.yield()
+    }
+
+    #expect(model.liveTranscriptText == "已确认\n临时")
+  }
+
+  @Test("Missing directory authorization prevents recording")
+  func directoryAuthorizationPrecedesRecording() async {
+    let recording = RecordingUseCaseStub()
+    let model = HomeRecordingModel(
+      recording: recording,
+      directory: AuthoritativeDirectoryUseCaseStub(
+        restoreError: .bookmarkMissing
+      )
+    )
+
+    await model.restore()
+    await model.start()
+
+    #expect(model.directoryState == .recoveryRequired(.chooseDirectory))
+    #expect(await recording.startCount == 0)
+  }
+
+  @Test("Lost directory access presents reauthorization after start fails")
+  func lostDirectoryAccessRequiresReauthorization() async {
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(
+        startErrors: [.authoritativeDirectoryUnavailable]
+      ),
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+
+    await model.start()
+
+    #expect(model.directoryState == .recoveryRequired(.renewAccess))
+    #expect(
+      model.state == .startFailed(.authoritativeDirectoryUnavailable)
+    )
+  }
 }
 
 private actor RecordingUseCaseStub: RecordingUseCase {
   private var startErrors: [RecordingError]
   private let stopError: RecordingError?
+  private let liveSnapshots: [LiveTranscriptSnapshot]
   private(set) var acknowledgementCount = 0
+  private(set) var startCount = 0
 
   init(
     startErrors: [RecordingError] = [],
-    stopError: RecordingError? = nil
+    stopError: RecordingError? = nil,
+    liveSnapshots: [LiveTranscriptSnapshot] = []
   ) {
     self.startErrors = startErrors
     self.stopError = stopError
+    self.liveSnapshots = liveSnapshots
   }
 
   func restore() async throws -> RecordingSnapshot? {
@@ -81,6 +164,7 @@ private actor RecordingUseCaseStub: RecordingUseCase {
   }
 
   func start() async throws -> RecordingSnapshot {
+    startCount += 1
     if !startErrors.isEmpty {
       throw startErrors.removeFirst()
     }
@@ -103,6 +187,47 @@ private actor RecordingUseCaseStub: RecordingUseCase {
       )
     )
   }
+
+  func liveTranscript(
+    meetingID: MeetingID
+  ) -> AsyncStream<LiveTranscriptSnapshot> {
+    let snapshots = liveSnapshots
+    return AsyncStream { continuation in
+      for snapshot in snapshots {
+        continuation.yield(snapshot)
+      }
+      continuation.finish()
+    }
+  }
+}
+
+private struct AuthoritativeDirectoryUseCaseStub: AuthoritativeDirectoryUseCase {
+  let restoreError: DirectoryAccessError?
+
+  init(restoreError: DirectoryAccessError? = nil) {
+    self.restoreError = restoreError
+  }
+
+  func restore() async throws -> AuthoritativeDirectory? {
+    if let restoreError {
+      throw restoreError
+    }
+    return .fixture
+  }
+
+  func authorize(
+    _ selection: AuthoritativeDirectorySelection
+  ) async throws -> AuthoritativeDirectory {
+    .fixture
+  }
+}
+
+extension AuthoritativeDirectory {
+  fileprivate static let fixture = Self(
+    id: AuthoritativeDirectoryID(rawValue: "test-directory"),
+    displayName: "Vault",
+    kind: .userSelected
+  )
 }
 
 extension RecordingSession {
