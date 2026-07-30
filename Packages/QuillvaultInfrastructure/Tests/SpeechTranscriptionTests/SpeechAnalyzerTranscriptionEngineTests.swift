@@ -1,3 +1,4 @@
+import AVFAudio
 import Domain
 import Foundation
 @preconcurrency import Speech
@@ -60,6 +61,46 @@ struct SpeechAnalyzerTranscriptionEngineTests {
       )
 
       _ = try await engine.prepare(localeIdentifier: "en-US")
+    }
+  }
+
+  @Test("Live conversion preserves continuity across microphone buffers")
+  func liveConversionPreservesContinuity() throws {
+    if #available(iOS 26.0, macOS 26.0, *) {
+      let sourceFormat = try #require(
+        AVAudioFormat(
+          commonFormat: .pcmFormatFloat32,
+          sampleRate: 48_000,
+          channels: 1,
+          interleaved: true
+        )
+      )
+      let targetFormat = try #require(
+        AVAudioFormat(
+          commonFormat: .pcmFormatFloat32,
+          sampleRate: 16_000,
+          channels: 1,
+          interleaved: false
+        )
+      )
+      let converter = StreamingAudioBufferConverter(
+        targetFormat: targetFormat
+      )
+      var convertedFrames = 0
+
+      for _ in 0..<10 {
+        let input = try #require(
+          AVAudioPCMBuffer(
+            pcmFormat: sourceFormat,
+            frameCapacity: 2_048
+          )
+        )
+        input.frameLength = 2_048
+        convertedFrames += Int(try converter.convert(input).frameLength)
+      }
+
+      let expectedFrames = Double(10 * 2_048) / 3
+      #expect(abs(Double(convertedFrames) - expectedFrames) < 12)
     }
   }
 

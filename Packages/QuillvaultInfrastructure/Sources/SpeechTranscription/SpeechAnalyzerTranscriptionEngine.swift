@@ -1,5 +1,4 @@
 import AVFAudio
-import CoreMedia
 import Domain
 import Foundation
 import Speech
@@ -30,6 +29,9 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
     }
     let analyzerInputs = AsyncStream<AnalyzerInput> { continuation in
       let task = Task {
+        let converter = StreamingAudioBufferConverter(
+          targetFormat: analyzerFormat
+        )
         for await frame in frames {
           guard !Task.isCancelled else {
             break
@@ -38,19 +40,8 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
             guard let sourceBuffer = Self.makeBuffer(frame) else {
               continue
             }
-            let buffer = try Self.convert(
-              sourceBuffer,
-              to: analyzerFormat
-            )
-            continuation.yield(
-              AnalyzerInput(
-                buffer: buffer,
-                bufferStartTime: CMTime(
-                  seconds: frame.startSeconds,
-                  preferredTimescale: 1_000_000
-                )
-              )
-            )
+            let buffer = try converter.convert(sourceBuffer)
+            continuation.yield(AnalyzerInput(buffer: buffer))
           } catch {
             continuation.finish()
             return
@@ -240,19 +231,28 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
     return buffer
   }
 
-  private static func convert(
-    _ source: AVAudioPCMBuffer,
-    to targetFormat: AVAudioFormat
-  ) throws -> AVAudioPCMBuffer {
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+final class StreamingAudioBufferConverter: @unchecked Sendable {
+  private let targetFormat: AVAudioFormat
+  private var converter: AVAudioConverter?
+
+  init(targetFormat: AVAudioFormat) {
+    self.targetFormat = targetFormat
+  }
+
+  func convert(_ source: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
     if source.format == targetFormat {
       return source
     }
-    guard
-      let converter = AVAudioConverter(
+    if converter?.inputFormat != source.format {
+      converter = AVAudioConverter(
         from: source.format,
         to: targetFormat
       )
-    else {
+    }
+    guard let converter else {
       throw TranscriptError.recognitionFailed
     }
     let ratio = targetFormat.sampleRate / source.format.sampleRate
