@@ -39,6 +39,7 @@ struct AppRootView: View {
       .tag(AppTab.settings)
     }
     .tint(.accentColor)
+    .preferredColorScheme(interfaceStyleOverride)
     .onChange(of: router.selectedTab) { _, selectedTab in
       Task {
         switch selectedTab {
@@ -59,5 +60,15 @@ struct AppRootView: View {
         await lifecycleCoordinator.didBecomeActive()
       }
     }
+  }
+
+  private var interfaceStyleOverride: ColorScheme? {
+    if ProcessInfo.processInfo.arguments.contains("-ui-test-dark-mode") {
+      return .dark
+    }
+    if ProcessInfo.processInfo.arguments.contains("-ui-test-light-mode") {
+      return .light
+    }
+    return nil
   }
 }

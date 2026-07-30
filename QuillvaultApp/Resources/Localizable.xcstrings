@@ -643,6 +643,156 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不自动统计或上传" } }
       }
     },
+    "minutes.detail.diagram" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagram" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图示" } }
+      }
+    },
+    "minutes.card.default.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议录音" } }
+      }
+    },
+    "minutes.detail.diagram.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A diagram will appear after minutes are generated." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成后将在此显示图示。" } }
+      }
+    },
+    "minutes.detail.download.required" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Download this file in Files, then try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先在“文件”中下载此文件，然后重试。" } }
+      }
+    },
+    "minutes.detail.failed.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The meeting folder could not be read. Return to the list and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法读取会议目录，请返回列表后重试。" } }
+      }
+    },
+    "minutes.detail.failed.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议暂不可用" } }
+      }
+    },
+    "minutes.detail.loading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading meeting…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在载入会议…" } }
+      }
+    },
+    "minutes.detail.navigation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议详情" } }
+      }
+    },
+    "minutes.detail.recording" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音" } }
+      }
+    },
+    "minutes.detail.recording.missing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The recording file is missing. Restore it to this meeting folder, then reopen the meeting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音文件缺失。请将其恢复到此会议目录后重新打开会议。" } }
+      }
+    },
+    "minutes.detail.recording.pause" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pause" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂停" } }
+      }
+    },
+    "minutes.detail.recording.play" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "播放" } }
+      }
+    },
+    "minutes.detail.recording.playback.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Playback failed. Check the file and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "播放失败，请检查文件后重试。" } }
+      }
+    },
+    "minutes.detail.recording.unreadable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This recording cannot be read. Restore a valid copy, then reopen the meeting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法读取此录音。请恢复有效文件后重新打开会议。" } }
+      }
+    },
+    "minutes.detail.summary" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Summary" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要" } }
+      }
+    },
+    "minutes.detail.summary.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes have not been generated yet. The text record and recording remain available." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要尚未生成，文字记录和录音仍可使用。" } }
+      }
+    },
+    "minutes.detail.summary.unreadable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The minutes file cannot be read." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法读取纪要文件。" } }
+      }
+    },
+    "minutes.detail.transcript" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Text record" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录" } }
+      }
+    },
+    "minutes.detail.transcript.empty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No speech was recognized in this recording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本次录音未识别到人声。" } }
+      }
+    },
+    "minutes.detail.transcript.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The text record is still being prepared." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录仍在处理中。" } }
+      }
+    },
+    "minutes.detail.transcript.seek %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play at %@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "从 %@ 开始播放" } }
+      }
+    },
+    "minutes.detail.transcript.unreadable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The text record cannot be read." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法读取文字记录。" } }
+      }
+    },
+    "minutes.status.awaiting.minutes" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Awaiting minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "待生成纪要" } }
+      }
+    },
+    "minutes.status.awaiting.transcript" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preparing text record" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录处理中" } }
+      }
+    },
+    "minutes.status.completed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes completed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已完成" } }
+      }
+    },
     "tab.home" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },

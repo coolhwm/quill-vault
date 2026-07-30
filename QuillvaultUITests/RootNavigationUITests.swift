@@ -104,6 +104,87 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["recording.stop"].isHittable)
   }
 
+  func testLongMeetingDetailKeepsTranscriptAndAudioUsableWithoutMinutes() {
+    launch(
+      language: "zh-Hans",
+      locale: "zh_CN",
+      extraArguments: [
+        "-ui-test-meeting-detail",
+        "-ui-test-dark-mode",
+        "-UIPreferredContentSizeCategoryName",
+        "UICTContentSizeCategoryAccessibilityXXXL",
+      ]
+    )
+
+    app.tabBars.buttons["纪要"].tap()
+    let meeting = screen(
+      "minutes.meeting.EBD72F04-E276-4590-A7F4-B0DA07685418"
+    )
+    XCTAssertTrue(meeting.waitForExistence(timeout: 2))
+    meeting.tap()
+
+    XCTAssertTrue(app.navigationBars["会议详情"].waitForExistence(timeout: 2))
+    XCTAssertTrue(app.staticTexts["纪要尚未生成，文字记录和录音仍可使用。"].exists)
+    let detailSnapshot = XCTAttachment(
+      screenshot: app.screenshot()
+    )
+    detailSnapshot.name = "meeting-detail-dark-maximum-text"
+    detailSnapshot.lifetime = .keepAlways
+    add(detailSnapshot)
+    let recordingToggle = app.buttons["播放"]
+    for _ in 0..<10 where !recordingToggle.isHittable {
+      app.swipeUp()
+    }
+    XCTAssertTrue(recordingToggle.isHittable)
+    recordingToggle.tap()
+    XCTAssertTrue(app.buttons["暂停"].waitForExistence(timeout: 2))
+    let transcriptHeading = app.staticTexts["文字记录"]
+    for _ in 0..<10 where !transcriptHeading.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(transcriptHeading.exists)
+    let anchoredSegment = app.buttons.matching(
+      NSPredicate(format: "label CONTAINS %@", "[000.0–001.0]")
+    ).firstMatch
+    for _ in 0..<10 where !anchoredSegment.isHittable {
+      app.swipeUp()
+    }
+    XCTAssertTrue(anchoredSegment.isHittable)
+    anchoredSegment.tap()
+    XCTAssertTrue(app.buttons["暂停"].exists)
+  }
+
+  func testEmptyEnglishLightMeetingDetailKeepsIndependentFallbacks() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-meeting-detail",
+        "-ui-test-meeting-detail-empty",
+        "-ui-test-light-mode",
+      ]
+    )
+
+    app.tabBars.buttons["Minutes"].tap()
+    let meeting = screen(
+      "minutes.meeting.EBD72F04-E276-4590-A7F4-B0DA07685418"
+    )
+    XCTAssertTrue(meeting.waitForExistence(timeout: 2))
+    meeting.tap()
+
+    XCTAssertTrue(app.navigationBars["Meeting"].waitForExistence(timeout: 2))
+    XCTAssertTrue(app.staticTexts["No speech was recognized in this recording."].exists)
+    XCTAssertTrue(
+      app.staticTexts[
+        "The recording file is missing. Restore it to this meeting folder, then reopen the meeting."
+      ].exists
+    )
+    let attachment = XCTAttachment(screenshot: app.screenshot())
+    attachment.name = "meeting-detail-light-empty-english"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
   private func launch(
     language: String,
     locale: String,
@@ -117,6 +198,9 @@ final class RootNavigationUITests: XCTestCase {
       ] + extraArguments
     if extraArguments.contains("-ui-test-recording") {
       app.launchEnvironment["QUILLVAULT_RECORDING_UI_TEST"] = "1"
+    }
+    if extraArguments.contains("-ui-test-meeting-detail") {
+      app.launchEnvironment["QUILLVAULT_MEETING_DETAIL_UI_TEST"] = "1"
     }
     app.launch()
   }

@@ -216,8 +216,95 @@ struct MeetingFileStoreTests {
     #expect(try fixture.snapshot() == before)
   }
 
-  @Test("An iCloud placeholder is not indexed and reports a recoverable error")
-  func iCloudPlaceholderStopsScan() async throws {
+  @Test("Rebuilds card title, duration, and model from authoritative Markdown")
+  func rebuildsMeetingCardMetadata() async throws {
+    let root = try TemporaryDirectory()
+    let meeting = root.url.appending(
+      path: "meeting-20260730-120000",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: meeting,
+      withIntermediateDirectories: true
+    )
+    let manifest = MeetingManifest(
+      meetingID: UUID(),
+      createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+    )
+    try JSONEncoder().encode(manifest).write(
+      to: meeting.appending(path: "meeting.json")
+    )
+    try Data(
+      """
+      audioDurationSeconds: 125.5
+      - [000.0–125.5] Text
+      """.utf8
+    ).write(to: meeting.appending(path: "transcript.md"))
+    try Data(
+      """
+      ---
+      title: "Weekly review"
+      model: test-model
+      ---
+
+      # Weekly review
+      """.utf8
+    ).write(to: meeting.appending(path: "minutes.md"))
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
+    )
+    let directory = try #require(await store.restoreSelectedDirectory())
+
+    let entry = try #require(
+      await store.scan(directory).meetings.first
+    )
+
+    #expect(entry.title == "Weekly review")
+    #expect(entry.durationSeconds == 125.5)
+    #expect(entry.modelName == "test-model")
+  }
+
+  @Test("Scans 2,000 transcript-backed recordings within the metadata budget")
+  func largeMetadataScan() async throws {
+    let root = try TemporaryDirectory()
+    let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let transcript = Data(
+      """
+      audioDurationSeconds: 60
+      - [000.0–060.0] Text
+      """.utf8
+    )
+    for index in 0..<2_000 {
+      let meeting = root.url.appending(
+        path: String(format: "meeting-20260730-%06d", index),
+        directoryHint: .isDirectory
+      )
+      try FileManager.default.createDirectory(
+        at: meeting,
+        withIntermediateDirectories: true
+      )
+      try JSONEncoder().encode(
+        MeetingManifest(meetingID: UUID(), createdAt: createdAt)
+      ).write(to: meeting.appending(path: "meeting.json"))
+      try transcript.write(to: meeting.appending(path: "transcript.md"))
+      try Data([0]).write(to: meeting.appending(path: "recording.m4a"))
+    }
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
+    )
+    let directory = try #require(await store.restoreSelectedDirectory())
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    let scan = try await store.scan(directory)
+
+    #expect(scan.meetings.count == 2_000)
+    #expect(startedAt.duration(to: clock.now) < .seconds(5))
+    #expect(scan.meetings.allSatisfy { $0.durationSeconds == 60 })
+  }
+
+  @Test("An iCloud recording placeholder keeps the meeting discoverable")
+  func iCloudRecordingPlaceholderKeepsMeetingDiscoverable() async throws {
     let fixture = try MeetingDirectoryFixture()
     let status = UbiquitousStatusStub(unavailableFileName: "recording.m4a")
     let store = MeetingFileStore(
@@ -228,9 +315,13 @@ struct MeetingFileStoreTests {
     )
     let directory = try #require(await store.restoreSelectedDirectory())
 
-    await #expect(throws: DirectoryAccessError.itemNotDownloaded) {
-      _ = try await store.scan(directory)
-    }
+    let scan = try await store.scan(directory)
+
+    #expect(scan.meetings.count == 1)
+    #expect(scan.meetings[0].assets.contains(.recording))
+    #expect(
+      scan.fingerprints.contains(where: { $0.asset == .recording }) == false
+    )
   }
 
   @Test("An undownloaded authoritative root blocks new writes")

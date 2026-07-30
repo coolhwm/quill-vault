@@ -17,7 +17,7 @@ public actor MeetingFileStore:
     }
   }
 
-  private struct ResolvedRoot: Sendable {
+  struct ResolvedRoot: Sendable {
     let url: URL
     let directory: AuthoritativeDirectory
   }
@@ -27,16 +27,17 @@ public actor MeetingFileStore:
     let securityScopedRoot: URL?
   }
 
-  private let dependencies: MeetingFileStoreDependencies
+  let dependencies: MeetingFileStoreDependencies
   private let coordinatedFiles: CoordinatedRecordingFileAccess
   private let captureEventStore: RecordingCaptureEventStore
   private let continuationTransaction: RecordingContinuationTransaction
-  private var resolvedRoots: [AuthoritativeDirectoryID: ResolvedRoot] = [:]
+  var resolvedRoots: [AuthoritativeDirectoryID: ResolvedRoot] = [:]
   private var recordingReservations: [MeetingID: ActiveRecordingReservation] = [:]
   private var continuationReservations: [MeetingID: RecordingContinuationReservation] = [:]
   private var transcriptionAccessMeetings = Set<MeetingID>()
   private var transcriptionScopedRoots: [MeetingID: URL] = [:]
   private var transcriptionRecordingURLs: [MeetingID: URL] = [:]
+  var playbackScopedRoots: [MeetingAudioSourceID: URL] = [:]
 
   public init() {
     let dependencies = MeetingFileStoreDependencies.live()
@@ -128,7 +129,8 @@ public actor MeetingFileStore:
   ) async throws -> AuthoritativeDirectory {
     guard
       recordingReservations.isEmpty,
-      transcriptionAccessMeetings.isEmpty
+      transcriptionAccessMeetings.isEmpty,
+      playbackScopedRoots.isEmpty
     else {
       throw DirectoryAccessError.coordinationFailed
     }
@@ -823,7 +825,7 @@ public actor MeetingFileStore:
     return matches.first
   }
 
-  private func isDirectory(_ url: URL) -> Bool {
+  func isDirectory(_ url: URL) -> Bool {
     var isDirectory: ObjCBool = false
     return FileManager.default.fileExists(
       atPath: url.path,

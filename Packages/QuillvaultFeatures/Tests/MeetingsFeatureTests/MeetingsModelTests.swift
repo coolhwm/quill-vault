@@ -11,7 +11,7 @@ struct MeetingsModelTests {
   @Test("Loads the cold-start library snapshot")
   func loadsSnapshot() async {
     let snapshot = MeetingLibrarySnapshot.fixture
-    let model = MeetingsModel(
+    let model = makeModel(
       library: MeetingLibraryUseCaseStub(restoreResult: .success(snapshot))
     )
 
@@ -24,7 +24,7 @@ struct MeetingsModelTests {
     "Maps a stale bookmark to explicit reauthorization instead of another directory"
   )
   func staleBookmarkRecovery() async {
-    let model = MeetingsModel(
+    let model = makeModel(
       library: MeetingLibraryUseCaseStub(
         restoreResult: .failure(DirectoryAccessError.bookmarkStale)
       )
@@ -37,7 +37,7 @@ struct MeetingsModelTests {
 
   @Test("Maps a missing bookmark to initial directory selection")
   func missingBookmarkRecovery() async {
-    let model = MeetingsModel(
+    let model = makeModel(
       library: MeetingLibraryUseCaseStub(
         restoreResult: .failure(DirectoryAccessError.bookmarkMissing)
       )
@@ -50,7 +50,7 @@ struct MeetingsModelTests {
 
   @Test("Maps an unavailable iCloud item to a download recovery")
   func iCloudDownloadRecovery() async {
-    let model = MeetingsModel(
+    let model = makeModel(
       library: MeetingLibraryUseCaseStub(
         restoreResult: .failure(DirectoryAccessError.itemNotDownloaded)
       )
@@ -64,7 +64,7 @@ struct MeetingsModelTests {
   @Test("A recording-only meeting can retry its durable transcript job")
   func retryPendingTranscript() async {
     let recovery = TranscriptionRecoveryUseCaseStub()
-    let model = MeetingsModel(
+    let model = makeModel(
       library: MeetingLibraryUseCaseStub(
         restoreResult: .success(.fixture)
       ),
@@ -80,6 +80,60 @@ struct MeetingsModelTests {
     #expect(model.recoveringMeetingID == nil)
     #expect(model.state == .loaded(.fixture))
   }
+
+  private func makeModel(
+    library: any MeetingLibraryUseCase,
+    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil
+  ) -> MeetingsModel {
+    MeetingsModel(
+      library: library,
+      transcriptionRecovery: transcriptionRecovery,
+      detail: UnusedMeetingDetailUseCase(),
+      makePlayer: {
+        UnusedMeetingAudioPlayer()
+      }
+    )
+  }
+}
+
+private struct UnusedMeetingDetailUseCase: MeetingDetailUseCase {
+  func load(
+    directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> MeetingDetail {
+    throw CancellationError()
+  }
+}
+
+@MainActor
+private final class UnusedMeetingAudioPlayer: MeetingAudioPlayer {
+  private let snapshotValue = MeetingAudioPlaybackSnapshot(
+    durationSeconds: 0,
+    currentSeconds: 0,
+    isPlaying: false
+  )
+
+  func load(_ asset: MeetingAudioAsset) async throws -> MeetingAudioPlaybackSnapshot {
+    snapshotValue
+  }
+
+  func play() throws -> MeetingAudioPlaybackSnapshot {
+    snapshotValue
+  }
+
+  func pause() -> MeetingAudioPlaybackSnapshot {
+    snapshotValue
+  }
+
+  func seek(to seconds: Double) throws -> MeetingAudioPlaybackSnapshot {
+    snapshotValue
+  }
+
+  func snapshot() -> MeetingAudioPlaybackSnapshot {
+    snapshotValue
+  }
+
+  func unload() async {}
 }
 
 private actor TranscriptionRecoveryUseCaseStub: TranscriptionRecoveryUseCase {

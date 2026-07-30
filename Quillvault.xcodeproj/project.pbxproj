@@ -11,11 +11,13 @@
 		16AC7100B4F843E8A2C9D101 /* ActionButtonShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AC7100B4F843E8A2C9D102 /* ActionButtonShortcut.swift */; };
 		16AC7100B4F843E8A2C9D103 /* ActionButtonFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 16AC7100B4F843E8A2C9D104 /* ActionButtonFeature */; };
 		231A9CFD2AB14BCB9A2AE001 /* AudioCapture in Frameworks */ = {isa = PBXBuildFile; productRef = 231A9CFD2AB14BCB9A2AE002 /* AudioCapture */; };
+		231A9CFD2AB14BCB9A2AE003 /* AudioPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = 231A9CFD2AB14BCB9A2AE004 /* AudioPlayback */; };
 		27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 1F77943C5C19E39633AD0355 /* HomeFeature */; };
 		64277C4B607361AA929BEFEA /* Application in Frameworks */ = {isa = PBXBuildFile; productRef = D5729DFB800F95B2F3EFB536 /* Application */; };
 		670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */ = {isa = PBXBuildFile; productRef = 1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */; };
 		67E56C45446E335C6CBDA26C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
 		781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */; };
+		781EFF80FC12423C52064ABE /* MeetingDetailUITestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */; };
 		82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = AB1DFCA2DF85450E6929AFAC /* SettingsFeature */; };
 		8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 4738FE796A919DAD340B4206 /* PersistenceGRDB */; };
 		8E6D850EE05B3AA7989F683F /* SpeechTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 4738FE796A919DAD340B4207 /* SpeechTranscription */; };
@@ -54,6 +56,7 @@
 		8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
+		9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MeetingDetailUITestFixtures.swift; sourceTree = "<group>"; };
 		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
 		B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLifecycleCoordinator.swift; sourceTree = "<group>"; };
 		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 				64277C4B607361AA929BEFEA /* Application in Frameworks */,
 				920F0BC333020C91F21D608C /* Domain in Frameworks */,
 				231A9CFD2AB14BCB9A2AE001 /* AudioCapture in Frameworks */,
+				231A9CFD2AB14BCB9A2AE003 /* AudioPlayback in Frameworks */,
 				670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */,
 				8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */,
 				8E6D850EE05B3AA7989F683F /* SpeechTranscription in Frameworks */,
@@ -99,6 +103,7 @@
 				C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */,
 				16AC7100B4F843E8A2C9D102 /* ActionButtonShortcut.swift */,
 				9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */,
+				9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */,
 				B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */,
 				07DD9DE903D6014F01C42586 /* AppRouter.swift */,
 				957B75AE625AD703BD1D6A0D /* AppRootView.swift */,
@@ -203,6 +208,7 @@
 				D5729DFB800F95B2F3EFB536 /* Application */,
 				8B0862626BC69050D8B0730F /* Domain */,
 				231A9CFD2AB14BCB9A2AE002 /* AudioCapture */,
+				231A9CFD2AB14BCB9A2AE004 /* AudioPlayback */,
 				1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */,
 				4738FE796A919DAD340B4206 /* PersistenceGRDB */,
 				4738FE796A919DAD340B4207 /* SpeechTranscription */,
@@ -301,6 +307,7 @@
 				B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */,
 				16AC7100B4F843E8A2C9D101 /* ActionButtonShortcut.swift in Sources */,
 				781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */,
+				781EFF80FC12423C52064ABE /* MeetingDetailUITestFixtures.swift in Sources */,
 				A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */,
 				C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */,
 				9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */,
@@ -599,6 +606,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "Packages/QuillvaultInfrastructure" */;
 			productName = AudioCapture;
+		};
+		231A9CFD2AB14BCB9A2AE004 /* AudioPlayback */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "Packages/QuillvaultInfrastructure" */;
+			productName = AudioPlayback;
 		};
 		4738FE796A919DAD340B4206 /* PersistenceGRDB */ = {
 			isa = XCSwiftPackageProductDependency;

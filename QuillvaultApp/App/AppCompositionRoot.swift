@@ -1,5 +1,6 @@
 import Application
 import AudioCapture
+import AudioPlayback
 import Domain
 import Foundation
 import HomeFeature
@@ -29,6 +30,10 @@ final class AppCompositionRoot {
     let fileStore = MeetingFileStore()
     let resolvedMeetingLibrary =
       meetingLibrary ?? Self.makeDefaultMeetingLibrary(fileStore: fileStore)
+    let resolvedMeetingDetail: any MeetingDetailUseCase =
+      Self.isMeetingDetailUITest
+      ? UITestMeetingDetailUseCase()
+      : MeetingDetailWorkflow(access: fileStore)
     let directoryAuthorization = Self.makeDefaultDirectoryAuthorization(
       fileStore: fileStore
     )
@@ -53,7 +58,16 @@ final class AppCompositionRoot {
     )
     meetingsModel = MeetingsModel(
       library: resolvedMeetingLibrary,
-      transcriptionRecovery: resolvedRecording
+      transcriptionRecovery: resolvedRecording,
+      detail: resolvedMeetingDetail,
+      makePlayer: {
+        if Self.isMeetingDetailUITest {
+          return UITestMeetingAudioPlayer()
+        }
+        return SystemMeetingAudioPlayer(
+          access: MeetingAudioFileAccessAdapter(store: fileStore)
+        )
+      }
     )
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
@@ -72,6 +86,11 @@ final class AppCompositionRoot {
   private static func makeDefaultMeetingLibrary(
     fileStore: MeetingFileStore
   ) -> any MeetingLibraryUseCase {
+    if isMeetingDetailUITest {
+      return UITestMeetingLibraryUseCase(
+        snapshot: UITestMeetingDetailUseCase.librarySnapshot
+      )
+    }
     if isRecordingUITest {
       return UITestMeetingLibraryUseCase()
     }
@@ -128,6 +147,13 @@ final class AppCompositionRoot {
       ] == "1"
   }
 
+  private static var isMeetingDetailUITest: Bool {
+    ProcessInfo.processInfo.arguments.contains("-ui-test-meeting-detail")
+      && ProcessInfo.processInfo.environment[
+        "QUILLVAULT_MEETING_DETAIL_UI_TEST"
+      ] == "1"
+  }
+
   nonisolated private static func buildRecording(
     fileStore: MeetingFileStore
   ) throws -> any RecordingUseCase {
@@ -181,6 +207,20 @@ final class AppCompositionRoot {
   }
 }
 
+private struct MeetingAudioFileAccessAdapter: MeetingAudioFileAccess {
+  let store: MeetingFileStore
+
+  func beginAudioPlayback(
+    sourceID: MeetingAudioSourceID
+  ) async throws -> URL {
+    try await store.beginAudioPlayback(sourceID: sourceID)
+  }
+
+  func endAudioPlayback(sourceID: MeetingAudioSourceID) async {
+    await store.endAudioPlayback(sourceID: sourceID)
+  }
+}
+
 private struct UITestAuthoritativeDirectoryUseCase:
   AuthoritativeDirectoryUseCase
 {
@@ -202,15 +242,21 @@ private struct UITestAuthoritativeDirectoryUseCase:
 }
 
 private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
-  private let snapshot = MeetingLibrarySnapshot(
-    directory: AuthoritativeDirectory(
-      id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
-      displayName: "UI Test Vault",
-      kind: .userSelected
-    ),
-    meetings: [],
-    diagnosticCount: 0
-  )
+  private let snapshot: MeetingLibrarySnapshot
+
+  init(
+    snapshot: MeetingLibrarySnapshot = MeetingLibrarySnapshot(
+      directory: AuthoritativeDirectory(
+        id: AuthoritativeDirectoryID(rawValue: "ui-test-directory"),
+        displayName: "UI Test Vault",
+        kind: .userSelected
+      ),
+      meetings: [],
+      diagnosticCount: 0
+    )
+  ) {
+    self.snapshot = snapshot
+  }
 
   func restore() async throws -> MeetingLibrarySnapshot {
     snapshot

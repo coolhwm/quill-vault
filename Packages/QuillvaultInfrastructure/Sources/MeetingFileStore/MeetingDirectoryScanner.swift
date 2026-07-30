@@ -1,3 +1,4 @@
+import AVFAudio
 import CryptoKit
 import Domain
 import Foundation
@@ -88,16 +89,29 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
 
       let meetingID = MeetingID(rawValue: manifest.meetingID)
       var assets: MeetingAssetPresence = []
+      var title: String?
+      var durationSeconds: Double?
+      var modelName: String?
       for (asset, fileName, presence) in assetDefinitions {
         try Task.checkCancellation()
         let fileURL = child.appending(path: fileName)
         guard fileManager.fileExists(atPath: fileURL.path) else {
           continue
         }
-        guard try ubiquitousStatus.isDownloaded(fileURL) else {
-          throw DirectoryAccessError.itemNotDownloaded
-        }
         assets.insert(presence)
+        guard try ubiquitousStatus.isDownloaded(fileURL) else {
+          continue
+        }
+        switch asset {
+        case .recording:
+          durationSeconds = durationSeconds ?? recordingDuration(at: fileURL)
+        case .transcript:
+          durationSeconds = transcriptDuration(at: fileURL) ?? durationSeconds
+        case .minutes:
+          let metadata = minutesMetadata(at: fileURL)
+          title = metadata.title
+          modelName = metadata.modelName
+        }
         fingerprints.append(
           try fingerprint(
             fileURL,
@@ -116,7 +130,10 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
           id: meetingID,
           createdAt: createdAt,
           relativeDirectory: child.lastPathComponent,
-          assets: assets
+          assets: assets,
+          title: title,
+          durationSeconds: durationSeconds,
+          modelName: modelName
         )
       )
     }
@@ -128,11 +145,78 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
     )
   }
 
+  private func transcriptDuration(at url: URL) -> Double? {
+    guard let text = filePrefixText(at: url) else {
+      return nil
+    }
+    return MeetingTranscriptMarkdownParser.audioDuration(from: text)
+  }
+
+  private func recordingDuration(at url: URL) -> Double? {
+    guard
+      let player = try? AVAudioPlayer(contentsOf: url),
+      player.duration.isFinite,
+      player.duration > 0
+    else {
+      return nil
+    }
+    return player.duration
+  }
+
+  private func minutesMetadata(at url: URL) -> (title: String?, modelName: String?) {
+    guard let text = filePrefixText(at: url) else {
+      return (nil, nil)
+    }
+    return (
+      frontMatterValue(named: "title", in: text),
+      frontMatterValue(named: "model", in: text)
+    )
+  }
+
+  private func frontMatterValue(named name: String, in text: String) -> String? {
+    guard text.hasPrefix("---") else {
+      return nil
+    }
+    let prefix = "\(name):"
+    guard
+      let line = text.split(separator: "\n").dropFirst().prefix(while: {
+        $0.trimmingCharacters(in: .whitespaces) != "---"
+      }).first(where: {
+        $0.trimmingCharacters(in: .whitespaces).hasPrefix(prefix)
+      })
+    else {
+      return nil
+    }
+    let value = line.trimmingCharacters(in: .whitespaces)
+      .dropFirst(prefix.count)
+      .trimmingCharacters(in: .whitespaces)
+      .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+    return value.isEmpty ? nil : value
+  }
+
+  private func filePrefixText(at url: URL) -> String? {
+    guard
+      let handle = try? FileHandle(forReadingFrom: url)
+    else {
+      return nil
+    }
+    defer {
+      try? handle.close()
+    }
+    guard
+      let prefix = try? handle.read(upToCount: 4_096),
+      let text = String(data: prefix, encoding: .utf8)
+    else {
+      return nil
+    }
+    return text
+  }
+
   private var assetDefinitions: [(MeetingAsset, String, MeetingAssetPresence)] {
     [
-      (.recording, "recording.m4a", .recording),
       (.transcript, "transcript.md", .transcript),
       (.minutes, "minutes.md", .minutes),
+      (.recording, "recording.m4a", .recording),
     ]
   }
 

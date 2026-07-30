@@ -2,8 +2,21 @@ import GRDB
 
 enum MeetingCatalogMigrator {
   static let initialMigration = "v1_create_rebuildable_meeting_catalog"
+  static let detailMetadataMigration = "v2_add_meeting_detail_metadata"
 
   static func make() -> DatabaseMigrator {
+    var migrator = makeInitial()
+    migrator.registerMigration(detailMetadataMigration) { database in
+      try database.alter(table: "meeting_index") { table in
+        table.add(column: "title", .text)
+        table.add(column: "duration_seconds", .double)
+        table.add(column: "model_name", .text)
+      }
+    }
+    return migrator
+  }
+
+  static func makeInitial() -> DatabaseMigrator {
     var migrator = DatabaseMigrator()
     migrator.registerMigration(initialMigration) { database in
       try database.create(table: "meeting_index") { table in

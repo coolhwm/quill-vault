@@ -39,14 +39,20 @@ public actor GRDBMeetingCatalog: MeetingCatalog {
         try database.execute(
           sql: """
             INSERT INTO meeting_index
-              (meeting_id, created_at, relative_directory, asset_presence)
-            VALUES (?, ?, ?, ?)
+              (
+                meeting_id, created_at, relative_directory, asset_presence,
+                title, duration_seconds, model_name
+              )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             meeting.id.rawValue.uuidString,
             meeting.createdAt.timeIntervalSince1970,
             meeting.relativeDirectory,
             meeting.assets.rawValue,
+            meeting.title,
+            meeting.durationSeconds,
+            meeting.modelName,
           ]
         )
       }
@@ -86,7 +92,9 @@ public actor GRDBMeetingCatalog: MeetingCatalog {
       try Row.fetchAll(
         database,
         sql: """
-          SELECT meeting_id, created_at, relative_directory, asset_presence
+          SELECT
+            meeting_id, created_at, relative_directory, asset_presence,
+            title, duration_seconds, model_name
           FROM meeting_index
           ORDER BY created_at DESC, meeting_id ASC
           """
@@ -104,7 +112,10 @@ public actor GRDBMeetingCatalog: MeetingCatalog {
           id: MeetingID(rawValue: uuid),
           createdAt: Date(timeIntervalSince1970: createdAt),
           relativeDirectory: row["relative_directory"],
-          assets: MeetingAssetPresence(rawValue: rawAssetPresence)
+          assets: MeetingAssetPresence(rawValue: rawAssetPresence),
+          title: row["title"],
+          durationSeconds: row["duration_seconds"],
+          modelName: row["model_name"]
         )
       }
     }

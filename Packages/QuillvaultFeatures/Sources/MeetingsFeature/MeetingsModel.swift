@@ -10,13 +10,31 @@ public final class MeetingsModel {
 
   private let library: any MeetingLibraryUseCase
   private let transcriptionRecovery: (any TranscriptionRecoveryUseCase)?
+  private let detail: any MeetingDetailUseCase
+  private let makePlayer: @MainActor () -> any MeetingAudioPlayer
 
   public init(
     library: any MeetingLibraryUseCase,
-    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil
+    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil,
+    detail: any MeetingDetailUseCase,
+    makePlayer: @escaping @MainActor () -> any MeetingAudioPlayer
   ) {
     self.library = library
     self.transcriptionRecovery = transcriptionRecovery
+    self.detail = detail
+    self.makePlayer = makePlayer
+  }
+
+  public func makeDetailModel(
+    directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) -> MeetingDetailModel {
+    return MeetingDetailModel(
+      directory: directory,
+      meeting: meeting,
+      detail: detail,
+      player: makePlayer()
+    )
   }
 
   public func load() async {

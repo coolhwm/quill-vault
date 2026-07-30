@@ -68,12 +68,17 @@ public struct MeetingsView: View {
       List {
         Section {
           ForEach(snapshot.meetings, id: \.id) { meeting in
-            VStack(alignment: .leading, spacing: 6) {
-              Text(meeting.relativeDirectory)
-                .font(.headline)
-              Text(assetDescription(meeting.assets))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+              NavigationLink {
+                MeetingDetailView(
+                  model: model.makeDetailModel(
+                    directory: snapshot.directory,
+                    meeting: meeting
+                  )
+                )
+              } label: {
+                MeetingCardView(meeting: meeting)
+              }
               if meeting.assets == [.recording] {
                 Button {
                   Task {
@@ -135,17 +140,6 @@ public struct MeetingsView: View {
     }
   }
 
-  private func assetDescription(
-    _ assets: MeetingAssetPresence
-  ) -> LocalizedStringKey {
-    if assets.contains(.minutes) {
-      return "minutes.asset.minutes"
-    }
-    if assets.contains(.transcript) {
-      return "minutes.asset.transcript"
-    }
-    return "minutes.asset.transcript.pending"
-  }
 }
 
 extension MeetingLibraryRecovery {

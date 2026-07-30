@@ -12,7 +12,7 @@ struct GRDBMeetingCatalogTests {
     let databaseURL = temporaryDatabaseURL()
     let catalog = try GRDBMeetingCatalog.openRecovering(at: databaseURL)
 
-    #expect(try await catalog.appliedMigrations() == ["v1_create_rebuildable_meeting_catalog"])
+    #expect(try await catalog.appliedMigrations() == expectedMigrations)
     #expect(try await catalog.journalMode().lowercased() == "wal")
   }
 
@@ -29,10 +29,41 @@ struct GRDBMeetingCatalogTests {
     let second = try GRDBMeetingCatalog.openRecovering(at: databaseURL)
 
     #expect(
-      try await second.appliedMigrations()
-        == ["v1_create_rebuildable_meeting_catalog"]
+      try await second.appliedMigrations() == expectedMigrations
     )
     #expect(try await second.meetings() == [meeting])
+  }
+
+  @Test("Migrates a populated v1 catalog without losing meeting identity")
+  func migratesPopulatedV1Catalog() async throws {
+    let databaseURL = temporaryDatabaseURL()
+    let database = try DatabaseQueue(path: databaseURL.path)
+    try MeetingCatalogMigrator.makeInitial().migrate(database)
+    try await database.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO meeting_index
+            (meeting_id, created_at, relative_directory, asset_presence)
+          VALUES (?, ?, ?, ?)
+          """,
+        arguments: [
+          "11111111-1111-1111-1111-111111111111",
+          1_722_470_400,
+          "meeting-20240801-120000",
+          MeetingAssetPresence.recording.rawValue,
+        ]
+      )
+    }
+
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: databaseURL)
+    let meeting = try #require(await catalog.meetings().first)
+
+    #expect(meeting.id.rawValue.uuidString == "11111111-1111-1111-1111-111111111111")
+    #expect(meeting.relativeDirectory == "meeting-20240801-120000")
+    #expect(meeting.title == nil)
+    #expect(meeting.durationSeconds == nil)
+    #expect(meeting.modelName == nil)
+    #expect(try await catalog.appliedMigrations() == expectedMigrations)
   }
 
   @Test("A failed migration rolls back its schema and migration marker")
@@ -59,7 +90,7 @@ struct GRDBMeetingCatalogTests {
       )
     }
     #expect(!state.0)
-    #expect(state.1 == ["v1_create_rebuildable_meeting_catalog"])
+    #expect(state.1 == expectedMigrations)
   }
 
   @Test("WAL readers observe only complete snapshots during replacement")
@@ -175,6 +206,11 @@ struct GRDBMeetingCatalogTests {
   }
 }
 
+private let expectedMigrations = [
+  "v1_create_rebuildable_meeting_catalog",
+  "v2_add_meeting_detail_metadata",
+]
+
 private enum MigrationProbeError: Error {
   case forced
 }
@@ -195,7 +231,10 @@ extension MeetingIndexEntry {
       id: MeetingID(rawValue: UUID(uuidString: id)!),
       createdAt: Date(timeIntervalSince1970: 1_722_470_400),
       relativeDirectory: "meeting-20240801-120000",
-      assets: [.recording, .transcript]
+      assets: [.recording, .transcript],
+      title: "Weekly review",
+      durationSeconds: 61,
+      modelName: "test-model"
     )
   }
 }
