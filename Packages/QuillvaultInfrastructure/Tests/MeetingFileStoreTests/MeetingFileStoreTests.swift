@@ -442,6 +442,30 @@ struct MeetingFileStoreTests {
     )
   }
 
+  @Test("Cold start reopens an interrupted recording without replacing its audio")
+  func reopensInterruptedRecording() async throws {
+    let root = try TemporaryDirectory()
+    let dependencies = MeetingFileStoreDependencies.testing(
+      authorizedDirectory: root.url
+    )
+    let firstStore = MeetingFileStore(dependencies: dependencies)
+    let session = RecordingSession.fixture()
+    let original = try await firstStore.reserveRecording(for: session)
+    let audio = Data("interrupted-audio".utf8)
+    try audio.write(to: original.recordingURL)
+    try await firstStore.publishRecordingStart(
+      original,
+      startedAt: session.startedAt
+    )
+
+    let recovered = try await MeetingFileStore(dependencies: dependencies)
+      .recoverInterruptedRecording(for: session)
+
+    let reopened = try #require(recovered)
+    #expect(reopened == original)
+    #expect(try Data(contentsOf: reopened.recordingURL) == audio)
+  }
+
   @Test("A tampered pending manifest is never published as a meeting")
   func tamperedPendingManifestIsRejected() async throws {
     let root = try TemporaryDirectory()

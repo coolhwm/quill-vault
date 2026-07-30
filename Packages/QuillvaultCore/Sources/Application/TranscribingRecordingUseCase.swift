@@ -31,8 +31,8 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   }
 
   public func restore() async throws -> RecordingSnapshot? {
-    startRecoveryIfNeeded()
     let snapshot = try await recording.restore()
+    startRecoveryIfNeeded()
     if let snapshot, snapshot.activity == .recording {
       startLiveTranscription(for: snapshot.session.meetingID)
     }

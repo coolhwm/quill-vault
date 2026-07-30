@@ -129,6 +129,84 @@ struct AudioCaptureEngineTests {
     #expect(drivers.stopCount == 1)
   }
 
+  @Test("Cold start finalizes a valid interrupted recording")
+  func recoversInterruptedRecording() async throws {
+    let session = RecordingSession.fixture()
+    let reservation = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let audio = RecordedAudio(
+      durationSeconds: 4,
+      packetCount: 128,
+      byteCount: 4_096
+    )
+    let files = RecordingFilesStub(recoveredReservation: reservation)
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: ValidatorStub(audio: audio)
+    )
+
+    let result = try await engine.recoverInterrupted(session)
+
+    #expect(result == audio)
+    #expect(await files.finishedIDs == [session.meetingID])
+  }
+
+  @Test("Cancellation while publishing an interrupted recording remains cancellation")
+  func interruptedRecoveryPropagatesCancellation() async {
+    let session = RecordingSession.fixture()
+    let reservation = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let files = RecordingFilesStub(
+      recoveredReservation: reservation,
+      finishError: CancellationError()
+    )
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: ValidatorStub(
+        audio: RecordedAudio(durationSeconds: 4, packetCount: 128, byteCount: 4_096)
+      )
+    )
+
+    await #expect(throws: CancellationError.self) {
+      _ = try await engine.recoverInterrupted(session)
+    }
+    #expect(await files.finishedIDs.isEmpty)
+    #expect(await files.abandonedIDs == [session.meetingID])
+  }
+
+  @Test("Transient validation failure remains retryable")
+  func interruptedRecoveryPreservesTransientValidationFailure() async {
+    let session = RecordingSession.fixture()
+    let reservation = RecordingFileReservation(
+      meetingID: session.meetingID,
+      createdAt: session.startedAt,
+      directoryURL: URL(fileURLWithPath: "/authorized/meeting"),
+      recordingURL: URL(fileURLWithPath: "/authorized/meeting/recording.m4a")
+    )
+    let files = RecordingFilesStub(recoveredReservation: reservation)
+    let engine = makeEngine(
+      files: files,
+      drivers: DriverFactorySpy(),
+      validator: ValidatorStub(error: DriverFailure())
+    )
+
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      _ = try await engine.recoverInterrupted(session)
+    }
+    #expect(await files.finishedIDs.isEmpty)
+    #expect(await files.abandonedIDs == [session.meetingID])
+  }
+
   @Test("Invalid audio remains unpublished and cannot finish")
   func invalidAudioDoesNotPublishMeeting() async throws {
     let files = RecordingFilesStub()
@@ -305,10 +383,20 @@ private actor SuspendingPermission: MicrophonePermissionAuthorizing {
 }
 
 private actor RecordingFilesStub: RecordingFileStore {
+  private let recoveredReservation: RecordingFileReservation?
+  private let finishError: (any Error & Sendable)?
   private(set) var publishedIDs: [MeetingID] = []
   private(set) var finishedIDs: [MeetingID] = []
   private(set) var abandonedIDs: [MeetingID] = []
   private(set) var cancelledIDs: [MeetingID] = []
+
+  init(
+    recoveredReservation: RecordingFileReservation? = nil,
+    finishError: (any Error & Sendable)? = nil
+  ) {
+    self.recoveredReservation = recoveredReservation
+    self.finishError = finishError
+  }
 
   func reserveRecording(
     for session: RecordingSession
@@ -332,7 +420,16 @@ private actor RecordingFilesStub: RecordingFileStore {
     publishedIDs.append(reservation.meetingID)
   }
 
+  func recoverInterruptedRecording(
+    for session: RecordingSession
+  ) async throws -> RecordingFileReservation? {
+    recoveredReservation
+  }
+
   func finishRecording(meetingID: MeetingID) async throws {
+    if let finishError {
+      throw finishError
+    }
     finishedIDs.append(meetingID)
   }
 
@@ -468,23 +565,29 @@ private final class SystemRecorderDouble: SystemAudioRecording, @unchecked Senda
 
 private struct ValidatorStub: RecordedAudioValidating {
   let audio: RecordedAudio
+  let error: (any Error & Sendable)?
 
   init(
     audio: RecordedAudio = RecordedAudio(
       durationSeconds: 1,
       packetCount: 1,
       byteCount: 1
-    )
+    ),
+    error: (any Error & Sendable)? = nil
   ) {
     self.audio = audio
+    self.error = error
   }
 
   func validate(_ url: URL) throws -> RecordedAudio {
-    audio
+    if let error {
+      throw error
+    }
+    return audio
   }
 }
 
-private struct DriverFailure: Error {}
+private struct DriverFailure: Error, Sendable {}
 
 private final class TemporaryAudioFile: @unchecked Sendable {
   let url = FileManager.default.temporaryDirectory

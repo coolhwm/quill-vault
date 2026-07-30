@@ -133,6 +133,48 @@ public actor AudioCaptureEngine: AudioCapture {
     return audio
   }
 
+  public func recoverInterrupted(
+    _ session: RecordingSession
+  ) async throws -> RecordedAudio? {
+    guard
+      let reservation = try await files.recoverInterruptedRecording(for: session)
+    else {
+      return nil
+    }
+
+    let audio: RecordedAudio
+    do {
+      audio = try validator.validate(reservation.recordingURL)
+    } catch is CancellationError {
+      await files.abandonRecording(meetingID: session.meetingID)
+      throw CancellationError()
+    } catch let error as RecordingError
+      where error == .invalidRecordedAudio
+    {
+      await files.abandonRecording(meetingID: session.meetingID)
+      return nil
+    } catch {
+      await files.abandonRecording(meetingID: session.meetingID)
+      throw map(error, fallback: .recordingWriteFailed)
+    }
+    guard audio.isValid else {
+      await files.abandonRecording(meetingID: session.meetingID)
+      return nil
+    }
+
+    do {
+      try await files.finishRecording(meetingID: session.meetingID)
+      completedRecordings[session.meetingID] = audio
+      return audio
+    } catch is CancellationError {
+      await files.abandonRecording(meetingID: session.meetingID)
+      throw CancellationError()
+    } catch {
+      await files.abandonRecording(meetingID: session.meetingID)
+      throw map(error, fallback: .recordingWriteFailed)
+    }
+  }
+
   public func liveFrames(
     meetingID: MeetingID
   ) async -> AsyncStream<AudioFrame> {

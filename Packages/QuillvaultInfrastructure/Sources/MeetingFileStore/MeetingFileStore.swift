@@ -291,6 +291,66 @@ public actor MeetingFileStore:
     }
   }
 
+  public func recoverInterruptedRecording(
+    for session: RecordingSession
+  ) async throws -> RecordingFileReservation? {
+    if let active = recordingReservations[session.meetingID] {
+      return active.reservation
+    }
+
+    let root: ResolvedRoot
+    do {
+      root = try await recordingRoot()
+    } catch {
+      throw RecordingError.authoritativeDirectoryUnavailable
+    }
+    guard await dependencies.scopeAccess.startAccessing(root.url) else {
+      throw RecordingError.authoritativeDirectoryUnavailable
+    }
+
+    let directoryURL = root.url.appending(
+      path: "meeting-\(session.meetingID.rawValue.uuidString.lowercased())",
+      directoryHint: .isDirectory
+    )
+    let recordingURL = directoryURL.appending(path: "recording.m4a")
+    let pendingManifestURL = directoryURL.appending(path: ".recording.json")
+    let publishedManifestURL = directoryURL.appending(path: "meeting.json")
+
+    do {
+      guard
+        isDirectory(directoryURL),
+        FileManager.default.fileExists(atPath: recordingURL.path),
+        FileManager.default.fileExists(atPath: pendingManifestURL.path),
+        !FileManager.default.fileExists(atPath: publishedManifestURL.path)
+      else {
+        await dependencies.scopeAccess.stopAccessing(root.url)
+        return nil
+      }
+      guard try dependencies.ubiquitousStatus.isDownloaded(recordingURL) else {
+        throw RecordingError.authoritativeDirectoryUnavailable
+      }
+      try validateManifest(
+        at: pendingManifestURL,
+        meetingID: session.meetingID
+      )
+
+      let reservation = RecordingFileReservation(
+        meetingID: session.meetingID,
+        createdAt: session.startedAt,
+        directoryURL: directoryURL,
+        recordingURL: recordingURL
+      )
+      recordingReservations[session.meetingID] = ActiveRecordingReservation(
+        reservation: reservation,
+        securityScopedRoot: root.url
+      )
+      return reservation
+    } catch {
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      throw error as? RecordingError ?? .recordingWriteFailed
+    }
+  }
+
   public func finishRecording(
     meetingID: MeetingID
   ) async throws {

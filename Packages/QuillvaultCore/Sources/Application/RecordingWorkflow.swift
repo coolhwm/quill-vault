@@ -51,8 +51,17 @@ public actor RecordingWorkflow: RecordingUseCase {
           phase = .idle
           return nil
         }
-        phase = .recording(session)
-        return RecordingSnapshot(session: session, activity: .recording)
+        let recoveredAudio = try await capture.recoverInterrupted(session)
+        if let recoveredAudio, recoveredAudio.isValid {
+          try await store.finish(session, audio: recoveredAudio)
+        } else {
+          try await store.abandon(session)
+        }
+        phase = .idle
+        return nil
+      } catch is CancellationError {
+        phase = .idle
+        throw CancellationError()
       } catch {
         phase = .idle
         throw RecordingError.statePersistenceFailed

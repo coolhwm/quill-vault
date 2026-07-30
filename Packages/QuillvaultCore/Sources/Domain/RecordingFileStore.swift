@@ -27,7 +27,18 @@ public protocol RecordingFileStore: Sendable {
     _ reservation: RecordingFileReservation,
     startedAt: Date
   ) async throws
+  func recoverInterruptedRecording(
+    for session: RecordingSession
+  ) async throws -> RecordingFileReservation?
   func finishRecording(meetingID: MeetingID) async throws
   func abandonRecording(meetingID: MeetingID) async
   func cancelRecording(meetingID: MeetingID) async
+}
+
+extension RecordingFileStore {
+  public func recoverInterruptedRecording(
+    for session: RecordingSession
+  ) async throws -> RecordingFileReservation? {
+    nil
+  }
 }
