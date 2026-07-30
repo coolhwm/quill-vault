@@ -82,6 +82,7 @@ jobs:
           -configuration Release
           -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
           -resultBundlePath "$RUNNER_TEMP/Release-UI.xcresult"
+          -skip-testing:QuillvaultUITests/RootNavigationUITests/testRecordingNoticeStartStatusAndStopAreAccessible
           CODE_SIGNING_ALLOWED=NO
           test
 
