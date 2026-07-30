@@ -6,56 +6,78 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
   private let publisher: any TranscriptPublisher
   private let jobs: any TranscriptionJobStore
   private let assetAccess: (any RecordingAssetAccess)?
+  private let recoverySource: (any TranscriptionRecoverySource)?
   private var activeMeetings = Set<MeetingID>()
 
   public init(
     engine: any SpeechTranscriptionEngine,
     publisher: any TranscriptPublisher,
     jobs: any TranscriptionJobStore,
-    assetAccess: (any RecordingAssetAccess)? = nil
+    assetAccess: (any RecordingAssetAccess)? = nil,
+    recoverySource: (any TranscriptionRecoverySource)? = nil
   ) {
     self.engine = engine
     self.publisher = publisher
     self.jobs = jobs
     self.assetAccess = assetAccess
+    self.recoverySource = recoverySource
   }
 
   public func finalize(
     _ completion: RecordingCompletion,
     localeIdentifier: String
   ) async throws -> TranscriptRevision {
-    guard let recordingURL = completion.audio.fileURL else {
-      throw TranscriptError.recognitionFailed
-    }
-    let job = TranscriptionJob(
-      meetingID: completion.session.meetingID,
-      recordingURL: recordingURL,
-      audioDurationSeconds: completion.audio.durationSeconds,
+    let job = try makeJob(
+      completion,
       localeIdentifier: localeIdentifier
     )
-    return try await run(job, persistPending: true)
+    try await jobs.savePending(job)
+    return try await run(job)
   }
 
-  public func recoverPending() async -> [TranscriptionRecoveryResult] {
-    let pending: [TranscriptionJob]
-    do {
-      pending = try await jobs.pendingJobs()
-    } catch {
-      return []
+  public func enqueue(
+    _ completion: RecordingCompletion,
+    localeIdentifier: String
+  ) async throws {
+    try await jobs.savePending(
+      makeJob(completion, localeIdentifier: localeIdentifier)
+    )
+  }
+
+  public func recoverPending() async throws -> [TranscriptionRecoveryResult] {
+    if let recoverySource {
+      do {
+        let recoveredJobs =
+          try await recoverySource
+          .recoverableTranscriptionJobs(
+            localeIdentifier: Locale.current.identifier
+          )
+        for job in recoveredJobs {
+          try await jobs.savePending(job)
+        }
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        // Existing durable jobs remain recoverable even when the selected
+        // external directory is temporarily unavailable.
+      }
     }
+    let pending = try await jobs.pendingJobs()
 
     var results: [TranscriptionRecoveryResult] = []
     for job in pending.sorted(by: {
       $0.meetingID.rawValue.uuidString < $1.meetingID.rawValue.uuidString
     }) {
       do {
-        let revision = try await run(job, persistPending: false)
+        let revision = try await run(job)
         results.append(
           TranscriptionRecoveryResult(
             meetingID: job.meetingID,
             result: .success(revision)
           )
         )
+      } catch is CancellationError {
+        throw CancellationError()
       } catch let error as TranscriptError {
         results.append(
           TranscriptionRecoveryResult(
@@ -75,10 +97,22 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
     return results
   }
 
-  private func run(
-    _ job: TranscriptionJob,
-    persistPending: Bool
-  ) async throws -> TranscriptRevision {
+  private func makeJob(
+    _ completion: RecordingCompletion,
+    localeIdentifier: String
+  ) throws -> TranscriptionJob {
+    guard let recordingURL = completion.audio.fileURL else {
+      throw TranscriptError.recognitionFailed
+    }
+    return TranscriptionJob(
+      meetingID: completion.session.meetingID,
+      recordingURL: recordingURL,
+      audioDurationSeconds: completion.audio.durationSeconds,
+      localeIdentifier: localeIdentifier
+    )
+  }
+
+  private func run(_ job: TranscriptionJob) async throws -> TranscriptRevision {
     guard activeMeetings.insert(job.meetingID).inserted else {
       throw TranscriptError.recognitionFailed
     }
@@ -87,9 +121,6 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
     }
 
     do {
-      if persistPending {
-        try await jobs.savePending(job)
-      }
       let accessibleRecordingURL: URL
       do {
         accessibleRecordingURL =

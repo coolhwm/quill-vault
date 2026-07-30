@@ -48,8 +48,8 @@ struct SpeechAnalyzerTranscriptionEngineTests {
     }
   }
 
-  @Test("An installed locale must still be reservable")
-  func localeReservationFailure() async {
+  @Test("An already-reserved locale remains available for transcription")
+  func alreadyReservedLocaleIsAvailable() async throws {
     if #available(iOS 26.0, macOS 26.0, *) {
       let engine = SpeechAnalyzerTranscriptionEngine(
         dependencies: dependencies(
@@ -59,11 +59,7 @@ struct SpeechAnalyzerTranscriptionEngineTests {
         )
       )
 
-      await #expect(
-        throws: TranscriptError.speechAssetsUnavailable("en-US")
-      ) {
-        _ = try await engine.prepare(localeIdentifier: "en-US")
-      }
+      _ = try await engine.prepare(localeIdentifier: "en-US")
     }
   }
 

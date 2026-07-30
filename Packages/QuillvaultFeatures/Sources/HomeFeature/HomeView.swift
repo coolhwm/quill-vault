@@ -1,5 +1,6 @@
 import Application
 import DesignSystem
+import Domain
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -169,17 +170,47 @@ public struct HomeView: View {
     case .completed(let completion):
       Label {
         VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
-          Text("recording.completed")
-            .font(.headline)
+          Text(
+            completion.transcriptRevision == nil
+              ? "recording.transcript.pending"
+              : "recording.completed"
+          )
+          .font(.headline)
           Text(
             Duration.seconds(completion.audio.durationSeconds),
             format: .time(pattern: .minuteSecond)
           )
           .foregroundStyle(.secondary)
+          if completion.transcriptRevision == nil {
+            Button {
+              Task {
+                await model.retryTranscript()
+              }
+            } label: {
+              if model.transcriptRecoveryState == .retrying {
+                ProgressView()
+              } else {
+                Label("recording.transcript.retry", systemImage: "arrow.clockwise")
+              }
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.transcriptRecoveryState == .retrying)
+            if case .failed(let error) = model.transcriptRecoveryState {
+              Text(error.transcriptRecoveryMessageKey)
+                .font(.footnote)
+                .foregroundStyle(.orange)
+            }
+          }
         }
       } icon: {
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(.green)
+        Image(
+          systemName: completion.transcriptRevision == nil
+            ? "exclamationmark.circle.fill"
+            : "checkmark.circle.fill"
+        )
+        .foregroundStyle(
+          completion.transcriptRevision == nil ? .orange : .green
+        )
       }
       .padding()
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,6 +223,23 @@ public struct HomeView: View {
       }
     case .idle, .starting, .recording, .finishing, .finishFailed:
       EmptyView()
+    }
+  }
+}
+
+extension TranscriptError {
+  fileprivate var transcriptRecoveryMessageKey: LocalizedStringKey {
+    switch self {
+    case .unsupportedLocale:
+      "recording.transcript.failure.locale"
+    case .speechAssetsUnavailable:
+      "recording.transcript.failure.assets"
+    case .recordingUnavailable:
+      "recording.transcript.failure.recording"
+    case .publicationFailed:
+      "recording.transcript.failure.publication"
+    case .invalidAudioDuration, .invalidTimeRange, .recognitionFailed:
+      "recording.transcript.failure.recognition"
     }
   }
 }

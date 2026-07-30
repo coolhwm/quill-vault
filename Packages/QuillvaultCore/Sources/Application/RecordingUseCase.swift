@@ -49,7 +49,11 @@ public struct LiveTranscriptSnapshot: Equatable, Sendable {
   }
 }
 
-public protocol RecordingUseCase: Sendable {
+public protocol TranscriptionRecoveryUseCase: Sendable {
+  func recoverPendingTranscriptions() async throws -> [TranscriptionRecoveryResult]
+}
+
+public protocol RecordingUseCase: TranscriptionRecoveryUseCase {
   func restore() async throws -> RecordingSnapshot?
   func acknowledgeRecordingNotice() async throws
   func start() async throws -> RecordingSnapshot

@@ -91,6 +91,54 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存" } }
       }
     },
+    "recording.transcript.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 逐字稿待处理" } }
+      }
+    },
+    "recording.transcript.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry transcript" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试逐字稿" } }
+      }
+    },
+    "recording.transcript.retry.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript is still pending. Check the network and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿仍待处理，请检查网络后重试。" } }
+      }
+    },
+    "recording.transcript.failure.assets" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Speech resources are unavailable. Connect to the internet and retry; your recording is safe." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语音资源尚未就绪，请联网后重试；录音已安全保存。" } }
+      }
+    },
+    "recording.transcript.failure.locale" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This language is not supported for on-device transcription." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前语言暂不支持设备端转写。" } }
+      }
+    },
+    "recording.transcript.failure.publication" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be saved. Restore folder access and retry." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿写入失败，请恢复目录访问后重试。" } }
+      }
+    },
+    "recording.transcript.failure.recording" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The saved recording is unavailable. Restore folder access and retry." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已保存的录音暂不可用，请恢复目录访问后重试。" } }
+      }
+    },
+    "recording.transcript.failure.recognition" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Speech recognition failed. Your recording is safe; retry when ready." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语音识别失败，录音已安全保存，可稍后重试。" } }
+      }
+    },
     "recording.elapsed" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Elapsed recording time" } },
@@ -281,6 +329,18 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "仅有录音" } }
+      }
+    },
+    "minutes.asset.transcript.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 逐字稿待处理" } }
+      }
+    },
+    "minutes.asset.transcript.retry" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry transcript" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试逐字稿" } }
       }
     },
     "minutes.asset.transcript" : {

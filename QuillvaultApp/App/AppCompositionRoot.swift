@@ -30,12 +30,15 @@ final class AppCompositionRoot {
     let directoryAuthorization = Self.makeDefaultDirectoryAuthorization(
       fileStore: fileStore
     )
+    let resolvedRecording =
+      recording ?? Self.makeDefaultRecording(fileStore: fileStore)
     recordingModel = HomeRecordingModel(
-      recording: recording ?? Self.makeDefaultRecording(fileStore: fileStore),
+      recording: resolvedRecording,
       directory: directoryAuthorization
     )
     meetingsModel = MeetingsModel(
-      library: resolvedMeetingLibrary
+      library: resolvedMeetingLibrary,
+      transcriptionRecovery: resolvedRecording
     )
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
@@ -128,13 +131,20 @@ final class AppCompositionRoot {
         Date()
       }
     )
+    let primaryTranscriptionJobs = try GRDBTranscriptionJobStore.open(
+      at: stateDirectory.appending(path: "transcription-state.sqlite")
+    )
     let transcription = TranscriptionWorkflow(
       engine: SpeechAnalyzerTranscriptionEngine(),
       publisher: FileTranscriptPublisher(),
-      jobs: try GRDBTranscriptionJobStore.open(
-        at: stateDirectory.appending(path: "transcription-state.sqlite")
+      jobs: ResilientTranscriptionJobStore(
+        primary: primaryTranscriptionJobs,
+        fallbackURL: stateDirectory.appending(
+          path: "pending-transcriptions.json"
+        )
       ),
-      assetAccess: fileStore
+      assetAccess: fileStore,
+      recoverySource: fileStore
     )
     return TranscribingRecordingUseCase(
       recording: recording,
@@ -246,6 +256,10 @@ final class AppCompositionRoot {
           byteCount: 1
         )
       )
+    }
+
+    func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
+      []
     }
   }
 #endif

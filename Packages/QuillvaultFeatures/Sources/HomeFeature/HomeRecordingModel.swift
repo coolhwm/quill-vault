@@ -19,12 +19,19 @@ public enum HomeDirectoryState: Equatable, Sendable {
   case authorized(AuthoritativeDirectory)
 }
 
+public enum TranscriptRecoveryState: Equatable, Sendable {
+  case idle
+  case retrying
+  case failed(TranscriptError)
+}
+
 @MainActor
 @Observable
 public final class HomeRecordingModel {
   public private(set) var state: HomeRecordingState = .idle
   public private(set) var directoryState: HomeDirectoryState = .checking
   public private(set) var liveTranscriptText = ""
+  public private(set) var transcriptRecoveryState: TranscriptRecoveryState = .idle
   public var isRecordingNoticePresented = false
 
   private let recording: any RecordingUseCase
@@ -137,12 +144,57 @@ public final class HomeRecordingModel {
 
     do {
       state = .completed(try await recording.stop())
+      transcriptRecoveryState = .idle
     } catch RecordingError.invalidRecordedAudio {
       state = .startFailed(.invalidRecordedAudio)
     } catch let error as RecordingError {
       state = .finishFailed(session, error)
     } catch {
       state = .finishFailed(session, .recordingWriteFailed)
+    }
+  }
+
+  public func retryTranscript() async {
+    guard
+      case .completed(let completion) = state,
+      completion.transcriptRevision == nil,
+      transcriptRecoveryState != .retrying
+    else {
+      return
+    }
+
+    transcriptRecoveryState = .retrying
+    let results: [TranscriptionRecoveryResult]
+    do {
+      results = try await recording.recoverPendingTranscriptions()
+    } catch is CancellationError {
+      transcriptRecoveryState = .idle
+      return
+    } catch {
+      transcriptRecoveryState = .failed(.recognitionFailed)
+      return
+    }
+    guard
+      let recovery = results.first(
+        where: { $0.meetingID == completion.session.meetingID }
+      )
+    else {
+      transcriptRecoveryState = .failed(.recognitionFailed)
+      return
+    }
+
+    switch recovery.result {
+    case .success(let revision):
+      state = .completed(
+        RecordingCompletion(
+          session: completion.session,
+          audio: completion.audio,
+          transcriptRevision: revision
+        )
+      )
+      transcriptRecoveryState = .idle
+    case .failure(let error):
+      transcriptRecoveryState = .failed(error)
     }
   }
 

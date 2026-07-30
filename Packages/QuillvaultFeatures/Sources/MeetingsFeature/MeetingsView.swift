@@ -74,6 +74,23 @@ public struct MeetingsView: View {
               Text(assetDescription(meeting.assets))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+              if meeting.assets == [.recording] {
+                Button {
+                  Task {
+                    await model.retryTranscript(meetingID: meeting.id)
+                  }
+                } label: {
+                  if model.recoveringMeetingID == meeting.id {
+                    ProgressView()
+                  } else {
+                    Label(
+                      "minutes.asset.transcript.retry",
+                      systemImage: "arrow.clockwise"
+                    )
+                  }
+                }
+                .disabled(model.recoveringMeetingID != nil)
+              }
             }
             .accessibilityIdentifier(
               "minutes.meeting.\(meeting.id.rawValue.uuidString)"
@@ -127,7 +144,7 @@ public struct MeetingsView: View {
     if assets.contains(.transcript) {
       return "minutes.asset.transcript"
     }
-    return "minutes.asset.recording"
+    return "minutes.asset.transcript.pending"
   }
 }
 

@@ -53,6 +53,13 @@ jobs:
           test -f
           "$RUNNER_TEMP/DebugDerivedData/Build/Products/Debug-iphonesimulator/Quillvault.app/GRDB-LICENSE.txt"
 
+      - name: Verify localized display names
+        run: |
+          app="$RUNNER_TEMP/DebugDerivedData/Build/Products/Debug-iphonesimulator/Quillvault.app"
+          test "$(plutil -extract CFBundleDisplayName raw "$app/Info.plist")" = "Quillvault"
+          test "$(plutil -extract CFBundleDisplayName raw "$app/en.lproj/InfoPlist.strings")" = "Quillvault"
+          test "$(plutil -extract CFBundleDisplayName raw "$app/zh-Hans.lproj/InfoPlist.strings")" = "墨匣"
+
       - name: Build Release
         run: >-
           xcodebuild

@@ -174,6 +174,10 @@ public actor RecordingWorkflow: RecordingUseCase {
     return RecordingCompletion(session: session, audio: audio)
   }
 
+  public func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
+    []
+  }
+
   private func mapCaptureError(_ error: any Error) -> RecordingError {
     return error as? RecordingError ?? .recordingWriteFailed
   }

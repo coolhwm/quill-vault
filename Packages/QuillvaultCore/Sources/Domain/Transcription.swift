@@ -83,6 +83,12 @@ public protocol TranscriptionJobStore: Sendable {
   ) async throws
 }
 
+public protocol TranscriptionRecoverySource: Sendable {
+  func recoverableTranscriptionJobs(
+    localeIdentifier: String
+  ) async throws -> [TranscriptionJob]
+}
+
 public protocol RecordingAssetAccess: Sendable {
   func beginTranscriptionAccess(
     meetingID: MeetingID,

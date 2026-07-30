@@ -38,6 +38,12 @@ public actor RetryingRecordingUseCase: RecordingUseCase {
     try await resolve().stop()
   }
 
+  public func recoverPendingTranscriptions() async throws
+    -> [TranscriptionRecoveryResult]
+  {
+    try await resolve().recoverPendingTranscriptions()
+  }
+
   private func resolve() async throws -> any RecordingUseCase {
     if let resolvedUseCase {
       return resolvedUseCase

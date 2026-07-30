@@ -1,12 +1,17 @@
 import Domain
 
 public protocol TranscriptionUseCase: Sendable {
+  func enqueue(
+    _ completion: RecordingCompletion,
+    localeIdentifier: String
+  ) async throws
+
   func finalize(
     _ completion: RecordingCompletion,
     localeIdentifier: String
   ) async throws -> TranscriptRevision
 
-  func recoverPending() async -> [TranscriptionRecoveryResult]
+  func recoverPending() async throws -> [TranscriptionRecoveryResult]
 }
 
 public struct TranscriptionRecoveryResult: Equatable, Sendable {

@@ -55,6 +55,69 @@ struct HomeRecordingModelTests {
     #expect(model.isSessionPresented)
   }
 
+  @Test("Saved audio exits recording and can recover its pending transcript")
+  func pendingTranscriptCanRecover() async {
+    let revision = TranscriptRevision(
+      meetingID: RecordingSession.fixture().meetingID,
+      localeIdentifier: "zh-CN",
+      timeline: TranscriptTimeline(audioDurationSeconds: 60, segments: [])
+    )
+    let useCase = RecordingUseCaseStub(
+      recoveryResults: [
+        TranscriptionRecoveryResult(
+          meetingID: revision.meetingID,
+          result: .success(revision)
+        )
+      ]
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+    await model.start()
+
+    await model.stop()
+
+    #expect(!model.isSessionPresented)
+    guard case .completed(let pending) = model.state else {
+      Issue.record("Expected saved recording completion")
+      return
+    }
+    #expect(pending.transcriptRevision == nil)
+
+    await model.retryTranscript()
+
+    guard case .completed(let recovered) = model.state else {
+      Issue.record("Expected recovered recording completion")
+      return
+    }
+    #expect(recovered.transcriptRevision == revision)
+    #expect(model.transcriptRecoveryState == .idle)
+    #expect(await useCase.recoveryCount == 1)
+  }
+
+  @Test("Repeated stop taps stop the audio only once")
+  func repeatedStopIsIdempotent() async {
+    let useCase = RecordingUseCaseStub(stopDelay: .milliseconds(100))
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+    await model.start()
+
+    let firstStop = Task {
+      await model.stop()
+    }
+    while model.state != .finishing(.fixture()) {
+      await Task.yield()
+    }
+    await model.stop()
+    await firstStop.value
+
+    #expect(await useCase.stopCount == 1)
+    #expect(!model.isSessionPresented)
+  }
+
   @Test("Invalid audio exits the recording screen without claiming success")
   func invalidAudioExitsFocusedScreen() async {
     let useCase = RecordingUseCaseStub(stopError: .invalidRecordedAudio)
@@ -142,17 +205,25 @@ private actor RecordingUseCaseStub: RecordingUseCase {
   private var startErrors: [RecordingError]
   private let stopError: RecordingError?
   private let liveSnapshots: [LiveTranscriptSnapshot]
+  private let recoveryResults: [TranscriptionRecoveryResult]
+  private let stopDelay: Duration?
   private(set) var acknowledgementCount = 0
   private(set) var startCount = 0
+  private(set) var stopCount = 0
+  private(set) var recoveryCount = 0
 
   init(
     startErrors: [RecordingError] = [],
     stopError: RecordingError? = nil,
-    liveSnapshots: [LiveTranscriptSnapshot] = []
+    liveSnapshots: [LiveTranscriptSnapshot] = [],
+    recoveryResults: [TranscriptionRecoveryResult] = [],
+    stopDelay: Duration? = nil
   ) {
     self.startErrors = startErrors
     self.stopError = stopError
     self.liveSnapshots = liveSnapshots
+    self.recoveryResults = recoveryResults
+    self.stopDelay = stopDelay
   }
 
   func restore() async throws -> RecordingSnapshot? {
@@ -175,6 +246,10 @@ private actor RecordingUseCaseStub: RecordingUseCase {
   }
 
   func stop() async throws -> RecordingCompletion {
+    stopCount += 1
+    if let stopDelay {
+      try await Task.sleep(for: stopDelay)
+    }
     if let stopError {
       throw stopError
     }
@@ -198,6 +273,11 @@ private actor RecordingUseCaseStub: RecordingUseCase {
       }
       continuation.finish()
     }
+  }
+
+  func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
+    recoveryCount += 1
+    return recoveryResults
   }
 }
 

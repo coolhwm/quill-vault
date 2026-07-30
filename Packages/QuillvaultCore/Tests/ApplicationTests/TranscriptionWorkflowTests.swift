@@ -115,7 +115,7 @@ struct TranscriptionWorkflowTests {
   }
 
   @Test("Cold-start recovery retries every pending finalization")
-  func recoversPendingJobs() async {
+  func recoversPendingJobs() async throws {
     let secondID = MeetingID(
       rawValue: UUID(uuidString: "AA5C5D2B-CE39-4E12-98D3-658162634EB5")!
     )
@@ -131,7 +131,7 @@ struct TranscriptionWorkflowTests {
       jobs: jobs
     )
 
-    let results = await workflow.recoverPending()
+    let results = try await workflow.recoverPending()
 
     #expect(results.count == 2)
     #expect(
@@ -141,6 +141,24 @@ struct TranscriptionWorkflowTests {
         }
         return false
       })
+    #expect(await jobs.pending.isEmpty)
+  }
+
+  @Test("Cold start reconciles a recording-only meeting into a durable job")
+  func reconcilesRecordingOnlyMeeting() async throws {
+    let jobs = TranscriptionJobStoreStub()
+    let orphan = job(meetingID: meetingID)
+    let workflow = TranscriptionWorkflow(
+      engine: SpeechEngineStub(events: [event(0, 1, "已恢复", .final)]),
+      publisher: TranscriptPublisherStub(),
+      jobs: jobs,
+      recoverySource: TranscriptionRecoverySourceStub(jobs: [orphan])
+    )
+
+    let results = try await workflow.recoverPending()
+
+    #expect(results.first?.meetingID == meetingID)
+    #expect(await jobs.publishedRevision?.meetingID == meetingID)
     #expect(await jobs.pending.isEmpty)
   }
 
@@ -374,5 +392,15 @@ private actor RecordingAssetAccessStub: RecordingAssetAccess {
 
   func endTranscriptionAccess(meetingID: MeetingID) {
     endCount += 1
+  }
+}
+
+private struct TranscriptionRecoverySourceStub: TranscriptionRecoverySource {
+  let jobs: [TranscriptionJob]
+
+  func recoverableTranscriptionJobs(
+    localeIdentifier: String
+  ) -> [TranscriptionJob] {
+    jobs
   }
 }

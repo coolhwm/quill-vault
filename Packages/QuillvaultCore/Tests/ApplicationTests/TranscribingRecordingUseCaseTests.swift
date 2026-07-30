@@ -50,13 +50,45 @@ struct TranscribingRecordingUseCaseTests {
     #expect(last?.volatileSegment == nil)
   }
 
-  @Test("Audio is stopped once and a failed transcript can be retried")
+  @Test("Live transcription retries when Speech resources become available")
+  func retriesLiveTranscriptionPreparation() async throws {
+    let speech = SpeechEngineDouble(
+      liveEvents: [event(0, 1, "资源已就绪", .final)],
+      liveFailuresRemaining: 1
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      speech: speech
+    )
+    _ = try await useCase.start()
+    let snapshots = await useCase.liveTranscript(meetingID: meetingID)
+
+    var text = ""
+    for await snapshot in snapshots {
+      text = snapshot.displayText
+      if !text.isEmpty {
+        break
+      }
+    }
+
+    #expect(text == "资源已就绪")
+    #expect(await speech.liveCallCount == 2)
+  }
+
+  @Test("Audio is stopped once and a failed transcript can be recovered")
   func retryUsesPersistedAudio() async throws {
     let base = RecordingUseCaseDouble(meetingID: meetingID)
+    let recoveredRevision = revision(meetingID: meetingID)
     let transcription = TranscriptionUseCaseDouble(
-      finalizeResults: [
+      enqueueResults: [
         .failure(TranscriptError.publicationFailed),
-        .success(revision(meetingID: meetingID)),
+        .success(()),
+      ],
+      recoveryResults: [
+        TranscriptionRecoveryResult(
+          meetingID: meetingID,
+          result: .success(recoveredRevision)
+        )
       ]
     )
     let useCase = makeUseCase(
@@ -65,14 +97,92 @@ struct TranscribingRecordingUseCaseTests {
     )
     _ = try await useCase.start()
 
-    await #expect(throws: RecordingError.transcriptPublicationFailed) {
-      _ = try await useCase.stop()
-    }
+    let completion = try await useCase.stop()
+    let recovery = try await useCase.recoverPendingTranscriptions()
+
+    #expect(await base.stopCount == 1)
+    #expect(await transcription.enqueueCount == 2)
+    #expect(await transcription.finalizeCount == 0)
+    #expect(completion.transcriptRevision == nil)
+    #expect(
+      recovery == [
+        TranscriptionRecoveryResult(
+          meetingID: meetingID,
+          result: .success(recoveredRevision)
+        )
+      ])
+  }
+
+  @Test("A transcription failure completes recording without trapping the session")
+  func transcriptionFailureDoesNotTrapRecording() async throws {
+    let base = RecordingUseCaseDouble(meetingID: meetingID)
+    let transcription = TranscriptionUseCaseDouble(
+      enqueueResults: [
+        .failure(
+          TranscriptError.speechAssetsUnavailable("zh-CN")
+        )
+      ]
+    )
+    let useCase = makeUseCase(
+      base: base,
+      transcription: transcription
+    )
+    _ = try await useCase.start()
+
     let completion = try await useCase.stop()
 
     #expect(await base.stopCount == 1)
-    #expect(await transcription.finalizeCount == 2)
-    #expect(completion.transcriptRevision != nil)
+    #expect(completion.audio.durationSeconds == 10)
+    #expect(completion.transcriptRevision == nil)
+  }
+
+  @Test("Stopping returns after durable enqueue without awaiting catch-up")
+  func stopDoesNotAwaitCatchUp() async throws {
+    let transcription = TranscriptionUseCaseDouble(
+      recoveryDelay: .seconds(5)
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      transcription: transcription
+    )
+    _ = try await useCase.start()
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    _ = try await useCase.stop()
+
+    #expect(startedAt.duration(to: clock.now) < .seconds(1))
+    #expect(await transcription.enqueueCount == 1)
+    while await transcription.recoveryCount == 0 {
+      await Task.yield()
+    }
+  }
+
+  @Test("A completed background recovery remains visible to manual retry")
+  func completedRecoveryIsRemembered() async throws {
+    let recoveredRevision = revision(meetingID: meetingID)
+    let transcription = TranscriptionUseCaseDouble(
+      recoveryResults: [
+        TranscriptionRecoveryResult(
+          meetingID: meetingID,
+          result: .success(recoveredRevision)
+        )
+      ]
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      transcription: transcription
+    )
+    _ = try await useCase.start()
+    _ = try await useCase.stop()
+    while await transcription.recoveryCount == 0 {
+      await Task.yield()
+    }
+    await Task.yield()
+
+    let results = try await useCase.recoverPendingTranscriptions()
+
+    #expect(results.first?.result == .success(recoveredRevision))
   }
 
   @Test("Cold start launches recovery without blocking restore")
@@ -168,6 +278,10 @@ private actor RecordingUseCaseDouble: RecordingUseCase {
     )
   }
 
+  func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
+    []
+  }
+
   private var session: RecordingSession {
     RecordingSession(
       meetingID: meetingID,
@@ -206,14 +320,17 @@ private actor AudioCaptureDouble: AudioCapture {
 private actor SpeechEngineDouble: SpeechTranscriptionEngine {
   private let liveEvents: [SpeechRecognitionEvent]
   private let livePreparationDelay: Duration?
+  private var liveFailuresRemaining: Int
   private(set) var liveCallCount = 0
 
   init(
     liveEvents: [SpeechRecognitionEvent] = [],
-    livePreparationDelay: Duration? = nil
+    livePreparationDelay: Duration? = nil,
+    liveFailuresRemaining: Int = 0
   ) {
     self.liveEvents = liveEvents
     self.livePreparationDelay = livePreparationDelay
+    self.liveFailuresRemaining = liveFailuresRemaining
   }
 
   func liveResults(
@@ -221,6 +338,10 @@ private actor SpeechEngineDouble: SpeechTranscriptionEngine {
     localeIdentifier: String
   ) async throws -> SpeechRecognitionStream {
     liveCallCount += 1
+    if liveFailuresRemaining > 0 {
+      liveFailuresRemaining -= 1
+      throw TranscriptError.speechAssetsUnavailable(localeIdentifier)
+    }
     if let livePreparationDelay {
       try await Task.sleep(for: livePreparationDelay)
     }
@@ -243,16 +364,33 @@ private actor SpeechEngineDouble: SpeechTranscriptionEngine {
 
 private actor TranscriptionUseCaseDouble: TranscriptionUseCase {
   private var finalizeResults: [Result<TranscriptRevision, any Error>]
+  private var enqueueResults: [Result<Void, any Error>]
+  private var recoveryResults: [TranscriptionRecoveryResult]
   private let recoveryDelay: Duration?
   private(set) var finalizeCount = 0
+  private(set) var enqueueCount = 0
   private(set) var recoveryCount = 0
 
   init(
     finalizeResults: [Result<TranscriptRevision, any Error>] = [],
+    enqueueResults: [Result<Void, any Error>] = [],
+    recoveryResults: [TranscriptionRecoveryResult] = [],
     recoveryDelay: Duration? = nil
   ) {
     self.finalizeResults = finalizeResults
+    self.enqueueResults = enqueueResults
+    self.recoveryResults = recoveryResults
     self.recoveryDelay = recoveryDelay
+  }
+
+  func enqueue(
+    _ completion: RecordingCompletion,
+    localeIdentifier: String
+  ) throws {
+    enqueueCount += 1
+    if !enqueueResults.isEmpty {
+      try enqueueResults.removeFirst().get()
+    }
   }
 
   func finalize(
@@ -278,6 +416,8 @@ private actor TranscriptionUseCaseDouble: TranscriptionUseCase {
     if let recoveryDelay {
       try? await Task.sleep(for: recoveryDelay)
     }
-    return []
+    let results = recoveryResults
+    recoveryResults = []
+    return results
   }
 }

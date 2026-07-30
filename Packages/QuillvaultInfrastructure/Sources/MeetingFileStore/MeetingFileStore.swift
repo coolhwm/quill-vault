@@ -1,7 +1,10 @@
+import AVFAudio
 import Domain
 import Foundation
 
-public actor MeetingFileStore: AuthoritativeDirectoryAccess {
+public actor MeetingFileStore:
+  AuthoritativeDirectoryAccess, TranscriptionRecoverySource
+{
   private struct PersistedDirectoryAuthorization: Codable, Sendable {
     let schemaVersion: Int
     let id: UUID
@@ -430,6 +433,54 @@ public actor MeetingFileStore: AuthoritativeDirectoryAccess {
     transcriptionScopedRoots[meetingID] = scopedRoot
     transcriptionRecordingURLs[meetingID] = resolvedRecordingURL
     return resolvedRecordingURL
+  }
+
+  public func recoverableTranscriptionJobs(
+    localeIdentifier: String
+  ) async throws -> [TranscriptionJob] {
+    guard let directory = try await restoreSelectedDirectory() else {
+      return []
+    }
+    guard let root = resolvedRoots[directory.id] else {
+      throw DirectoryAccessError.directoryMoved
+    }
+    guard await dependencies.scopeAccess.startAccessing(root.url) else {
+      throw DirectoryAccessError.permissionDenied
+    }
+    do {
+      let scan = try scanner.scan(root.url)
+      let jobs: [TranscriptionJob] = try scan.meetings.compactMap { meeting in
+        guard
+          meeting.assets.contains(.recording),
+          !meeting.assets.contains(.transcript)
+        else {
+          return nil
+        }
+        let recordingURL = root.url
+          .appending(path: meeting.relativeDirectory, directoryHint: .isDirectory)
+          .appending(path: "recording.m4a")
+        let audioFile = try AVAudioFile(forReading: recordingURL)
+        let sampleRate = audioFile.processingFormat.sampleRate
+        guard sampleRate > 0 else {
+          throw TranscriptError.invalidAudioDuration
+        }
+        let duration = Double(audioFile.length) / sampleRate
+        guard duration.isFinite, duration > 0 else {
+          throw TranscriptError.invalidAudioDuration
+        }
+        return TranscriptionJob(
+          meetingID: meeting.id,
+          recordingURL: recordingURL,
+          audioDurationSeconds: duration,
+          localeIdentifier: localeIdentifier
+        )
+      }
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      return jobs
+    } catch {
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      throw error
+    }
   }
 
   public func endTranscriptionAccess(meetingID: MeetingID) async {

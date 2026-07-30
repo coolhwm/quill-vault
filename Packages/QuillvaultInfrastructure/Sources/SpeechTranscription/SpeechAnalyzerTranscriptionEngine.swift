@@ -25,7 +25,7 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
       compatibleWith: [prepared.transcriber]
     )
     guard let analyzerFormat else {
-      _ = await dependencies.releaseLocale(prepared.reservedLocale)
+      await releaseReservation(for: prepared)
       throw TranscriptError.speechAssetsUnavailable(localeIdentifier)
     }
     let analyzerInputs = AsyncStream<AnalyzerInput> { continuation in
@@ -122,10 +122,9 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
       throw TranscriptError.speechAssetsUnavailable(localeIdentifier)
     }
 
+    let ownsReservation: Bool
     do {
-      guard try await dependencies.reserveLocale(supportedLocale) else {
-        throw TranscriptError.speechAssetsUnavailable(localeIdentifier)
-      }
+      ownsReservation = try await dependencies.reserveLocale(supportedLocale)
     } catch let error as TranscriptError {
       throw error
     } catch {
@@ -141,7 +140,7 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
         )
       ),
       transcriber: transcriber,
-      reservedLocale: supportedLocale
+      reservedLocale: ownsReservation ? supportedLocale : nil
     )
   }
 
@@ -181,17 +180,17 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
         do {
           try await analysis(prepared.analyzer)
           _ = await resultTask.result
-          _ = await dependencies.releaseLocale(prepared.reservedLocale)
+          await releaseReservation(for: prepared)
           continuation.finish()
         } catch is CancellationError {
           await prepared.analyzer.cancelAndFinishNow()
           resultTask.cancel()
-          _ = await dependencies.releaseLocale(prepared.reservedLocale)
+          await releaseReservation(for: prepared)
           continuation.finish(throwing: CancellationError())
         } catch {
           await prepared.analyzer.cancelAndFinishNow()
           resultTask.cancel()
-          _ = await dependencies.releaseLocale(prepared.reservedLocale)
+          await releaseReservation(for: prepared)
           continuation.finish(throwing: TranscriptError.recognitionFailed)
         }
       }
@@ -201,6 +200,13 @@ public struct SpeechAnalyzerTranscriptionEngine: SpeechTranscriptionEngine {
         resultTask.cancel()
       }
     }
+  }
+
+  private func releaseReservation(for prepared: PreparedAnalyzer) async {
+    guard let locale = prepared.reservedLocale else {
+      return
+    }
+    _ = await dependencies.releaseLocale(locale)
   }
 
   private static func makeBuffer(_ frame: AudioFrame) -> AVAudioPCMBuffer? {
@@ -306,7 +312,7 @@ private final class ConversionInputProvider: @unchecked Sendable {
 struct PreparedAnalyzer: @unchecked Sendable {
   let analyzer: SpeechAnalyzer
   let transcriber: SpeechTranscriber
-  let reservedLocale: Locale
+  let reservedLocale: Locale?
 }
 
 @available(iOS 26.0, macOS 26.0, *)
@@ -325,14 +331,11 @@ struct SpeechAnalyzerDependencies: Sendable {
       await AssetInventory.status(forModules: $0)
     },
     installAssets: { modules in
-      guard
-        let request = try await AssetInventory.assetInstallationRequest(
-          supporting: modules
-        )
-      else {
-        throw TranscriptError.speechAssetsUnavailable("unknown")
+      if let request = try await AssetInventory.assetInstallationRequest(
+        supporting: modules
+      ) {
+        try await request.downloadAndInstall()
       }
-      try await request.downloadAndInstall()
     },
     reserveLocale: {
       try await AssetInventory.reserve(locale: $0)

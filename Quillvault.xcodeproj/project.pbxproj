@@ -21,6 +21,7 @@
 		920F0BC333020C91F21D608C /* Domain in Frameworks */ = {isa = PBXBuildFile; productRef = 8B0862626BC69050D8B0730F /* Domain */; };
 		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
 		961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */; };
+		A3181EAC5B3B4EB29B0B39AA /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */; };
 		B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 721031C655B87E518827D0EC /* DesignSystem */; };
 		B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */; };
 		BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */; };
@@ -46,6 +47,7 @@
 		0AB205973E9B6720D1AB0E9F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootNavigationUITests.swift; sourceTree = "<group>"; };
 		782AAC83BAEDC6B8BA0199AF /* QuillvaultUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuillvaultUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
 		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 		E8817E1E51ECDF0F886AE0CD /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */,
 				E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */,
 				DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */,
 			);
@@ -257,6 +260,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A3181EAC5B3B4EB29B0B39AA /* InfoPlist.xcstrings in Resources */,
 				961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */,
 				BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */,
 				E6F3A3EFA8EF96C4809EF56E /* GRDB-LICENSE.txt in Resources */,

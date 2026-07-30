@@ -6,11 +6,17 @@ import Observation
 @Observable
 public final class MeetingsModel {
   public private(set) var state: MeetingLibraryState = .idle
+  public private(set) var recoveringMeetingID: MeetingID?
 
   private let library: any MeetingLibraryUseCase
+  private let transcriptionRecovery: (any TranscriptionRecoveryUseCase)?
 
-  public init(library: any MeetingLibraryUseCase) {
+  public init(
+    library: any MeetingLibraryUseCase,
+    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil
+  ) {
     self.library = library
+    self.transcriptionRecovery = transcriptionRecovery
   }
 
   public func load() async {
@@ -44,6 +50,22 @@ public final class MeetingsModel {
     } catch {
       state = .failed(recovery(for: error))
     }
+  }
+
+  public func retryTranscript(meetingID: MeetingID) async {
+    guard let transcriptionRecovery, recoveringMeetingID == nil else {
+      return
+    }
+    recoveringMeetingID = meetingID
+    do {
+      _ = try await transcriptionRecovery.recoverPendingTranscriptions()
+    } catch {
+      recoveringMeetingID = nil
+      state = .failed(.tryAgain)
+      return
+    }
+    recoveringMeetingID = nil
+    await rebuild()
   }
 
   private func recovery(for error: Error) -> MeetingLibraryRecovery {

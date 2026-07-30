@@ -77,7 +77,10 @@ final class RootNavigationUITests: XCTestCase {
     stop.tap()
 
     XCTAssertTrue(screen("home.screen").waitForExistence(timeout: 2))
-    XCTAssertTrue(app.staticTexts["Recording saved"].exists)
+    XCTAssertTrue(
+      app.staticTexts["Recording saved · Transcript pending"].exists
+    )
+    XCTAssertTrue(app.buttons["Retry transcript"].exists)
   }
 
   private func launch(

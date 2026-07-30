@@ -12,6 +12,8 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
   private var liveTasks: [MeetingID: Task<Void, Never>] = [:]
   private var liveSnapshots: [MeetingID: LiveTranscriptSnapshot] = [:]
   private var observers: [MeetingID: [UUID: AsyncStream<LiveTranscriptSnapshot>.Continuation]] = [:]
+  private var recoveryTask: Task<[TranscriptionRecoveryResult], Error>?
+  private var successfulRecoveryResults: [MeetingID: TranscriptionRecoveryResult] = [:]
   private var didStartRecovery = false
 
   public init(
@@ -80,25 +82,64 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     }
 
     stopLiveTranscription(meetingID: completion.session.meetingID)
+    var wasEnqueued = false
     do {
-      let revision = try await transcription.finalize(
+      try await transcription.enqueue(
         completion,
         localeIdentifier: localeIdentifier
       )
       pendingCompletion = nil
-      finishObservers(meetingID: completion.session.meetingID)
-      return RecordingCompletion(
-        session: completion.session,
-        audio: completion.audio,
-        transcriptRevision: revision
-      )
+      wasEnqueued = true
     } catch is CancellationError {
+      finishObservers(meetingID: completion.session.meetingID)
       throw CancellationError()
-    } catch let error as TranscriptError {
-      throw map(error)
     } catch {
-      throw RecordingError.transcriptionFailed
+      // Keep the completion in memory so a manual retry can enqueue it
+      // without stopping audio a second time.
     }
+    finishObservers(meetingID: completion.session.meetingID)
+    if wasEnqueued {
+      startRecovery()
+    }
+    return completion
+  }
+
+  public func recoverPendingTranscriptions() async throws
+    -> [TranscriptionRecoveryResult]
+  {
+    if let pendingCompletion {
+      do {
+        try await transcription.enqueue(
+          pendingCompletion,
+          localeIdentifier: localeIdentifier
+        )
+        self.pendingCompletion = nil
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch let error as TranscriptError {
+        return [
+          TranscriptionRecoveryResult(
+            meetingID: pendingCompletion.session.meetingID,
+            result: .failure(error)
+          )
+        ]
+      } catch {
+        return [
+          TranscriptionRecoveryResult(
+            meetingID: pendingCompletion.session.meetingID,
+            result: .failure(.publicationFailed)
+          )
+        ]
+      }
+    }
+
+    let results = try await recoverDurableJobs()
+    if results.isEmpty {
+      let cached = Array(successfulRecoveryResults.values)
+      successfulRecoveryResults.removeAll()
+      return cached
+    }
+    return results
   }
 
   private func startRecoveryIfNeeded() {
@@ -106,10 +147,39 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
       return
     }
     didStartRecovery = true
-    let transcription = self.transcription
-    Task {
-      _ = await transcription.recoverPending()
+    startRecovery()
+  }
+
+  private func startRecovery() {
+    Task { [weak self] in
+      _ = try? await self?.recoverDurableJobs()
     }
+  }
+
+  private func recoverDurableJobs() async throws -> [TranscriptionRecoveryResult] {
+    if let recoveryTask {
+      return try await recoveryTask.value
+    }
+    let transcription = self.transcription
+    let task = Task {
+      try await transcription.recoverPending()
+    }
+    recoveryTask = task
+    defer {
+      recoveryTask = nil
+    }
+    let results = try await task.value
+    for result in results {
+      if case .success = result.result {
+        if successfulRecoveryResults.count >= 32,
+          let evictionKey = successfulRecoveryResults.keys.first
+        {
+          successfulRecoveryResults[evictionKey] = nil
+        }
+        successfulRecoveryResults[result.meetingID] = result
+      }
+    }
+    return results
   }
 
   private func startLiveTranscription(for meetingID: MeetingID) {
@@ -120,19 +190,27 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     let speech = self.speech
     let localeIdentifier = self.localeIdentifier
     liveTasks[meetingID] = Task { [weak self] in
-      do {
-        let frames = await capture.liveFrames(meetingID: meetingID)
-        let results = try await speech.liveResults(
-          frames: frames,
-          localeIdentifier: localeIdentifier
-        )
-        for try await event in results {
-          try Task.checkCancellation()
-          await self?.receive(event, meetingID: meetingID)
+      while !Task.isCancelled {
+        do {
+          let frames = await capture.liveFrames(meetingID: meetingID)
+          let results = try await speech.liveResults(
+            frames: frames,
+            localeIdentifier: localeIdentifier
+          )
+          for try await event in results {
+            try Task.checkCancellation()
+            await self?.receive(event, meetingID: meetingID)
+          }
+          return
+        } catch is CancellationError {
+          return
+        } catch TranscriptError.speechAssetsUnavailable {
+          // Speech assets may become available after recording starts. Keep
+          // retrying live results while durable audio capture continues.
+          try? await Task.sleep(for: .milliseconds(500))
+        } catch {
+          return
         }
-      } catch {
-        // Live results are best effort. The saved recording remains the
-        // authoritative source for catch-up finalization.
       }
     }
   }
@@ -182,18 +260,4 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     }
   }
 
-  private func map(_ error: TranscriptError) -> RecordingError {
-    switch error {
-    case .unsupportedLocale:
-      .unsupportedTranscriptionLocale
-    case .speechAssetsUnavailable:
-      .speechAssetsUnavailable
-    case .publicationFailed:
-      .transcriptPublicationFailed
-    case .recordingUnavailable:
-      .authoritativeDirectoryUnavailable
-    case .invalidAudioDuration, .invalidTimeRange, .recognitionFailed:
-      .transcriptionFailed
-    }
-  }
 }
