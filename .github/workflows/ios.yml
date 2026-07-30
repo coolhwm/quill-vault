@@ -14,6 +14,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install CI tools
+        run: brew install ripgrep
+
       - name: Check architecture boundaries
         run: sh Scripts/check-architecture.sh
 
@@ -103,13 +106,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve available simulator
+        env:
+          DEVICE_NAME: ${{ matrix.device }}
+        run: |
+          simulator_udid="$(
+            xcrun simctl list devices available --json |
+              jq -r --arg name "$DEVICE_NAME" '
+                [
+                  .devices
+                  | to_entries[]
+                  | .key as $runtime
+                  | .value[]
+                  | select(.name == $name)
+                  | { udid, runtime: $runtime }
+                ]
+                | sort_by(.runtime)
+                | last
+                | .udid // empty
+              '
+          )"
+          test -n "$simulator_udid"
+          echo "SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
+
       - name: Run UI suite
         run: >-
           xcodebuild
           -project Quillvault.xcodeproj
           -scheme Quillvault
           -configuration Debug
-          -destination 'platform=iOS Simulator,name=${{ matrix.device }}'
+          -destination "platform=iOS Simulator,id=$SIMULATOR_UDID"
           -resultBundlePath "$RUNNER_TEMP/Simulator-UI.xcresult"
           CODE_SIGNING_ALLOWED=NO
           test

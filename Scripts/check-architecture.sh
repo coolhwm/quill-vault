@@ -2,6 +2,11 @@
 
 set -eu
 
+if ! command -v rg >/dev/null 2>&1; then
+    echo "Architecture checks require ripgrep (rg)." >&2
+    exit 127
+fi
+
 failure=0
 
 ruby Scripts/validate-package-graph-test.rb

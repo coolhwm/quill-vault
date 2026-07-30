@@ -133,11 +133,11 @@ final class AVAudioRecorderDriver: AudioRecorderDriving, @unchecked Sendable {
   }
 
   private func deactivateAudioSession() {
-      #if os(iOS)
+    #if os(iOS)
       try? AVAudioSession.sharedInstance().setActive(
         false,
         options: .notifyOthersOnDeactivation
       )
-      #endif
+    #endif
   }
 }
