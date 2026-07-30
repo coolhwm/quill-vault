@@ -1,6 +1,7 @@
 public enum MeetingScanDiagnosticCode: String, Codable, Sendable {
   case candidateIgnored
   case invalidManifest
+  case invalidMarkdown
   case itemNotDownloaded
   case noRecognizedAssets
   case unreadableEntry

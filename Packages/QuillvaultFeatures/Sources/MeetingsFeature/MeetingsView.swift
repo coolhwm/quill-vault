@@ -5,6 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 public struct MeetingsView: View {
+  @Environment(\.scenePhase) private var scenePhase
   @Bindable private var model: MeetingsModel
   @State private var isDirectoryImporterPresented = false
 
@@ -26,6 +27,9 @@ public struct MeetingsView: View {
     }
     .navigationTitle("minutes.navigation.title")
     .toolbar {
+      ToolbarItem(placement: .secondaryAction) {
+        filterMenu
+      }
       ToolbarItem(placement: .primaryAction) {
         Button("minutes.directory.choose", systemImage: "folder.badge.plus") {
           isDirectoryImporterPresented = true
@@ -51,6 +55,27 @@ public struct MeetingsView: View {
       }
       await model.load()
     }
+    .searchable(
+      text: $model.searchText,
+      placement: .automatic,
+      prompt: "minutes.search.prompt"
+    )
+    .task(id: model.searchSelection) {
+      guard model.state != .idle, model.state != .loading else {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(250))
+      guard !Task.isCancelled else {
+        return
+      }
+      await model.applySearch()
+    }
+    .task(id: scenePhase) {
+      guard scenePhase == .active else {
+        return
+      }
+      await model.synchronizeUntilCancelled()
+    }
     .accessibilityIdentifier("minutes.screen")
   }
 
@@ -59,11 +84,23 @@ public struct MeetingsView: View {
     _ snapshot: Application.MeetingLibrarySnapshot
   ) -> some View {
     if snapshot.meetings.isEmpty {
-      QuillvaultEmptyState(
-        "minutes.empty.title",
-        systemImage: "doc.text",
-        description: "minutes.empty.description"
-      )
+      if model.hasActiveSearch {
+        ContentUnavailableView {
+          Label("minutes.search.empty.title", systemImage: "magnifyingglass")
+        } description: {
+          Text("minutes.search.empty.description")
+        } actions: {
+          Button("minutes.search.clear") {
+            model.clearFilters()
+          }
+        }
+      } else {
+        QuillvaultEmptyState(
+          "minutes.empty.title",
+          systemImage: "doc.text",
+          description: "minutes.empty.description"
+        )
+      }
     } else {
       List {
         Section {
@@ -117,6 +154,70 @@ public struct MeetingsView: View {
     }
   }
 
+  private var filterMenu: some View {
+    Menu {
+      Menu("minutes.filter.date") {
+        ForEach(MeetingDateFilter.allCases, id: \.self) { filter in
+          Button {
+            model.dateFilter = filter
+          } label: {
+            if model.dateFilter == filter {
+              Label(filter.titleKey, systemImage: "checkmark")
+            } else {
+              Text(filter.titleKey)
+            }
+          }
+        }
+      }
+      Menu("minutes.filter.status") {
+        ForEach(MeetingIndexStatus.allCases, id: \.self) { status in
+          Button {
+            model.toggleStatus(status)
+          } label: {
+            if model.selectedStatuses.contains(status) {
+              Label(status.titleKey, systemImage: "checkmark")
+            } else {
+              Text(status.titleKey)
+            }
+          }
+        }
+      }
+      if !model.availableModelNames.isEmpty {
+        Menu("minutes.filter.model") {
+          Button {
+            model.selectedModelName = nil
+          } label: {
+            if model.selectedModelName == nil {
+              Label("minutes.filter.all.models", systemImage: "checkmark")
+            } else {
+              Text("minutes.filter.all.models")
+            }
+          }
+          ForEach(model.availableModelNames, id: \.self) { name in
+            Button {
+              model.selectedModelName = name
+            } label: {
+              if model.selectedModelName == name {
+                Label(name, systemImage: "checkmark")
+              } else {
+                Text(name)
+              }
+            }
+          }
+        }
+      }
+      if model.hasActiveSearch {
+        Divider()
+        Button("minutes.search.clear", role: .destructive) {
+          model.clearFilters()
+        }
+      }
+    } label: {
+      Label("minutes.filter", systemImage: "line.3.horizontal.decrease.circle")
+    }
+    .accessibilityIdentifier("minutes.filter")
+  }
+
   private func recoveryContent(
     _ recovery: MeetingLibraryRecovery
   ) -> some View {
@@ -140,6 +241,34 @@ public struct MeetingsView: View {
     }
   }
 
+}
+
+extension MeetingDateFilter {
+  fileprivate var titleKey: LocalizedStringKey {
+    switch self {
+    case .all:
+      "minutes.filter.date.all"
+    case .today:
+      "minutes.filter.date.today"
+    case .lastSevenDays:
+      "minutes.filter.date.seven"
+    case .lastThirtyDays:
+      "minutes.filter.date.thirty"
+    }
+  }
+}
+
+extension MeetingIndexStatus {
+  fileprivate var titleKey: LocalizedStringKey {
+    switch self {
+    case .awaitingTranscript:
+      "minutes.status.awaiting.transcript"
+    case .awaitingMinutes:
+      "minutes.status.awaiting.minutes"
+    case .minutesCompleted:
+      "minutes.status.completed"
+    }
+  }
 }
 
 extension MeetingLibraryRecovery {

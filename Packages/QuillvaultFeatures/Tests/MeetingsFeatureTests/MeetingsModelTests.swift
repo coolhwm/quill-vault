@@ -81,9 +81,125 @@ struct MeetingsModelTests {
     #expect(model.state == .loaded(.fixture))
   }
 
+  @Test("Combines text, date, status, and model filters at the use-case boundary")
+  func combinedSearch() async {
+    let recorder = SearchQueryRecorder()
+    let result = MeetingIndexEntry(
+      id: MeetingID(
+        rawValue: UUID(uuidString: "A1111111-1111-1111-1111-111111111111")!
+      ),
+      createdAt: Date(),
+      relativeDirectory: "meeting-search",
+      assets: [.transcript, .minutes],
+      title: "Search result",
+      modelName: "deepseek-chat"
+    )
+    let snapshot = MeetingLibrarySnapshot(
+      directory: .fixture,
+      meetings: [result],
+      diagnosticCount: 0
+    )
+    let model = makeModel(
+      library: MeetingLibraryUseCaseStub(
+        restoreResult: .success(snapshot),
+        searchRecorder: recorder,
+        searchResult: [result]
+      )
+    )
+    await model.load()
+    model.searchText = "季度复盘"
+    model.dateFilter = .lastSevenDays
+    model.selectedStatuses = [.minutesCompleted]
+    model.selectedModelName = "deepseek-chat"
+
+    await model.applySearch()
+
+    let query = await recorder.lastQuery
+    #expect(query?.text == "季度复盘")
+    #expect(query?.createdFrom != nil)
+    #expect(query?.createdThrough != nil)
+    #expect(query?.statuses == [.minutesCompleted])
+    #expect(query?.modelName == "deepseek-chat")
+    #expect(model.state == .loaded(snapshot))
+  }
+
+  @Test("Date filters use the injected clock and calendar")
+  func deterministicDateFilter() async {
+    let recorder = SearchQueryRecorder()
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let model = makeModel(
+      library: MeetingLibraryUseCaseStub(
+        restoreResult: .success(.fixture),
+        searchRecorder: recorder
+      ),
+      now: { now },
+      calendar: calendar
+    )
+    await model.load()
+    model.dateFilter = .today
+
+    await model.applySearch()
+
+    let query = await recorder.lastQuery
+    #expect(query?.createdFrom == calendar.startOfDay(for: now))
+    #expect(
+      query?.createdThrough
+        == calendar.date(
+          byAdding: .day,
+          value: 1,
+          to: calendar.startOfDay(for: now)
+        )
+    )
+  }
+
+  @Test("Periodic synchronization belongs to the model and stops at cancellation")
+  func periodicSynchronization() async {
+    let recorder = SynchronizationRecorder()
+    let waiter = SynchronizationWaiter()
+    let model = makeModel(
+      library: MeetingLibraryUseCaseStub(
+        restoreResult: .success(.fixture),
+        synchronizationRecorder: recorder
+      ),
+      waitForSynchronization: waiter.wait
+    )
+    await model.load()
+    while await recorder.callCount == 0 {
+      await Task.yield()
+    }
+    await recorder.reset()
+
+    await model.synchronizeUntilCancelled()
+
+    #expect(await recorder.callCount == 1)
+  }
+
+  @Test("An iCloud placeholder keeps the last indexed snapshot visible")
+  func iCloudPlaceholderPreservesSnapshot() async {
+    let snapshot = MeetingLibrarySnapshot.fixture
+    let model = makeModel(
+      library: MeetingLibraryUseCaseStub(
+        restoreResult: .success(snapshot),
+        synchronizeResult: .failure(DirectoryAccessError.itemNotDownloaded)
+      )
+    )
+
+    await model.load()
+    await model.synchronizeExternalChanges()
+
+    #expect(model.state == .loaded(snapshot))
+  }
+
   private func makeModel(
     library: any MeetingLibraryUseCase,
-    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil
+    transcriptionRecovery: (any TranscriptionRecoveryUseCase)? = nil,
+    now: @escaping @Sendable () -> Date = Date.init,
+    calendar: Calendar = .current,
+    waitForSynchronization: @escaping @Sendable () async throws -> Void = {
+      try await Task.sleep(for: .seconds(15))
+    }
   ) -> MeetingsModel {
     MeetingsModel(
       library: library,
@@ -91,7 +207,10 @@ struct MeetingsModelTests {
       detail: UnusedMeetingDetailUseCase(),
       makePlayer: {
         UnusedMeetingAudioPlayer()
-      }
+      },
+      now: now,
+      calendar: calendar,
+      waitForSynchronization: waitForSynchronization
     )
   }
 }
@@ -147,6 +266,24 @@ private actor TranscriptionRecoveryUseCaseStub: TranscriptionRecoveryUseCase {
 
 private struct MeetingLibraryUseCaseStub: MeetingLibraryUseCase {
   let restoreResult: Result<MeetingLibrarySnapshot, Error>
+  var searchRecorder: SearchQueryRecorder?
+  var searchResult: [MeetingIndexEntry]?
+  var synchronizeResult: Result<MeetingLibrarySnapshot, Error>?
+  var synchronizationRecorder: SynchronizationRecorder?
+
+  init(
+    restoreResult: Result<MeetingLibrarySnapshot, Error>,
+    searchRecorder: SearchQueryRecorder? = nil,
+    searchResult: [MeetingIndexEntry]? = nil,
+    synchronizeResult: Result<MeetingLibrarySnapshot, Error>? = nil,
+    synchronizationRecorder: SynchronizationRecorder? = nil
+  ) {
+    self.restoreResult = restoreResult
+    self.searchRecorder = searchRecorder
+    self.searchResult = searchResult
+    self.synchronizeResult = synchronizeResult
+    self.synchronizationRecorder = synchronizationRecorder
+  }
 
   func restore() async throws -> MeetingLibrarySnapshot {
     try restoreResult.get()
@@ -161,6 +298,57 @@ private struct MeetingLibraryUseCaseStub: MeetingLibraryUseCase {
   func rebuild() async throws -> MeetingLibrarySnapshot {
     try restoreResult.get()
   }
+
+  func synchronize() async throws -> MeetingLibrarySnapshot {
+    await synchronizationRecorder?.record()
+    return try (synchronizeResult ?? restoreResult).get()
+  }
+
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    await searchRecorder?.record(query)
+    if let searchResult {
+      return searchResult
+    }
+    return try restoreResult.get().meetings
+  }
+}
+
+private actor SearchQueryRecorder {
+  private(set) var lastQuery: MeetingSearchQuery?
+
+  func record(_ query: MeetingSearchQuery) {
+    lastQuery = query
+  }
+}
+
+private actor SynchronizationRecorder {
+  private(set) var callCount = 0
+
+  func record() {
+    callCount += 1
+  }
+
+  func reset() {
+    callCount = 0
+  }
+}
+
+private final class SynchronizationWaiter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var hasReturned = false
+
+  func wait() async throws {
+    let shouldReturn = lock.withLock {
+      guard !hasReturned else {
+        return false
+      }
+      hasReturned = true
+      return true
+    }
+    if !shouldReturn {
+      throw CancellationError()
+    }
+  }
 }
 
 extension MeetingLibrarySnapshot {
@@ -172,5 +360,13 @@ extension MeetingLibrarySnapshot {
     ),
     meetings: [],
     diagnosticCount: 0
+  )
+}
+
+extension AuthoritativeDirectory {
+  fileprivate static let fixture = Self(
+    id: AuthoritativeDirectoryID(rawValue: "test"),
+    displayName: "Vault",
+    kind: .userSelected
   )
 }

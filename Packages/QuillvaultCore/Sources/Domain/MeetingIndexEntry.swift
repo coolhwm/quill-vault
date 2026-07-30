@@ -26,4 +26,14 @@ public struct MeetingIndexEntry: Equatable, Sendable {
     self.durationSeconds = durationSeconds
     self.modelName = modelName
   }
+
+  public var status: MeetingIndexStatus {
+    if assets.contains(.minutes) {
+      return .minutesCompleted
+    }
+    if assets.contains(.transcript) {
+      return .awaitingMinutes
+    }
+    return .awaitingTranscript
+  }
 }

@@ -3,6 +3,7 @@ import GRDB
 enum MeetingCatalogMigrator {
   static let initialMigration = "v1_create_rebuildable_meeting_catalog"
   static let detailMetadataMigration = "v2_add_meeting_detail_metadata"
+  static let localSearchMigration = "v3_add_local_meeting_search"
 
   static func make() -> DatabaseMigrator {
     var migrator = makeInitial()
@@ -11,6 +12,15 @@ enum MeetingCatalogMigrator {
         table.add(column: "title", .text)
         table.add(column: "duration_seconds", .double)
         table.add(column: "model_name", .text)
+      }
+    }
+    migrator.registerMigration(localSearchMigration) { database in
+      try database.create(virtualTable: "meeting_search", using: FTS5()) { table in
+        table.tokenizer = FTS5TokenizerDescriptor(components: ["trigram"])
+        table.column("meeting_id").notIndexed()
+        table.column("title")
+        table.column("summary")
+        table.column("transcript")
       }
     }
     return migrator

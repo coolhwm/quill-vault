@@ -27,6 +27,16 @@ public actor RetryingMeetingLibraryUseCase: MeetingLibraryUseCase {
     try await resolve().rebuild()
   }
 
+  public func synchronize() async throws -> MeetingLibrarySnapshot {
+    try await resolve().synchronize()
+  }
+
+  public func search(
+    _ query: MeetingSearchQuery
+  ) async throws -> [MeetingIndexEntry] {
+    try await resolve().search(query)
+  }
+
   private func resolve() async throws -> any MeetingLibraryUseCase {
     if let resolvedLibrary {
       return resolvedLibrary

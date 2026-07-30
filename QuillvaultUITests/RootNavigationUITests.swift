@@ -104,6 +104,29 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["recording.stop"].isHittable)
   }
 
+  func testMeetingSearchAndFiltersExposeAnEmptyRecoveryState() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: ["-ui-test-meeting-detail"]
+    )
+
+    app.tabBars.buttons["Minutes"].tap()
+    XCTAssertTrue(screen("minutes.screen").waitForExistence(timeout: 2))
+    app.navigationBars.buttons["More"].tap()
+    XCTAssertTrue(app.buttons["Filter"].waitForExistence(timeout: 2))
+    app.tap()
+    let search = app.searchFields.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 2))
+    search.tap()
+    search.typeText("no matching meeting")
+
+    XCTAssertTrue(
+      app.staticTexts["No matching meetings"].waitForExistence(timeout: 3)
+    )
+    XCTAssertTrue(app.buttons["Clear search and filters"].isHittable)
+  }
+
   func testLongMeetingDetailKeepsTranscriptAndAudioUsableWithoutMinutes() {
     launch(
       language: "zh-Hans",
@@ -124,7 +147,10 @@ final class RootNavigationUITests: XCTestCase {
     meeting.tap()
 
     XCTAssertTrue(app.navigationBars["会议详情"].waitForExistence(timeout: 2))
-    XCTAssertTrue(app.staticTexts["纪要尚未生成，文字记录和录音仍可使用。"].exists)
+    XCTAssertTrue(
+      app.staticTexts["纪要尚未生成，文字记录和录音仍可使用。"]
+        .waitForExistence(timeout: 2)
+    )
     let detailSnapshot = XCTAttachment(
       screenshot: app.screenshot()
     )
@@ -173,7 +199,12 @@ final class RootNavigationUITests: XCTestCase {
     meeting.tap()
 
     XCTAssertTrue(app.navigationBars["Meeting"].waitForExistence(timeout: 2))
-    XCTAssertTrue(app.staticTexts["No speech was recognized in this recording."].exists)
+    let emptyTranscript =
+      app.staticTexts["No speech was recognized in this recording."]
+    for _ in 0..<10 where !emptyTranscript.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(emptyTranscript.exists)
     XCTAssertTrue(
       app.staticTexts[
         "The recording file is missing. Restore it to this meeting folder, then reopen the meeting."

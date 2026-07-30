@@ -775,6 +775,84 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法读取文字记录。" } }
       }
     },
+    "minutes.filter" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Filter" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "筛选" } }
+      }
+    },
+    "minutes.filter.all.models" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All models" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部模型" } }
+      }
+    },
+    "minutes.filter.date" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Date" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "日期" } }
+      }
+    },
+    "minutes.filter.date.all" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Any date" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部日期" } }
+      }
+    },
+    "minutes.filter.date.seven" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 7 days" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近 7 天" } }
+      }
+    },
+    "minutes.filter.date.thirty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 30 days" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近 30 天" } }
+      }
+    },
+    "minutes.filter.date.today" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Today" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "今天" } }
+      }
+    },
+    "minutes.filter.model" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型" } }
+      }
+    },
+    "minutes.filter.status" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Status" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "状态" } }
+      }
+    },
+    "minutes.search.clear" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear search and filters" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "清除搜索与筛选" } }
+      }
+    },
+    "minutes.search.empty.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try another phrase or remove some filters." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请尝试其他关键词，或减少筛选条件。" } }
+      }
+    },
+    "minutes.search.empty.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No matching meetings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有匹配的会议" } }
+      }
+    },
+    "minutes.search.prompt" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search titles, minutes, and transcripts" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "搜索标题、纪要和文字记录" } }
+      }
+    },
     "minutes.status.awaiting.minutes" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Awaiting minutes" } },

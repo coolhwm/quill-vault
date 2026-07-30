@@ -144,6 +144,194 @@ struct GRDBMeetingCatalogTests {
     #expect(try await catalog.meetings() == [original])
   }
 
+  @Test("Searches title, summary, and transcript with combinable filters")
+  func localSearchAndFilters() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let recent = MeetingIndexEntry.fixture(
+      id: "D1111111-1111-1111-1111-111111111111",
+      createdAt: 1_800_000_000,
+      directory: "meeting-recent",
+      assets: [.recording, .transcript, .minutes],
+      title: "季度复盘",
+      modelName: "deepseek-chat"
+    )
+    let older = MeetingIndexEntry.fixture(
+      id: "D2222222-2222-2222-2222-222222222222",
+      createdAt: 1_700_000_000,
+      directory: "meeting-older",
+      assets: [.recording, .transcript],
+      title: "Planning",
+      modelName: nil
+    )
+    try await catalog.replaceAll(
+      with: MeetingDirectoryScan(
+        meetings: [older, recent],
+        fingerprints: [],
+        diagnostics: [],
+        searchDocuments: [
+          MeetingSearchDocument(
+            meetingID: recent.id,
+            title: "季度复盘",
+            summary: "确认下一季度增长目标",
+            transcript: "讨论华东区域投放计划"
+          ),
+          MeetingSearchDocument(
+            meetingID: older.id,
+            title: "Planning",
+            summary: "Roadmap review",
+            transcript: "offline first storage"
+          ),
+        ]
+      )
+    )
+
+    #expect(try await catalog.search(.init(text: "季度")).map(\.id) == [recent.id])
+    #expect(try await catalog.search(.init(text: "增长目标")).map(\.id) == [recent.id])
+    #expect(try await catalog.search(.init(text: "华东区域")).map(\.id) == [recent.id])
+    #expect(
+      try await catalog.search(
+        .init(
+          createdFrom: Date(timeIntervalSince1970: 1_750_000_000),
+          statuses: [.minutesCompleted],
+          modelName: "DEEPSEEK-CHAT"
+        )
+      ).map(\.id) == [recent.id]
+    )
+    #expect(
+      try await catalog.search(.init(statuses: [.awaitingMinutes])).map(\.id)
+        == [older.id]
+    )
+  }
+
+  @Test("FTS replacement removes deleted and externally changed content")
+  func searchReplacement() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let meeting = MeetingIndexEntry.fixture(
+      id: "D3333333-3333-3333-3333-333333333333"
+    )
+    try await catalog.replaceAll(
+      with: MeetingDirectoryScan(
+        meetings: [meeting],
+        fingerprints: [],
+        diagnostics: [],
+        searchDocuments: [
+          .init(
+            meetingID: meeting.id,
+            title: "Old title",
+            summary: "",
+            transcript: "legacy searchable phrase"
+          )
+        ]
+      )
+    )
+    #expect(try await catalog.search(.init(text: "legacy")).count == 1)
+
+    try await catalog.replaceAll(
+      with: MeetingDirectoryScan(
+        meetings: [meeting],
+        fingerprints: [],
+        diagnostics: [],
+        searchDocuments: [
+          .init(
+            meetingID: meeting.id,
+            title: "New title",
+            summary: "",
+            transcript: "replacement content"
+          )
+        ]
+      )
+    )
+    #expect(try await catalog.search(.init(text: "legacy")).isEmpty)
+    #expect(try await catalog.search(.init(text: "replacement")).count == 1)
+
+    try await catalog.replaceAll(with: .empty)
+    #expect(try await catalog.search(.init(text: "replacement")).isEmpty)
+  }
+
+  @Test("Incremental synchronization reindexes changed files and removes deleted meetings")
+  func incrementalSynchronization() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let changed = MeetingIndexEntry.fixture(
+      id: "D4444444-4444-4444-4444-444444444444",
+      directory: "meeting-changed"
+    )
+    let deleted = MeetingIndexEntry.fixture(
+      id: "D5555555-5555-5555-5555-555555555555",
+      directory: "meeting-deleted"
+    )
+    try await catalog.replaceAll(
+      with: scan(
+        meetings: [changed, deleted],
+        texts: [changed.id: "old searchable", deleted.id: "delete searchable"],
+        digest: "v1"
+      )
+    )
+
+    try await catalog.synchronize(
+      with: scan(
+        meetings: [changed],
+        texts: [changed.id: "new searchable"],
+        digest: "v2"
+      )
+    )
+
+    #expect(try await catalog.search(.init(text: "old searchable")).isEmpty)
+    #expect(
+      try await catalog.search(.init(text: "new searchable")).map(\.id)
+        == [changed.id]
+    )
+    #expect(try await catalog.search(.init(text: "delete searchable")).isEmpty)
+    #expect(try await catalog.meetings().map(\.id) == [changed.id])
+  }
+
+  @Test("Rebuilds and searches 2,000 meetings within the local index budgets")
+  func largeSearchPerformance() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let meetings = (0..<2_000).map { index in
+      MeetingIndexEntry(
+        id: MeetingID(rawValue: UUID()),
+        createdAt: Date(timeIntervalSince1970: 1_800_000_000 + Double(index)),
+        relativeDirectory: "meeting-\(index)",
+        assets: [.transcript, .minutes],
+        title: "Meeting \(index)",
+        durationSeconds: 60,
+        modelName: index.isMultiple(of: 2) ? "model-a" : "model-b"
+      )
+    }
+    let target = meetings[1_337]
+    let scan = MeetingDirectoryScan(
+      meetings: meetings,
+      fingerprints: [],
+      diagnostics: [],
+      searchDocuments: meetings.enumerated().map { index, meeting in
+        MeetingSearchDocument(
+          meetingID: meeting.id,
+          title: meeting.title ?? "",
+          summary: index == 1_337 ? "unique performance needle" : "ordinary summary",
+          transcript: "local transcript \(index)"
+        )
+      }
+    )
+    let clock = ContinuousClock()
+
+    let rebuildStart = clock.now
+    try await catalog.replaceAll(with: scan)
+    let rebuildDuration = rebuildStart.duration(to: clock.now)
+    let searchStart = clock.now
+    let results = try await catalog.search(
+      .init(
+        text: "performance needle",
+        statuses: [.minutesCompleted],
+        modelName: "model-b"
+      )
+    )
+    let searchDuration = searchStart.duration(to: clock.now)
+
+    #expect(results.map(\.id) == [target.id])
+    #expect(rebuildDuration < .seconds(60))
+    #expect(searchDuration < .milliseconds(500))
+  }
+
   @Test("A deleted database rebuild preserves file-owned meeting IDs")
   func deletedDatabaseRebuild() async throws {
     let databaseURL = temporaryDatabaseURL()
@@ -183,6 +371,68 @@ struct GRDBMeetingCatalogTests {
     )
   }
 
+  @Test("Runtime corruption is quarantined and leaves a rebuildable catalog")
+  func runtimeCorruptionRecovery() async throws {
+    let databaseURL = temporaryDatabaseURL()
+    let fault = CatalogOperationFault()
+    let meeting = MeetingIndexEntry.fixture(
+      id: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD"
+    )
+    let catalog = try GRDBMeetingCatalog.openForTesting(
+      at: databaseURL,
+      operationProbe: fault.check
+    )
+    let meetingScan = MeetingDirectoryScan(
+      meetings: [meeting],
+      fingerprints: [],
+      diagnostics: []
+    )
+    try await catalog.replaceAll(with: meetingScan)
+    fault.arm(.SQLITE_CORRUPT)
+
+    #expect(try await catalog.meetings().isEmpty)
+    try await catalog.replaceAll(with: meetingScan)
+
+    #expect(try await catalog.meetings() == [meeting])
+    #expect(
+      try FileManager.default
+        .contentsOfDirectory(
+          at: databaseURL.deletingLastPathComponent(),
+          includingPropertiesForKeys: nil
+        )
+        .contains { $0.lastPathComponent.contains(".corrupt-") }
+    )
+  }
+
+  @Test("Transient database failures map to the stable catalog error")
+  func databaseErrorMapping() async throws {
+    let fault = CatalogOperationFault()
+    let catalog = try GRDBMeetingCatalog.openForTesting(
+      at: temporaryDatabaseURL(),
+      operationProbe: fault.check
+    )
+    fault.arm(.SQLITE_BUSY)
+
+    await #expect(throws: MeetingCatalogError.unavailable) {
+      _ = try await catalog.meetings()
+    }
+  }
+
+  @Test("Cancellation during a recovered retry remains cancellation")
+  func recoveredRetryCancellation() async throws {
+    let attempts = CatalogRecoveryAttempts()
+    let catalog = try GRDBMeetingCatalog.openForTesting(
+      at: temporaryDatabaseURL(),
+      operationProbe: {}
+    )
+
+    await #expect(throws: CancellationError.self) {
+      try await catalog.runWithRuntimeRecoveryForTesting { _ in
+        try attempts.fail()
+      }
+    }
+  }
+
   @Test("Transient and migration errors never trigger corruption quarantine")
   func quarantineClassification() {
     #expect(
@@ -209,10 +459,48 @@ struct GRDBMeetingCatalogTests {
 private let expectedMigrations = [
   "v1_create_rebuildable_meeting_catalog",
   "v2_add_meeting_detail_metadata",
+  "v3_add_local_meeting_search",
 ]
 
 private enum MigrationProbeError: Error {
   case forced
+}
+
+private final class CatalogOperationFault: @unchecked Sendable {
+  private let lock = NSLock()
+  private var resultCode: ResultCode?
+
+  func arm(_ resultCode: ResultCode) {
+    lock.withLock {
+      self.resultCode = resultCode
+    }
+  }
+
+  func check() throws {
+    let resultCode = lock.withLock {
+      defer { self.resultCode = nil }
+      return self.resultCode
+    }
+    if let resultCode {
+      throw DatabaseError(resultCode: resultCode)
+    }
+  }
+}
+
+private final class CatalogRecoveryAttempts: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  func fail() throws {
+    let attempt = lock.withLock {
+      count += 1
+      return count
+    }
+    if attempt == 1 {
+      throw DatabaseError(resultCode: .SQLITE_CORRUPT)
+    }
+    throw CancellationError()
+  }
 }
 
 private func temporaryDatabaseURL() -> URL {
@@ -225,16 +513,51 @@ private func temporaryDatabaseURL() -> URL {
   return directory.appending(path: "catalog.sqlite")
 }
 
+private func scan(
+  meetings: [MeetingIndexEntry],
+  texts: [MeetingID: String],
+  digest: String
+) -> MeetingDirectoryScan {
+  MeetingDirectoryScan(
+    meetings: meetings,
+    fingerprints: meetings.map {
+      MeetingFileFingerprint(
+        meetingID: $0.id,
+        asset: .transcript,
+        byteCount: 1,
+        modifiedAt: Date(timeIntervalSince1970: 1),
+        opaqueDigest: "\($0.id.rawValue.uuidString)-\(digest)"
+      )
+    },
+    diagnostics: [],
+    searchDocuments: meetings.map {
+      MeetingSearchDocument(
+        meetingID: $0.id,
+        title: $0.title ?? "",
+        summary: "",
+        transcript: texts[$0.id] ?? ""
+      )
+    }
+  )
+}
+
 extension MeetingIndexEntry {
-  fileprivate static func fixture(id: String) -> Self {
+  fileprivate static func fixture(
+    id: String,
+    createdAt: TimeInterval = 1_722_470_400,
+    directory: String = "meeting-20240801-120000",
+    assets: MeetingAssetPresence = [.recording, .transcript],
+    title: String = "Weekly review",
+    modelName: String? = "test-model"
+  ) -> Self {
     .init(
       id: MeetingID(rawValue: UUID(uuidString: id)!),
-      createdAt: Date(timeIntervalSince1970: 1_722_470_400),
-      relativeDirectory: "meeting-20240801-120000",
-      assets: [.recording, .transcript],
-      title: "Weekly review",
+      createdAt: Date(timeIntervalSince1970: createdAt),
+      relativeDirectory: directory,
+      assets: assets,
+      title: title,
       durationSeconds: 61,
-      modelName: "test-model"
+      modelName: modelName
     )
   }
 }

@@ -42,6 +42,25 @@ struct MeetingLibraryWorkflowTests {
     }
   }
 
+  @Test("Cold restore returns the rebuildable index before scanning external files")
+  func restoresIndexedMeetingsWithoutBlockingOnScan() async throws {
+    let meeting = MeetingIndexEntry.fixture()
+    let directoryAccess = DirectoryAccessStub(
+      restoredDirectory: .fixture(kind: .userSelected),
+      scanError: DirectoryAccessError.itemNotDownloaded,
+      scanResult: .empty
+    )
+    let workflow = MeetingLibraryWorkflow(
+      directoryAccess: directoryAccess,
+      catalog: MeetingCatalogStub(initialMeetings: [meeting])
+    )
+
+    let snapshot = try await workflow.restore()
+
+    #expect(snapshot.meetings == [meeting])
+    #expect(await directoryAccess.scanCount == 0)
+  }
+
   @Test("Requires explicit directory authorization when no selection exists")
   func requiresSelectionWithoutFallback() async {
     let directoryAccess = DirectoryAccessStub(
@@ -141,6 +160,7 @@ private actor DirectoryAccessStub: AuthoritativeDirectoryAccess {
   private let restoreError: DirectoryAccessError?
   private let scanError: (any Error & Sendable)?
   private let scanResult: MeetingDirectoryScan
+  private(set) var scanCount = 0
 
   init(
     restoredDirectory: AuthoritativeDirectory? = nil,
@@ -168,6 +188,7 @@ private actor DirectoryAccessStub: AuthoritativeDirectoryAccess {
   }
 
   func scan(_ directory: AuthoritativeDirectory) async throws -> MeetingDirectoryScan {
+    scanCount += 1
     if let scanError {
       throw scanError
     }
@@ -175,8 +196,12 @@ private actor DirectoryAccessStub: AuthoritativeDirectoryAccess {
   }
 }
 
-private actor MeetingCatalogStub: MeetingCatalog {
-  private(set) var replacements: [[MeetingIndexEntry]] = []
+private actor MeetingCatalogStub: MeetingCatalog, MeetingSearchCatalog {
+  private(set) var replacements: [[MeetingIndexEntry]]
+
+  init(initialMeetings: [MeetingIndexEntry] = []) {
+    replacements = initialMeetings.isEmpty ? [] : [initialMeetings]
+  }
 
   func replaceAll(with scan: MeetingDirectoryScan) async throws {
     replacements.append(scan.meetings)
@@ -184,6 +209,10 @@ private actor MeetingCatalogStub: MeetingCatalog {
 
   func meetings() async throws -> [MeetingIndexEntry] {
     replacements.last ?? []
+  }
+
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    try await meetings()
   }
 }
 
@@ -211,6 +240,10 @@ private struct MeetingLibraryUseCaseStub: MeetingLibraryUseCase {
 
   func rebuild() async throws -> MeetingLibrarySnapshot {
     snapshot
+  }
+
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    snapshot.meetings
   }
 }
 

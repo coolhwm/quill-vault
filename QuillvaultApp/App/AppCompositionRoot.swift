@@ -271,6 +271,25 @@ private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
   func rebuild() async throws -> MeetingLibrarySnapshot {
     snapshot
   }
+
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    snapshot.meetings.filter { meeting in
+      let matchesText =
+        query.text.isEmpty
+        || meeting.title?.localizedCaseInsensitiveContains(query.text) == true
+      let matchesStart =
+        query.createdFrom.map { meeting.createdAt >= $0 } ?? true
+      let matchesEnd =
+        query.createdThrough.map { meeting.createdAt <= $0 } ?? true
+      let matchesStatus =
+        query.statuses.isEmpty || query.statuses.contains(meeting.status)
+      let matchesModel =
+        query.modelName.map {
+          meeting.modelName?.caseInsensitiveCompare($0) == .orderedSame
+        } ?? true
+      return matchesText && matchesStart && matchesEnd && matchesStatus && matchesModel
+    }
+  }
 }
 
 private actor UITestRecordingUseCase: RecordingUseCase {

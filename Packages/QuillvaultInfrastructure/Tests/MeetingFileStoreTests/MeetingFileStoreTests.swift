@@ -255,16 +255,51 @@ struct MeetingFileStoreTests {
     )
     let directory = try #require(await store.restoreSelectedDirectory())
 
-    let entry = try #require(
-      await store.scan(directory).meetings.first
-    )
+    let scan = try await store.scan(directory)
+    let entry = try #require(scan.meetings.first)
+    let searchDocument = try #require(scan.searchDocuments.first)
 
     #expect(entry.title == "Weekly review")
     #expect(entry.durationSeconds == 125.5)
     #expect(entry.modelName == "test-model")
+    #expect(searchDocument.title == "Weekly review")
+    #expect(searchDocument.summary.contains("# Weekly review"))
+    #expect(searchDocument.transcript == "Text")
   }
 
-  @Test("Scans 2,000 transcript-backed recordings within the metadata budget")
+  @Test("Incomplete Markdown never enters the meeting list or search documents")
+  func invalidMarkdownIsExcluded() async throws {
+    let root = try TemporaryDirectory()
+    let meeting = root.url.appending(
+      path: "meeting-20260730-invalid",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: meeting,
+      withIntermediateDirectories: true
+    )
+    try JSONEncoder().encode(
+      MeetingManifest(meetingID: UUID(), createdAt: Date())
+    ).write(to: meeting.appending(path: "meeting.json"))
+    try Data("- [not-a-time-range] incomplete".utf8).write(
+      to: meeting.appending(path: "transcript.md")
+    )
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
+    )
+    let directory = try #require(await store.restoreSelectedDirectory())
+
+    let scan = try await store.scan(directory)
+
+    #expect(scan.meetings.isEmpty)
+    #expect(scan.searchDocuments.isEmpty)
+    #expect(scan.fingerprints.isEmpty)
+    #expect(scan.diagnostics.map(\.code) == [.invalidMarkdown])
+  }
+
+  @Test(
+    "Scans 2,000 transcript-backed recordings without blocking a new recording"
+  )
   func largeMetadataScan() async throws {
     let root = try TemporaryDirectory()
     let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
@@ -289,22 +324,37 @@ struct MeetingFileStoreTests {
       try transcript.write(to: meeting.appending(path: "transcript.md"))
       try Data([0]).write(to: meeting.appending(path: "recording.m4a"))
     }
+    let scopes = ScopeAccessSpy()
     let store = MeetingFileStore(
-      dependencies: .testing(authorizedDirectory: root.url)
+      dependencies: .testing(
+        authorizedDirectory: root.url,
+        scopeAccess: scopes
+      )
     )
     let directory = try #require(await store.restoreSelectedDirectory())
     let clock = ContinuousClock()
     let startedAt = clock.now
+    let startsBeforeScan = await scopes.startCount
 
-    let scan = try await store.scan(directory)
+    let scanTask = Task {
+      try await store.scan(directory)
+    }
+    while await scopes.startCount == startsBeforeScan {
+      await Task.yield()
+    }
+    let reservationStartedAt = clock.now
+    let reservation = try await store.reserveRecording(for: .fixture())
+    #expect(reservationStartedAt.duration(to: clock.now) < .seconds(1))
+    await store.cancelRecording(meetingID: reservation.meetingID)
+    let scan = try await scanTask.value
 
     #expect(scan.meetings.count == 2_000)
     #expect(startedAt.duration(to: clock.now) < .seconds(5))
     #expect(scan.meetings.allSatisfy { $0.durationSeconds == 60 })
   }
 
-  @Test("An iCloud recording placeholder keeps the meeting discoverable")
-  func iCloudRecordingPlaceholderKeepsMeetingDiscoverable() async throws {
+  @Test("An iCloud asset placeholder preserves the previously built index")
+  func iCloudAssetPlaceholderStopsScan() async throws {
     let fixture = try MeetingDirectoryFixture()
     let status = UbiquitousStatusStub(unavailableFileName: "recording.m4a")
     let store = MeetingFileStore(
@@ -315,13 +365,9 @@ struct MeetingFileStoreTests {
     )
     let directory = try #require(await store.restoreSelectedDirectory())
 
-    let scan = try await store.scan(directory)
-
-    #expect(scan.meetings.count == 1)
-    #expect(scan.meetings[0].assets.contains(.recording))
-    #expect(
-      scan.fingerprints.contains(where: { $0.asset == .recording }) == false
-    )
+    await #expect(throws: DirectoryAccessError.itemNotDownloaded) {
+      _ = try await store.scan(directory)
+    }
   }
 
   @Test("An undownloaded authoritative root blocks new writes")
@@ -1010,7 +1056,12 @@ private struct MeetingDirectoryFixture {
       """
     try Data(manifest.utf8).write(to: meeting.appending(path: "meeting.json"))
     try Data("audio".utf8).write(to: meeting.appending(path: "recording.m4a"))
-    try Data("# Transcript".utf8).write(to: meeting.appending(path: "transcript.md"))
+    try Data(
+      """
+      audioDurationSeconds: 1
+      - [000.0–001.0] Transcript
+      """.utf8
+    ).write(to: meeting.appending(path: "transcript.md"))
 
     let candidate = root.appending(
       path: "meeting-20260730-120000.candidate",

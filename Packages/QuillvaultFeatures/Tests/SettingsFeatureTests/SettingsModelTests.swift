@@ -56,6 +56,10 @@ private struct MeetingLibraryStub: MeetingLibraryUseCase {
     snapshot
   }
 
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    snapshot.meetings
+  }
+
   private var snapshot: MeetingLibrarySnapshot {
     MeetingLibrarySnapshot(
       directory: directory,

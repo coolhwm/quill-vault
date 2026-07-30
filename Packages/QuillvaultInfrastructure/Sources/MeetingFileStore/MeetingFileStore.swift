@@ -181,7 +181,16 @@ public actor MeetingFileStore:
       throw DirectoryAccessError.directoryMoved
     }
     do {
-      let result = try scanner.scan(root.url)
+      let scanner = scanner
+      let rootURL = root.url
+      let scanTask = Task.detached(priority: .utility) {
+        try scanner.scan(rootURL)
+      }
+      let result = try await withTaskCancellationHandler {
+        try await scanTask.value
+      } onCancel: {
+        scanTask.cancel()
+      }
       await dependencies.scopeAccess.stopAccessing(root.url)
       return result
     } catch {

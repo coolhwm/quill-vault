@@ -2,10 +2,10 @@ import Domain
 import SwiftUI
 
 public struct MeetingDetailView: View {
-  @Bindable private var model: MeetingDetailModel
+  @State private var model: MeetingDetailModel
 
   public init(model: MeetingDetailModel) {
-    self.model = model
+    _model = State(initialValue: model)
   }
 
   public var body: some View {

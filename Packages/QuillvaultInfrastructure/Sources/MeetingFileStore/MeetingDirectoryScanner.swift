@@ -54,6 +54,7 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
     var meetings: [MeetingIndexEntry] = []
     var fingerprints: [MeetingFileFingerprint] = []
     var diagnostics: [MeetingScanDiagnostic] = []
+    var searchDocuments: [MeetingSearchDocument] = []
 
     for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
       try Task.checkCancellation()
@@ -92,6 +93,10 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
       var title: String?
       var durationSeconds: Double?
       var modelName: String?
+      var searchableSummary = ""
+      var searchableTranscript = ""
+      var hasInvalidMarkdown = false
+      var meetingFingerprints: [MeetingFileFingerprint] = []
       for (asset, fileName, presence) in assetDefinitions {
         try Task.checkCancellation()
         let fileURL = child.appending(path: fileName)
@@ -100,19 +105,42 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
         }
         assets.insert(presence)
         guard try ubiquitousStatus.isDownloaded(fileURL) else {
-          continue
+          throw DirectoryAccessError.itemNotDownloaded
         }
         switch asset {
         case .recording:
           durationSeconds = durationSeconds ?? recordingDuration(at: fileURL)
         case .transcript:
-          durationSeconds = transcriptDuration(at: fileURL) ?? durationSeconds
+          guard
+            let markdown = fullText(at: fileURL),
+            let timeline = try? MeetingTranscriptMarkdownParser().parse(markdown)
+          else {
+            hasInvalidMarkdown = true
+            continue
+          }
+          durationSeconds =
+            MeetingTranscriptMarkdownParser.audioDuration(from: markdown)
+            ?? durationSeconds
+          searchableTranscript = timeline.segments.map(\.text).joined(separator: "\n")
         case .minutes:
-          let metadata = minutesMetadata(at: fileURL)
+          guard let markdown = fullText(at: fileURL) else {
+            hasInvalidMarkdown = true
+            continue
+          }
+          let content = MeetingMinutesMarkdownParser().parse(markdown)
+          guard
+            !content.summaryMarkdown.isEmpty
+              || content.diagramSource?.isEmpty == false
+          else {
+            hasInvalidMarkdown = true
+            continue
+          }
+          let metadata = minutesMetadata(in: markdown)
           title = metadata.title
           modelName = metadata.modelName
+          searchableSummary = content.summaryMarkdown
         }
-        fingerprints.append(
+        meetingFingerprints.append(
           try fingerprint(
             fileURL,
             asset: asset,
@@ -121,10 +149,15 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
         )
       }
 
+      guard !hasInvalidMarkdown else {
+        diagnostics.append(diagnostic(.invalidMarkdown, for: child, relativeTo: root))
+        continue
+      }
       guard !assets.isEmpty else {
         diagnostics.append(diagnostic(.noRecognizedAssets, for: child, relativeTo: root))
         continue
       }
+      fingerprints.append(contentsOf: meetingFingerprints)
       meetings.append(
         MeetingIndexEntry(
           id: meetingID,
@@ -136,20 +169,22 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
           modelName: modelName
         )
       )
+      searchDocuments.append(
+        MeetingSearchDocument(
+          meetingID: meetingID,
+          title: title ?? "",
+          summary: searchableSummary,
+          transcript: searchableTranscript
+        )
+      )
     }
 
     return MeetingDirectoryScan(
       meetings: meetings,
       fingerprints: fingerprints,
-      diagnostics: diagnostics
+      diagnostics: diagnostics,
+      searchDocuments: searchDocuments
     )
-  }
-
-  private func transcriptDuration(at url: URL) -> Double? {
-    guard let text = filePrefixText(at: url) else {
-      return nil
-    }
-    return MeetingTranscriptMarkdownParser.audioDuration(from: text)
   }
 
   private func recordingDuration(at url: URL) -> Double? {
@@ -163,14 +198,20 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
     return player.duration
   }
 
-  private func minutesMetadata(at url: URL) -> (title: String?, modelName: String?) {
-    guard let text = filePrefixText(at: url) else {
+  private func minutesMetadata(
+    in text: String?
+  ) -> (title: String?, modelName: String?) {
+    guard let text else {
       return (nil, nil)
     }
     return (
       frontMatterValue(named: "title", in: text),
       frontMatterValue(named: "model", in: text)
     )
+  }
+
+  private func fullText(at url: URL) -> String? {
+    try? String(contentsOf: url, encoding: .utf8)
   }
 
   private func frontMatterValue(named name: String, in text: String) -> String? {
@@ -242,7 +283,19 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
     else {
       throw DirectoryAccessError.unreadableDirectory
     }
-    let input = "\(asset.rawValue)|\(size)|\(modifiedAt.timeIntervalSince1970)"
+    let input: String
+    switch asset {
+    case .transcript, .minutes:
+      guard let data = try? Data(contentsOf: url) else {
+        throw DirectoryAccessError.unreadableDirectory
+      }
+      let contentDigest = SHA256.hash(data: data)
+        .map { String(format: "%02x", $0) }
+        .joined()
+      input = "\(asset.rawValue)|\(contentDigest)"
+    case .recording:
+      input = "\(asset.rawValue)|\(size)|\(modifiedAt.timeIntervalSince1970)"
+    }
     return MeetingFileFingerprint(
       meetingID: meetingID,
       asset: asset,

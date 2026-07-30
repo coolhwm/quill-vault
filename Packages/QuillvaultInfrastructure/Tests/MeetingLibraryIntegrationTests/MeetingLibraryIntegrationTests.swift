@@ -120,7 +120,12 @@ private final class IntegrationFixture: @unchecked Sendable {
       """
     try Data(manifest.utf8).write(to: meetingURL.appending(path: "meeting.json"))
     try Data("audio".utf8).write(to: meetingURL.appending(path: "recording.m4a"))
-    try Data("# Transcript".utf8).write(to: meetingURL.appending(path: "transcript.md"))
+    try Data(
+      """
+      audioDurationSeconds: 1
+      - [000.0–001.0] Transcript
+      """.utf8
+    ).write(to: meetingURL.appending(path: "transcript.md"))
   }
 
   deinit {
