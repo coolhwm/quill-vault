@@ -38,7 +38,7 @@ struct FileTranscriptPublisherTests {
       encoding: .utf8
     )
     #expect(markdown.contains("revisionID: \(revision.id)"))
-    #expect(markdown.contains("0.250–1.750 秒  测试文字记录"))
+    #expect(markdown.contains("- [000.3–001.8] 测试文字记录"))
     let log = try String(
       contentsOf: fixture.directoryURL.appending(path: ".transcript-final.jsonl"),
       encoding: .utf8

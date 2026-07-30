@@ -23,6 +23,26 @@ public struct TranscriptSegmentCandidate: Equatable, Sendable {
   }
 }
 
+public enum TranscriptAnchorFormatter {
+  public static func line(for segment: TranscriptSegmentCandidate) -> String {
+    "- [\(timestamp(segment.startSeconds))–\(timestamp(segment.endSeconds))] \(segment.text)"
+  }
+
+  public static func timestamp(_ seconds: Double) -> String {
+    let finiteSeconds = seconds.isFinite ? max(0, seconds) : 0
+    let tenths = Int(
+      (finiteSeconds * 10).rounded(.toNearestOrAwayFromZero)
+    )
+    let wholeSeconds = tenths / 10
+    let wholeText = String(wholeSeconds)
+    let padding = String(
+      repeating: "0",
+      count: max(0, 3 - wholeText.count)
+    )
+    return "\(padding)\(wholeText).\(tenths % 10)"
+  }
+}
+
 public struct TranscriptSegment: Equatable, Codable, Sendable {
   public let id: String
   public let startSeconds: Double

@@ -137,7 +137,13 @@ public actor FileTranscriptPublisher: TranscriptPublisher {
     ]
     lines.append(
       contentsOf: revision.timeline.segments.map {
-        "\(formatted($0.startSeconds))–\(formatted($0.endSeconds)) 秒  \($0.text)"
+        TranscriptAnchorFormatter.line(
+          for: TranscriptSegmentCandidate(
+            startSeconds: $0.startSeconds,
+            endSeconds: $0.endSeconds,
+            text: $0.text
+          )
+        )
       }
     )
     lines.append("")

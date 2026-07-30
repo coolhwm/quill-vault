@@ -4,6 +4,22 @@ import Testing
 
 @Suite("Transcript timeline")
 struct TranscriptTimelineTests {
+  @Test("Transcript anchors use readable zero-padded one-decimal seconds")
+  func formatsReadableAnchors() {
+    let segment = TranscriptSegmentCandidate(
+      startSeconds: 0,
+      endSeconds: 15.5,
+      text: "示例文字记录"
+    )
+
+    #expect(
+      TranscriptAnchorFormatter.line(for: segment)
+        == "- [000.0–015.5] 示例文字记录"
+    )
+    #expect(TranscriptAnchorFormatter.timestamp(3_600.04) == "3600.0")
+    #expect(TranscriptAnchorFormatter.timestamp(.nan) == "000.0")
+  }
+
   @Test("Zero speech results produce an empty timeline")
   func emptyResults() throws {
     let timeline = try TranscriptTimeline.normalizing(

@@ -44,7 +44,10 @@ public struct LiveTranscriptSnapshot: Equatable, Sendable {
   }
 
   public var displayText: String {
-    (finalSegments.map(\.text) + [volatileSegment?.text].compactMap { $0 })
+    (
+      finalSegments.map(TranscriptAnchorFormatter.line)
+        + [volatileSegment].compactMap { $0 }.map(TranscriptAnchorFormatter.line)
+    )
       .joined(separator: "\n")
   }
 }

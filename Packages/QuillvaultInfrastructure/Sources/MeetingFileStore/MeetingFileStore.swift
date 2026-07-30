@@ -182,13 +182,10 @@ public actor MeetingFileStore:
         throw RecordingError.insufficientStorage
       }
 
-      let directoryURL = root.url.appending(
-        path: "meeting-\(session.meetingID.rawValue.uuidString.lowercased())",
-        directoryHint: .isDirectory
+      let directoryURL = availableMeetingDirectory(
+        in: root.url,
+        startedAt: session.startedAt
       )
-      guard !FileManager.default.fileExists(atPath: directoryURL.path) else {
-        throw RecordingError.captureCouldNotStart
-      }
       try FileManager.default.createDirectory(
         at: directoryURL,
         withIntermediateDirectories: false
@@ -308,10 +305,22 @@ public actor MeetingFileStore:
       throw RecordingError.authoritativeDirectoryUnavailable
     }
 
-    let directoryURL = root.url.appending(
-      path: "meeting-\(session.meetingID.rawValue.uuidString.lowercased())",
-      directoryHint: .isDirectory
-    )
+    let directoryURL: URL
+    do {
+      guard
+        let recoveredDirectory = try interruptedRecordingDirectory(
+          in: root.url,
+          meetingID: session.meetingID
+        )
+      else {
+        await dependencies.scopeAccess.stopAccessing(root.url)
+        return nil
+      }
+      directoryURL = recoveredDirectory
+    } catch {
+      await dependencies.scopeAccess.stopAccessing(root.url)
+      throw RecordingError.recordingWriteFailed
+    }
     let recordingURL = directoryURL.appending(path: "recording.m4a")
     let pendingManifestURL = directoryURL.appending(path: ".recording.json")
     let publishedManifestURL = directoryURL.appending(path: "meeting.json")
@@ -460,16 +469,18 @@ public actor MeetingFileStore:
       throw TranscriptError.recordingUnavailable
     }
     let rootComponents = root.url.standardizedFileURL.pathComponents
-    let resolvedRecordingURL = root.url.appending(
-      path: "meeting-\(meetingID.rawValue.uuidString.lowercased())",
-      directoryHint: .isDirectory
-    ).appending(path: "recording.m4a")
     let storedParentName = recordingURL.deletingLastPathComponent().lastPathComponent
+    let resolvedDirectoryURL = root.url.appending(
+      path: storedParentName,
+      directoryHint: .isDirectory
+    )
+    let resolvedRecordingURL = resolvedDirectoryURL.appending(path: "recording.m4a")
     guard
       recordingURL.isFileURL,
       recordingURL.lastPathComponent == "recording.m4a",
-      storedParentName
-        == "meeting-\(meetingID.rawValue.uuidString.lowercased())",
+      storedParentName.hasPrefix("meeting-"),
+      resolvedDirectoryURL.deletingLastPathComponent().standardizedFileURL
+        == root.url.standardizedFileURL,
       resolvedRecordingURL.standardizedFileURL.pathComponents.count
         > rootComponents.count
     else {
@@ -485,7 +496,12 @@ public actor MeetingFileStore:
       throw TranscriptError.recordingUnavailable
     }
 
-    guard FileManager.default.fileExists(atPath: resolvedRecordingURL.path) else {
+    let manifestURL = resolvedDirectoryURL.appending(path: "meeting.json")
+    guard
+      FileManager.default.fileExists(atPath: resolvedRecordingURL.path),
+      FileManager.default.fileExists(atPath: manifestURL.path),
+      (try? validateManifest(at: manifestURL, meetingID: meetingID)) != nil
+    else {
       await dependencies.scopeAccess.stopAccessing(scopedRoot)
       throw TranscriptError.recordingUnavailable
     }
@@ -606,6 +622,70 @@ public actor MeetingFileStore:
       return nil
     }
     return persisted.id
+  }
+
+  private func availableMeetingDirectory(
+    in root: URL,
+    startedAt: Date
+  ) -> URL {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    let baseName = "meeting-\(formatter.string(from: startedAt))"
+    var suffix = 1
+
+    while true {
+      let name = suffix == 1 ? baseName : "\(baseName)-\(suffix)"
+      let candidate = root.appending(
+        path: name,
+        directoryHint: .isDirectory
+      )
+      if !FileManager.default.fileExists(atPath: candidate.path) {
+        return candidate
+      }
+      suffix += 1
+    }
+  }
+
+  private func interruptedRecordingDirectory(
+    in root: URL,
+    meetingID: MeetingID
+  ) throws -> URL? {
+    let children = try FileManager.default.contentsOfDirectory(
+      at: root,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    )
+    var matches: [URL] = []
+    for child in children {
+      guard
+        child.lastPathComponent.hasPrefix("meeting-"),
+        isDirectory(child)
+      else {
+        continue
+      }
+      let pendingManifestURL = child.appending(path: ".recording.json")
+      let publishedManifestURL = child.appending(path: "meeting.json")
+      let recordingURL = child.appending(path: "recording.m4a")
+      guard
+        FileManager.default.fileExists(atPath: pendingManifestURL.path),
+        !FileManager.default.fileExists(atPath: publishedManifestURL.path),
+        FileManager.default.fileExists(atPath: recordingURL.path),
+        (try? validateManifest(
+          at: pendingManifestURL,
+          meetingID: meetingID
+        )) != nil
+      else {
+        continue
+      }
+      matches.append(child)
+    }
+    guard matches.count <= 1 else {
+      throw RecordingError.recordingWriteFailed
+    }
+    return matches.first
   }
 
   private func isDirectory(_ url: URL) -> Bool {

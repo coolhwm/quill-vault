@@ -107,7 +107,7 @@ struct MeetingFileStoreTests {
     let root = try TemporaryDirectory()
     let meetingID = MeetingID(rawValue: UUID())
     let meetingDirectory = root.url.appending(
-      path: "meeting-\(meetingID.rawValue.uuidString.lowercased())",
+      path: "meeting-20240801-080000",
       directoryHint: .isDirectory
     )
     try FileManager.default.createDirectory(
@@ -120,6 +120,13 @@ struct MeetingFileStoreTests {
         atPath: recordingURL.path,
         contents: Data([1])
       )
+    )
+    let manifest = MeetingManifest(
+      meetingID: meetingID.rawValue,
+      createdAt: Date(timeIntervalSince1970: 1_722_470_400)
+    )
+    try JSONEncoder().encode(manifest).write(
+      to: meetingDirectory.appending(path: "meeting.json")
     )
     let scopes = ScopeAccessSpy()
     let store = MeetingFileStore(
@@ -139,7 +146,7 @@ struct MeetingFileStoreTests {
       meetingID: meetingID,
       recordingURL: URL(fileURLWithPath: "/previous-location")
         .appending(
-          path: "meeting-\(meetingID.rawValue.uuidString.lowercased())",
+          path: "meeting-20240801-080000",
           directoryHint: .isDirectory
         )
         .appending(path: "recording.m4a")
@@ -408,6 +415,12 @@ struct MeetingFileStoreTests {
     )
     let session = RecordingSession.fixture()
     let reservation = try await store.reserveRecording(for: session)
+    #expect(
+      reservation.directoryURL.lastPathComponent.range(
+        of: #"^meeting-[0-9]{8}-[0-9]{6}$"#,
+        options: .regularExpression
+      ) != nil
+    )
     try Data("audio-header".utf8).write(to: reservation.recordingURL)
 
     try await store.publishRecordingStart(
@@ -462,7 +475,16 @@ struct MeetingFileStoreTests {
       .recoverInterruptedRecording(for: session)
 
     let reopened = try #require(recovered)
-    #expect(reopened == original)
+    #expect(reopened.meetingID == original.meetingID)
+    #expect(reopened.createdAt == original.createdAt)
+    #expect(
+      reopened.directoryURL.standardizedFileURL
+        == original.directoryURL.standardizedFileURL
+    )
+    #expect(
+      reopened.recordingURL.standardizedFileURL
+        == original.recordingURL.standardizedFileURL
+    )
     #expect(try Data(contentsOf: reopened.recordingURL) == audio)
   }
 
@@ -504,27 +526,29 @@ struct MeetingFileStoreTests {
     #expect(try Data(contentsOf: reservation.recordingURL) == audio)
   }
 
-  @Test("An existing meeting directory is never overwritten or removed")
+  @Test("A same-second meeting uses a suffix without replacing existing files")
   func existingMeetingIsProtected() async throws {
     let root = try TemporaryDirectory()
     let session = RecordingSession.fixture()
-    let existing = root.url.appending(
-      path: "meeting-\(session.meetingID.rawValue.uuidString.lowercased())",
-      directoryHint: .isDirectory
+    let firstStore = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: root.url)
     )
-    try FileManager.default.createDirectory(
-      at: existing,
-      withIntermediateDirectories: false
+    let firstSession = RecordingSession(
+      meetingID: MeetingID(rawValue: UUID()),
+      startedAt: session.startedAt
     )
+    let first = try await firstStore.reserveRecording(for: firstSession)
+    let existing = first.directoryURL
     let sentinel = existing.appending(path: "sentinel")
     try Data("keep".utf8).write(to: sentinel)
     let store = MeetingFileStore(
       dependencies: .testing(authorizedDirectory: root.url)
     )
 
-    await #expect(throws: RecordingError.captureCouldNotStart) {
-      _ = try await store.reserveRecording(for: session)
-    }
+    let second = try await store.reserveRecording(for: session)
+
+    #expect(second.directoryURL.lastPathComponent.hasSuffix("-2"))
+    #expect(second.directoryURL != existing)
     #expect(try Data(contentsOf: sentinel) == Data("keep".utf8))
   }
 

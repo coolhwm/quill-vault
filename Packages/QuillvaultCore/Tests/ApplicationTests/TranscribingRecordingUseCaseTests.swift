@@ -71,7 +71,7 @@ struct TranscribingRecordingUseCaseTests {
       }
     }
 
-    #expect(text == "资源已就绪")
+    #expect(text == "- [000.0–001.0] 资源已就绪")
     #expect(await speech.liveCallCount == 2)
   }
 

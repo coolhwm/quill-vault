@@ -163,7 +163,10 @@ struct HomeRecordingModelTests {
       await Task.yield()
     }
 
-    #expect(model.liveTranscriptText == "已确认\n临时")
+    #expect(
+      model.liveTranscriptText
+        == "- [000.0–001.0] 已确认\n- [001.0–002.0] 临时"
+    )
   }
 
   @Test("Missing directory authorization prevents recording")
