@@ -84,7 +84,7 @@ GRDB 是长期维护的 SQLite Swift 工具包，提供迁移、事务、WAL 并
 
 - GRDB 类型不得进入 Domain 或 Feature 公共接口；
 - Repository Adapter 完成 Record 与领域类型映射；
-- 不在数据库保存唯一的逐字稿或纪要正文；
+- 不在数据库保存唯一的文字记录或纪要正文；
 - 数据库必须可删除并从文件重建；
 - 固定 major/minor release，不跟踪分支。
 
@@ -105,14 +105,14 @@ MarkdownUI 提供 SwiftUI 原生 CommonMark 展示和主题能力，可减少标
 
 - 使用真实 60–180 分钟会议的 `minutes.md`；
 - 验证首次展示、滚动、动态字体和内存；
-- 验证超长逐字稿不一次性构建全部 View；
+- 验证超长文字记录不一次性构建全部 View；
 - Mermaid fenced block 必须由项目预解析后交给独立 Renderer；
 - 本地相对链接必须经过 Quillvault 安全路由，不允许任意远程资源加载。
 
 使用方式：
 
 - 只负责纪要正文 section；
-- 逐字稿使用原生虚拟化列表，不用单个 Markdown View 渲染全文；
+- 文字记录使用原生虚拟化列表，不用单个 Markdown View 渲染全文；
 - Mermaid 使用占位节点和本地 WKWebView；
 - 如果 Spike 不达标，退回 `swift-markdown` AST + 项目自有 section renderer，不改变 Domain。
 

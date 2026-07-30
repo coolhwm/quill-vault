@@ -194,7 +194,7 @@ QuillvaultAppIntentTests/
 | --- | --- |
 | `Meeting` | 会话身份、时间、语言和用户状态 |
 | `RecordingSession` | 录音生命周期、中断与片段 |
-| `TranscriptRevision` | 完整逐字稿版本、指纹和时间范围 |
+| `TranscriptRevision` | 完整文字记录版本、指纹和时间范围 |
 | `MinutesRevision` | 已发布纪要、来源版本和完整性提示 |
 | `GenerationJob` | 可恢复纪要任务及绑定快照 |
 | `GenerationStep` | 确定性工作单元与检查点 |
@@ -350,7 +350,7 @@ AVAudioSession 会通过通知报告中断与路由变化，应用需要显式�
   `AudioFrame` 到有界、丢旧值的实时流；实时消费者永远不拥有或反压权威录音；
 - 停止录音并校验音频后，`TranscriptionWorkflow` 先持久化
   `TranscriptionJob`，再从完整 `recording.m4a` 重新分析，因此前后台切换造成的实时结果
-  缺口不会成为最终逐字稿缺口；
+  缺口不会成为最终文字记录缺口；
 - final 结果逐条 flush/sync 到 `.transcript-final.jsonl`；volatile 结果不写入文件；
 - 时间线统一执行排序、精确重复消除、重叠裁剪和音频边界裁剪；相同输入生成稳定的
   `TranscriptRevision.id` 与内容指纹；
@@ -437,7 +437,7 @@ Apple 将该 Keychain 等级推荐给需要后台访问的项目，且数据不�
 - `step_id`
 - `attempt_id`
 
-不得使用标题、逐字稿或私人路径作为 ID。
+不得使用标题、文字记录或私人路径作为 ID。
 
 ### 14.2 指标
 
@@ -476,7 +476,7 @@ FeatureDestination
 - 导航采用类型安全 Destination；
 - 详情页各 section 独立组件并支持 Lazy 容器；
 - Markdown 和 Mermaid 渲染隔离，渲染失败不影响其他 section；
-- 音频播放器为独立 Feature，可从逐字稿时间范围接收 seek Action。
+- 音频播放器为独立 Feature，可从文字记录时间范围接收 seek Action。
 
 ## 16. 依赖管理
 
@@ -504,6 +504,6 @@ FeatureDestination
 - 用内存布尔值作为任务或会议状态真相；
 - 先删除旧文件再写新文件；
 - 把数据库作为唯一纪要内容源；
-- 在日志中记录逐字稿、纪要、密钥或完整载荷；
+- 在日志中记录文字记录、纪要、密钥或完整载荷；
 - 自动无限重试产生不可控模型费用；
 - 用“后续优化”接受已知录音或文件损坏风险。

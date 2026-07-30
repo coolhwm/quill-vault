@@ -14,7 +14,7 @@ struct FileTranscriptPublisherTests {
     let segment = TranscriptSegmentCandidate(
       startSeconds: 0.25,
       endSeconds: 1.75,
-      text: "测试逐字稿"
+      text: "测试文字记录"
     )
     try await publisher.appendFinal(
       segment,
@@ -38,13 +38,13 @@ struct FileTranscriptPublisherTests {
       encoding: .utf8
     )
     #expect(markdown.contains("revisionID: \(revision.id)"))
-    #expect(markdown.contains("0.250–1.750 秒  测试逐字稿"))
+    #expect(markdown.contains("0.250–1.750 秒  测试文字记录"))
     let log = try String(
       contentsOf: fixture.directoryURL.appending(path: ".transcript-final.jsonl"),
       encoding: .utf8
     )
     #expect(log.hasSuffix("\n"))
-    #expect(log.contains("测试逐字稿"))
+    #expect(log.contains("测试文字记录"))
   }
 
   @Test("Replacement failure preserves the previous published transcript")

@@ -132,7 +132,7 @@ public actor FileTranscriptPublisher: TranscriptPublisher {
       "audioDurationSeconds: \(formatted(revision.timeline.audioDurationSeconds))",
       "---",
       "",
-      "# 逐字稿",
+      "# 文字记录",
       "",
     ]
     lines.append(

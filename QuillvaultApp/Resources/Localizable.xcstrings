@@ -94,19 +94,19 @@
     "recording.transcript.pending" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 逐字稿待处理" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 文字记录待处理" } }
       }
     },
     "recording.transcript.retry" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry transcript" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试逐字稿" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试文字记录" } }
       }
     },
     "recording.transcript.retry.failed" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript is still pending. Check the network and try again." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿仍待处理，请检查网络后重试。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录仍待处理，请检查网络后重试。" } }
       }
     },
     "recording.transcript.failure.assets" : {
@@ -124,7 +124,7 @@
     "recording.transcript.failure.publication" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be saved. Restore folder access and retry." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿写入失败，请恢复目录访问后重试。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录写入失败，请恢复目录访问后重试。" } }
       }
     },
     "recording.transcript.failure.recording" : {
@@ -172,7 +172,7 @@
     "recording.failure.transcription.generic" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be completed. The recording is safe and can be retried." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿未能完成；录音已安全保留，可重试生成。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录未能完成；录音已安全保留，可重试生成。" } }
       }
     },
     "recording.failure.transcription.locale" : {
@@ -184,7 +184,7 @@
     "recording.failure.transcription.publish" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "The transcript could not be published safely. The recording is safe; retry to finish." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿未能安全发布；录音已保留，请重试完成。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录未能安全发布；录音已保留，请重试完成。" } }
       }
     },
     "recording.failure.invalid" : {
@@ -220,7 +220,7 @@
     "recording.finishing" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Saving audio and completing transcript…" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在保存音频并整理完整逐字稿…" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在保存音频并整理完整文字记录…" } }
       }
     },
     "recording.navigation.title" : {
@@ -292,7 +292,7 @@
     "recording.transcript.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Live transcript" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "实时逐字稿" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "实时文字记录" } }
       }
     },
     "recording.transcript.waiting" : {
@@ -304,7 +304,7 @@
     "minutes.empty.description" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Completed transcripts and minutes will appear here." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成的逐字稿和纪要会显示在这里。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成的文字记录和纪要会显示在这里。" } }
       }
     },
     "minutes.empty.title" : {
@@ -334,19 +334,19 @@
     "minutes.asset.transcript.pending" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 逐字稿待处理" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 文字记录待处理" } }
       }
     },
     "minutes.asset.transcript.retry" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry transcript" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试逐字稿" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试文字记录" } }
       }
     },
     "minutes.asset.transcript" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript ready" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字稿已就绪" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录已就绪" } }
       }
     },
     "minutes.diagnostics %lld" : {
