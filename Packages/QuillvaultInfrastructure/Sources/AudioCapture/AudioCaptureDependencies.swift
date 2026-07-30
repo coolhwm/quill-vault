@@ -9,7 +9,7 @@ protocol AudioRecorderDriving: Sendable {
   func start(at url: URL) async throws -> Date
   func frames() -> AsyncStream<AudioFrame>
   func events() -> AsyncStream<RecordingCaptureEvent>
-  func stop()
+  func stop() throws
 }
 
 extension AudioRecorderDriving {

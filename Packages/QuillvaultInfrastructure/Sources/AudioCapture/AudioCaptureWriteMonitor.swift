@@ -13,7 +13,8 @@ final class AudioCaptureWriteMonitor: @unchecked Sendable {
   }
 
   private let lock = NSLock()
-  private var writeError: (any Error)?
+  private var sessionWriteError: (any Error)?
+  private var recoveryWriteError: (any Error)?
   private var writeCount: UInt64 = 0
   private var recoveryGeneration: UInt64 = 0
 
@@ -25,20 +26,21 @@ final class AudioCaptureWriteMonitor: @unchecked Sendable {
 
   func recordWriteFailure(_ error: any Error) {
     lock.withLock {
-      writeError = error
+      sessionWriteError = error
+      recoveryWriteError = error
     }
   }
 
   func status() -> (didWrite: Bool, error: (any Error)?) {
     lock.withLock {
-      (writeCount > 0, writeError)
+      (writeCount > 0, sessionWriteError)
     }
   }
 
   func beginRecovery() -> RecoveryAttempt {
     lock.withLock {
       recoveryGeneration &+= 1
-      writeError = nil
+      recoveryWriteError = nil
       return RecoveryAttempt(
         generation: recoveryGeneration,
         writeCount: writeCount
@@ -70,7 +72,7 @@ final class AudioCaptureWriteMonitor: @unchecked Sendable {
       guard attempt.generation == recoveryGeneration else {
         return .superseded
       }
-      if writeError != nil {
+      if recoveryWriteError != nil {
         return .failed
       }
       if writeCount > attempt.writeCount {

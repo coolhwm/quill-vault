@@ -35,6 +35,23 @@ struct AudioCaptureWriteMonitorTests {
     #expect(result == .failed)
   }
 
+  @Test("Recovery never erases a session-level write failure")
+  func preservesSessionFailureAcrossRecovery() async throws {
+    let monitor = AudioCaptureWriteMonitor()
+    monitor.recordWriteFailure(RecordingWriteProbeError())
+
+    let attempt = monitor.beginRecovery()
+    monitor.recordWriteSuccess()
+    let result = try await monitor.waitForRecoveryWrite(
+      attempt,
+      timeout: .milliseconds(20),
+      pollingInterval: .milliseconds(1)
+    )
+
+    #expect(result == .resumed)
+    #expect(monitor.status().error != nil)
+  }
+
   @Test("A newer recovery attempt supersedes stale confirmation")
   func supersedesStaleAttempt() async throws {
     let monitor = AudioCaptureWriteMonitor()

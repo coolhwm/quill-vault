@@ -91,15 +91,15 @@ final class AVAudioRecorderDriver: AudioRecorderDriving, @unchecked Sendable {
       )
       return startedAt
     } catch is CancellationError {
-      stop()
+      try? stop()
       throw CancellationError()
     } catch {
-      stop()
+      try? stop()
       throw error as? RecordingError ?? .recordingWriteFailed
     }
   }
 
-  func stop() {
+  func stop() throws {
     recorder?.stop()
     recorder = nil
     deactivateAudioSession()

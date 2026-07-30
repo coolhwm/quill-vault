@@ -201,6 +201,26 @@ struct AudioCaptureEngineTests {
     #expect(drivers.stopCount == 1)
   }
 
+  @Test("A recorder finish failure remains recoverable and unpublished")
+  func recorderFinishFailureRemainsRecoverable() async throws {
+    let files = RecordingFilesStub()
+    let drivers = DriverFactorySpy(stopError: DriverFailure())
+    let engine = makeEngine(files: files, drivers: drivers)
+    let session = RecordingSession.fixture()
+    _ = try await engine.start(session)
+
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      try await engine.stop(meetingID: session.meetingID)
+    }
+    await #expect(throws: RecordingError.recordingWriteFailed) {
+      try await engine.stop(meetingID: session.meetingID)
+    }
+
+    #expect(await files.finishedIDs.isEmpty)
+    #expect(await files.abandonedIDs.isEmpty)
+    #expect(drivers.stopCount == 2)
+  }
+
   @Test("Cold start inspects before publishing a valid interrupted recording")
   func recoversInterruptedRecording() async throws {
     let session = RecordingSession.fixture()
@@ -839,6 +859,7 @@ private struct GrantedPermission: MicrophonePermissionAuthorizing {
 private final class DriverFactorySpy: @unchecked Sendable {
   private let lock = NSLock()
   private let startError: (any Error)?
+  private let stopError: (any Error)?
   private let capturedFrames: [AudioFrame]
   private let capturedEvents: [RecordingCaptureEvent]
   private var driverCount = 0
@@ -847,10 +868,12 @@ private final class DriverFactorySpy: @unchecked Sendable {
 
   init(
     startError: (any Error)? = nil,
+    stopError: (any Error)? = nil,
     frames: [AudioFrame] = [],
     events: [RecordingCaptureEvent] = []
   ) {
     self.startError = startError
+    self.stopError = stopError
     capturedFrames = frames
     capturedEvents = events
   }
@@ -873,6 +896,7 @@ private final class DriverFactorySpy: @unchecked Sendable {
     }
     return DriverStub(
       startError: startError,
+      stopError: stopError,
       frames: capturedFrames,
       events: capturedEvents,
       didStart: { [weak self] url in
@@ -891,6 +915,7 @@ private final class DriverFactorySpy: @unchecked Sendable {
 
 private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
   private let startError: (any Error)?
+  private let stopError: (any Error)?
   private let capturedFrames: [AudioFrame]
   private let capturedEvents: [RecordingCaptureEvent]
   private let didStart: @Sendable (URL) -> Void
@@ -898,12 +923,14 @@ private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
 
   init(
     startError: (any Error)?,
+    stopError: (any Error)?,
     frames: [AudioFrame],
     events: [RecordingCaptureEvent],
     didStart: @escaping @Sendable (URL) -> Void,
     didStop: @escaping @Sendable () -> Void
   ) {
     self.startError = startError
+    self.stopError = stopError
     capturedFrames = frames
     capturedEvents = events
     self.didStart = didStart
@@ -936,8 +963,11 @@ private final class DriverStub: AudioRecorderDriving, @unchecked Sendable {
     }
   }
 
-  func stop() {
+  func stop() throws {
     didStop()
+    if let stopError {
+      throw stopError
+    }
   }
 }
 

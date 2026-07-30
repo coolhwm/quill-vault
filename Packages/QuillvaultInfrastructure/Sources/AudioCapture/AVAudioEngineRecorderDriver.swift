@@ -53,10 +53,12 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
   private let firstWriteTimeout: Duration
   private let pollingInterval: Duration
   private let now: @Sendable () -> Date
+  private let writerFactory: @Sendable (URL, AVAudioFormat) throws -> any FragmentedAudioWriting
   private let lifecycleLock = NSRecursiveLock()
   private var engine: AVAudioEngine?
-  private var audioFile: AVAudioFile?
+  private var writer: (any FragmentedAudioWriting)?
   private var state: CaptureState?
+  private var terminalStopError: RecordingError?
   #if os(iOS)
     private var lifecycleObservers: [NSObjectProtocol] = []
   #endif
@@ -64,11 +66,17 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
   init(
     firstWriteTimeout: Duration = .milliseconds(800),
     pollingInterval: Duration = .milliseconds(10),
-    now: @escaping @Sendable () -> Date = Date.init
+    now: @escaping @Sendable () -> Date = Date.init,
+    writerFactory:
+      @escaping @Sendable (URL, AVAudioFormat) throws ->
+      any FragmentedAudioWriting = {
+        try FragmentedM4AWriter(outputURL: $0, sourceFormat: $1)
+      }
   ) {
     self.firstWriteTimeout = firstWriteTimeout
     self.pollingInterval = pollingInterval
     self.now = now
+    self.writerFactory = writerFactory
   }
 
   func start(at url: URL) async throws -> Date {
@@ -91,38 +99,30 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
       throw RecordingError.captureCouldNotStart
     }
 
-    var settings = inputFormat.settings
-    settings[AVFormatIDKey] = kAudioFormatMPEG4AAC
-    settings[AVEncoderBitRateKey] = 64_000
-    settings[AVEncoderAudioQualityKey] = AVAudioQuality.high.rawValue
-    let audioFile = try AVAudioFile(
-      forWriting: url,
-      settings: settings,
-      commonFormat: inputFormat.commonFormat,
-      interleaved: inputFormat.isInterleaved
-    )
+    let writer = try writerFactory(url, inputFormat)
     let state = CaptureState()
-    installTap(on: engine, audioFile: audioFile, state: state)
+    installTap(on: engine, writer: writer, state: state)
 
     do {
       engine.prepare()
       let startedAt = now()
       try engine.start()
       self.engine = engine
-      self.audioFile = audioFile
+      self.writer = writer
       self.state = state
       try await waitForFirstWrite(state)
       observeAudioSessionLifecycle()
       return startedAt
     } catch is CancellationError {
-      stop()
+      try? stop()
       throw CancellationError()
     } catch {
       input.removeTap(onBus: 0)
       engine.stop()
       state.continuation.finish()
       self.engine = nil
-      self.audioFile = nil
+      writer.cancel()
+      self.writer = nil
       self.state = nil
       deactivateAudioSession()
       throw error as? RecordingError ?? .recordingWriteFailed
@@ -137,20 +137,35 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
     state?.eventStream ?? AsyncStream { $0.finish() }
   }
 
-  func stop() {
-    lifecycleLock.withLock {
+  func stop() throws {
+    try lifecycleLock.withLock {
       removeAudioSessionLifecycleObservers()
-      guard let engine else {
+      if let terminalStopError {
+        throw terminalStopError
+      }
+      if let engine {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        state?.continuation.finish()
+        state?.eventContinuation.finish()
+        self.engine = nil
+        deactivateAudioSession()
+      }
+      guard let writer else {
         return
       }
-      engine.inputNode.removeTap(onBus: 0)
-      engine.stop()
-      state?.continuation.finish()
-      state?.eventContinuation.finish()
-      self.engine = nil
-      audioFile = nil
+      do {
+        try writer.finish()
+      } catch {
+        throw RecordingError.recordingWriteFailed
+      }
+      self.writer = nil
+      if state?.status().error != nil {
+        terminalStopError = .recordingWriteFailed
+        state = nil
+        throw RecordingError.recordingWriteFailed
+      }
       state = nil
-      deactivateAudioSession()
     }
   }
 
@@ -210,7 +225,7 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
 
   private func installTap(
     on engine: AVAudioEngine,
-    audioFile: AVAudioFile,
+    writer: any FragmentedAudioWriting,
     state: CaptureState
   ) {
     let input = engine.inputNode
@@ -221,7 +236,7 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
       format: inputFormat
     ) { buffer, _ in
       do {
-        try audioFile.write(from: buffer)
+        try writer.append(buffer)
         state.recordWriteSuccess()
       } catch {
         state.recordWriteFailure(error)
@@ -366,7 +381,7 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
       rebuildEngine: Bool
     ) {
       lifecycleLock.withLock {
-        guard let currentEngine = engine, let audioFile, let state else {
+        guard let currentEngine = engine, let writer, let state else {
           return
         }
         state.eventContinuation.yield(
@@ -383,7 +398,7 @@ final class AVAudioEngineRecorderDriver: AudioRecorderDriving, @unchecked Sendab
             let replacement = AVAudioEngine()
             installTap(
               on: replacement,
-              audioFile: audioFile,
+              writer: writer,
               state: state
             )
             replacement.prepare()

@@ -102,12 +102,12 @@ public actor AudioCaptureEngine: AudioCapture {
       return startedAt
     } catch is CancellationError {
       startingMeetingID = nil
-      recorder.stop()
+      try? recorder.stop()
       await files.cancelRecording(meetingID: session.meetingID)
       throw CancellationError()
     } catch {
       startingMeetingID = nil
-      recorder.stop()
+      try? recorder.stop()
       await files.cancelRecording(meetingID: session.meetingID)
       throw map(error, fallback: .captureCouldNotStart)
     }
@@ -122,7 +122,11 @@ public actor AudioCaptureEngine: AudioCapture {
     }
 
     if !active.hasStopped {
-      active.recorder.stop()
+      do {
+        try active.recorder.stop()
+      } catch {
+        throw map(error, fallback: .recordingWriteFailed)
+      }
       active.hasStopped = true
       activeCapture = active
       pendingCaptureEvents[meetingID] =
@@ -255,12 +259,12 @@ public actor AudioCaptureEngine: AudioCapture {
       startingMeetingID = nil
       return resumedAt
     } catch is CancellationError {
-      recorder.stop()
+      try? recorder.stop()
       await files.cancelRecordingContinuation(continuation)
       startingMeetingID = nil
       throw CancellationError()
     } catch {
-      recorder.stop()
+      try? recorder.stop()
       await files.cancelRecordingContinuation(continuation)
       startingMeetingID = nil
       throw map(error, fallback: .captureCouldNotStart)
@@ -454,7 +458,7 @@ public actor AudioCaptureEngine: AudioCapture {
       await files.cancelRecording(meetingID: meetingID)
       return
     }
-    active.recorder.stop()
+    try? active.recorder.stop()
     _ = await captureEventTasks.removeValue(forKey: meetingID)?.value
     activeCapture = nil
     completedRecordings[meetingID] = nil
