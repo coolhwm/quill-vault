@@ -21,6 +21,7 @@ public final class SettingsModel {
   private(set) var modelProfiles: [ModelProfile] = []
   private(set) var currentModelProfileID: ModelProfileID?
   private(set) var automaticGeneration = AutomaticGenerationPreferences()
+  private(set) var transcriptQuality = TranscriptQualityPreferences()
   /// Drives the automatic-generation disclosure alert from a stable parent view.
   var isAutomaticGenerationDisclosurePresented = false
   private(set) var profileTestState: [ModelProfileID: ModelProfileTestState] = [:]
@@ -117,6 +118,18 @@ public final class SettingsModel {
     }
   }
 
+  func setTranscriptQuality(enabled: Bool) async {
+    guard let modelProfileUseCase else {
+      return
+    }
+    do {
+      try await modelProfileUseCase.setTranscriptQuality(enabled: enabled)
+      await loadModelProfiles()
+    } catch {
+      modelProfilesUnavailable = true
+    }
+  }
+
   func requestAutomaticGenerationDisclosure() {
     isAutomaticGenerationDisclosurePresented = true
   }
@@ -171,6 +184,7 @@ public final class SettingsModel {
       modelProfiles = collection.profiles
       currentModelProfileID = collection.currentProfileID
       automaticGeneration = collection.automaticGeneration
+      transcriptQuality = collection.transcriptQuality
       modelProfilesUnavailable = false
     } catch {
       modelProfilesUnavailable = true

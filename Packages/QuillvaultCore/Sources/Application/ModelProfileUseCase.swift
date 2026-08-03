@@ -33,16 +33,20 @@ public struct ModelProfileCollection: Equatable, Sendable {
   public let profiles: [ModelProfile]
   public let currentProfileID: ModelProfileID?
   public let automaticGeneration: AutomaticGenerationPreferences
+  public let transcriptQuality: TranscriptQualityPreferences
 
   public init(
     profiles: [ModelProfile],
     currentProfileID: ModelProfileID?,
     automaticGeneration: AutomaticGenerationPreferences =
-      AutomaticGenerationPreferences()
+      AutomaticGenerationPreferences(),
+    transcriptQuality: TranscriptQualityPreferences =
+      TranscriptQualityPreferences()
   ) {
     self.profiles = profiles
     self.currentProfileID = currentProfileID
     self.automaticGeneration = automaticGeneration
+    self.transcriptQuality = transcriptQuality
   }
 }
 
@@ -55,10 +59,15 @@ public protocol ModelProfileUseCase: Sendable {
     enabled: Bool,
     disclosureAcknowledged: Bool
   ) async throws
+  func setTranscriptQuality(enabled: Bool) async throws
   func deletionImpact(
     _ id: ModelProfileID
   ) async throws -> ModelProfileDeletionImpact
   func delete(_ id: ModelProfileID, confirmed: Bool) async throws
+}
+
+extension ModelProfileUseCase {
+  public func setTranscriptQuality(enabled: Bool) async throws {}
 }
 
 public enum ModelProfileWorkflowError: Error, Equatable, Sendable {

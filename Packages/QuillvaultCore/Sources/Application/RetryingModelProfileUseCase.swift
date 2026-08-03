@@ -43,6 +43,10 @@ public actor RetryingModelProfileUseCase:
     )
   }
 
+  public func setTranscriptQuality(enabled: Bool) async throws {
+    try await resolve().setTranscriptQuality(enabled: enabled)
+  }
+
   public func deletionImpact(
     _ id: ModelProfileID
   ) async throws -> ModelProfileDeletionImpact {

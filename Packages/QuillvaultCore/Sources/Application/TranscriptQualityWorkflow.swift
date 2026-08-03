@@ -1,0 +1,143 @@
+import Domain
+import Foundation
+
+public protocol TranscriptQualityUseCase: Sendable {
+  func optimize(
+    timeline: TranscriptTimeline,
+    localeIdentifier: String
+  ) async throws -> (timeline: TranscriptTimeline, metadata: TranscriptVersionMetadata)
+}
+
+/// Offline post-recording transcript quality optimization. Original transcript
+/// assets stay immutable; callers persist the optimized timeline separately.
+public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
+  private let profiles: any ModelProfileExecutionAccess
+  private let provider: any AIProvider
+  private let strategy: TranscriptQualityStrategy
+  private let now: @Sendable () -> Date
+
+  public init(
+    profiles: any ModelProfileExecutionAccess,
+    provider: any AIProvider,
+    strategy: TranscriptQualityStrategy = .offlineV1,
+    now: @escaping @Sendable () -> Date = Date.init
+  ) {
+    self.profiles = profiles
+    self.provider = provider
+    self.strategy = strategy
+    self.now = now
+  }
+
+  public func optimize(
+    timeline: TranscriptTimeline,
+    localeIdentifier: String
+  ) async throws -> (timeline: TranscriptTimeline, metadata: TranscriptVersionMetadata) {
+    let execution = try await profiles.currentExecutionProfile()
+    let sourceText = timeline.segments.map {
+      TranscriptAnchorFormatter.line(
+        for: TranscriptSegmentCandidate(
+          startSeconds: $0.startSeconds,
+          endSeconds: $0.endSeconds,
+          text: $0.text
+        )
+      )
+    }.joined(separator: "\n")
+
+    let request = AIRequest(
+      systemPrompt: strategy.systemPrompt,
+      userPrompt: """
+        Improve the readability of this transcript. Keep the same line anchors \
+        and order. Locale: \(localeIdentifier).
+
+        \(sourceText)
+        """,
+      idempotencyKey: "transcript-quality-\(strategy.id)-\(strategy.version)-\(timeline.audioDurationSeconds)"
+    )
+    var output = ""
+    var completed = false
+    for try await event in provider.generate(
+      request,
+      profile: execution.snapshot,
+      apiKey: execution.apiKey
+    ) {
+      try Task.checkCancellation()
+      switch event {
+      case .textDelta(let delta):
+        output.append(delta)
+      case .completed:
+        completed = true
+      }
+    }
+    guard completed else {
+      throw AIProviderError.invalidResponse
+    }
+    let optimized = try parseOptimizedTimeline(
+      from: output.trimmingCharacters(in: .whitespacesAndNewlines),
+      fallback: timeline
+    )
+    let metadata = TranscriptVersionMetadata(
+      strategyID: strategy.id,
+      strategyVersion: strategy.version,
+      modelName: execution.snapshot.model,
+      createdAt: now()
+    )
+    return (optimized, metadata)
+  }
+
+  private func parseOptimizedTimeline(
+    from output: String,
+    fallback: TranscriptTimeline
+  ) throws -> TranscriptTimeline {
+    // Prefer returning a timeline with same anchors and replaced text when the
+    // model keeps line structure; otherwise keep original to avoid data loss.
+    let lines = output
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .components(separatedBy: "\n")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    guard lines.count == fallback.segments.count else {
+      return fallback
+    }
+    var candidates: [TranscriptSegmentCandidate] = []
+    for (index, segment) in fallback.segments.enumerated() {
+      let line = lines[index]
+      let text: String
+      if let close = line.lastIndex(of: "]"),
+        close < line.endIndex
+      {
+        let after = line.index(after: close)
+        text = String(line[after...]).trimmingCharacters(in: .whitespaces)
+      } else {
+        text = line
+      }
+      guard !text.isEmpty else {
+        return fallback
+      }
+      candidates.append(
+        TranscriptSegmentCandidate(
+          startSeconds: segment.startSeconds,
+          endSeconds: segment.endSeconds,
+          text: text
+        )
+      )
+    }
+    return try TranscriptTimeline.normalizing(
+      candidates,
+      audioDurationSeconds: fallback.audioDurationSeconds
+    )
+  }
+}
+
+/// No-op incremental port reserved for real-time quality optimization.
+public struct PassthroughIncrementalTranscriptQuality:
+  IncrementalTranscriptQualityPort
+{
+  public init() {}
+
+  public func optimize(
+    segment: TranscriptSegmentCandidate,
+    context: [TranscriptSegmentCandidate]
+  ) async throws -> TranscriptSegmentCandidate {
+    segment
+  }
+}

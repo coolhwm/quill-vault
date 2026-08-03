@@ -55,6 +55,13 @@ public actor GRDBModelProfileStore:
           table.column("profile_id", .text).notNull().indexed()
         }
       }
+      migrator.registerMigration("v3_transcript_quality_preferences") {
+        database in
+        try database.create(table: "transcript_quality_preferences") { table in
+          table.column("singleton", .integer).primaryKey()
+          table.column("is_enabled", .boolean).notNull()
+        }
+      }
       try migrator.migrate(databasePool)
       return GRDBModelProfileStore(databasePool: databasePool)
     } catch {
@@ -224,6 +231,51 @@ public actor GRDBModelProfileStore:
             preferences.isEnabled,
             preferences.disclosureAcknowledged,
           ]
+        )
+      }
+    } catch {
+      throw ModelProfileStoreError.unavailable
+    }
+  }
+
+  public func transcriptQualityPreferences() async throws
+    -> TranscriptQualityPreferences
+  {
+    do {
+      return try await databasePool.read { database in
+        guard
+          let row = try Row.fetchOne(
+            database,
+            sql: """
+              SELECT is_enabled
+              FROM transcript_quality_preferences
+              WHERE singleton = 1
+              """
+          )
+        else {
+          return TranscriptQualityPreferences()
+        }
+        return TranscriptQualityPreferences(isEnabled: row["is_enabled"])
+      }
+    } catch {
+      throw ModelProfileStoreError.unavailable
+    }
+  }
+
+  public func setTranscriptQualityPreferences(
+    _ preferences: TranscriptQualityPreferences
+  ) async throws {
+    do {
+      try await databasePool.write { database in
+        try database.execute(
+          sql: """
+            INSERT INTO transcript_quality_preferences
+              (singleton, is_enabled)
+            VALUES (1, ?)
+            ON CONFLICT(singleton) DO UPDATE SET
+              is_enabled = excluded.is_enabled
+            """,
+          arguments: [preferences.isEnabled]
         )
       }
     } catch {

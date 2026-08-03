@@ -37,7 +37,9 @@ public actor ModelProfileWorkflow:
       profiles: try await profiles.loadAll(),
       currentProfileID: try await profiles.currentProfileID(),
       automaticGeneration:
-        try await profiles.automaticGenerationPreferences()
+        try await profiles.automaticGenerationPreferences(),
+      transcriptQuality:
+        try await profiles.transcriptQualityPreferences()
     )
   }
 
@@ -161,6 +163,12 @@ public actor ModelProfileWorkflow:
       }
       throw error
     }
+  }
+
+  public func setTranscriptQuality(enabled: Bool) async throws {
+    try await profiles.setTranscriptQualityPreferences(
+      TranscriptQualityPreferences(isEnabled: enabled)
+    )
   }
 
   public func setAutomaticGeneration(

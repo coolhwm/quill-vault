@@ -69,6 +69,21 @@ struct ModelProfilesSection: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+      Toggle(
+        "settings.transcript.quality",
+        isOn: Binding(
+          get: { model.transcriptQuality.isEnabled },
+          set: { enabled in
+            Task {
+              await model.setTranscriptQuality(enabled: enabled)
+            }
+          }
+        )
+      )
+      .accessibilityIdentifier("settings.transcript.quality")
+      Text("settings.transcript.quality.description")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
     .sheet(item: $editor) { editor in
       ModelProfileEditorView(profile: editor.profile) { draft in

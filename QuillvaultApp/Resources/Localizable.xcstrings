@@ -721,6 +721,20 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存" } }
       }
     },
+    "settings.transcript.quality" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript quality optimization" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录质量优化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "文字記錄品質優化" } }
+      }
+    },
+    "settings.transcript.quality.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Optionally improve readability after recording. Original transcript is always kept." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音结束后可选优化可读性；原始文字记录始终保留。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "錄音結束後可選優化可讀性；原始文字記錄始終保留。" } }
+      }
+    },
     "settings.models.section" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "AI Models" } },

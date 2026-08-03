@@ -11,6 +11,7 @@ actor UITestModelProfileUseCase: ModelProfileUseCase {
   private var profiles: [ModelProfile]
   private var currentID: ModelProfileID?
   private var automaticGeneration = AutomaticGenerationPreferences()
+  private var transcriptQuality = TranscriptQualityPreferences()
 
   init() {
     let id = Self.seededID
@@ -36,7 +37,8 @@ actor UITestModelProfileUseCase: ModelProfileUseCase {
     ModelProfileCollection(
       profiles: profiles,
       currentProfileID: currentID,
-      automaticGeneration: automaticGeneration
+      automaticGeneration: automaticGeneration,
+      transcriptQuality: transcriptQuality
     )
   }
 
@@ -85,6 +87,10 @@ actor UITestModelProfileUseCase: ModelProfileUseCase {
         disclosureAcknowledged
         || automaticGeneration.disclosureAcknowledged
     )
+  }
+
+  func setTranscriptQuality(enabled: Bool) async throws {
+    transcriptQuality = TranscriptQualityPreferences(isEnabled: enabled)
   }
 
   func deletionImpact(

@@ -10,7 +10,24 @@ public protocol ModelProfileStore: Sendable {
   func setAutomaticGenerationPreferences(
     _ preferences: AutomaticGenerationPreferences
   ) async throws
+  func transcriptQualityPreferences() async throws
+    -> TranscriptQualityPreferences
+  func setTranscriptQualityPreferences(
+    _ preferences: TranscriptQualityPreferences
+  ) async throws
   func delete(_ id: ModelProfileID) async throws
+}
+
+extension ModelProfileStore {
+  public func transcriptQualityPreferences() async throws
+    -> TranscriptQualityPreferences
+  {
+    TranscriptQualityPreferences()
+  }
+
+  public func setTranscriptQualityPreferences(
+    _ preferences: TranscriptQualityPreferences
+  ) async throws {}
 }
 
 public struct AutomaticGenerationPreferences: Equatable, Sendable {
