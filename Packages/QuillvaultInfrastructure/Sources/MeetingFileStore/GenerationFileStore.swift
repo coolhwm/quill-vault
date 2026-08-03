@@ -13,14 +13,8 @@ extension MeetingFileStore: GenerationFileAccess {
           meeting: meeting
         )
         // Prefer optimized readability version when present; original remains on disk.
-        let optimizedURL = meetingURL.appending(path: "transcript.optimized.md")
-        let originalURL = meetingURL.appending(path: "transcript.md")
-        let transcriptURL: URL
-        if FileManager.default.fileExists(atPath: optimizedURL.path) {
-          transcriptURL = optimizedURL
-        } else if FileManager.default.fileExists(atPath: originalURL.path) {
-          transcriptURL = originalURL
-        } else {
+        // publishMinutes must validate against this same preferred source.
+        guard let transcriptURL = preferredTranscriptURL(in: meetingURL) else {
           throw GenerationFileError.transcriptUnavailable
         }
         let markdown = try coordinatedReadString(at: transcriptURL)
@@ -90,7 +84,10 @@ extension MeetingFileStore: GenerationFileAccess {
           rootURL: rootURL,
           meeting: meeting
         )
-        let transcriptURL = meetingURL.appending(path: "transcript.md")
+        // Must match loadTranscript: optimized when present, else original.
+        guard let transcriptURL = preferredTranscriptURL(in: meetingURL) else {
+          throw GenerationFileError.transcriptUnavailable
+        }
         let destinationURL = meetingURL.appending(path: "minutes.md")
         let candidateURL = meetingURL.appending(
           path: ".minutes-\(dependencies.makeUUID().uuidString).tmp"
@@ -313,6 +310,21 @@ extension MeetingFileStore: GenerationFileAccess {
     if let replacementError {
       throw replacementError
     }
+  }
+
+  /// Transcript asset used for minutes generation input and publish validation.
+  /// Prefers `transcript.optimized.md` when present so load and publish pin the
+  /// same revision; falls back to immutable `transcript.md`.
+  func preferredTranscriptURL(in meetingURL: URL) -> URL? {
+    let optimizedURL = meetingURL.appending(path: "transcript.optimized.md")
+    if FileManager.default.fileExists(atPath: optimizedURL.path) {
+      return optimizedURL
+    }
+    let originalURL = meetingURL.appending(path: "transcript.md")
+    if FileManager.default.fileExists(atPath: originalURL.path) {
+      return originalURL
+    }
+    return nil
   }
 
   func frontMatterValue(named name: String, in text: String) -> String? {

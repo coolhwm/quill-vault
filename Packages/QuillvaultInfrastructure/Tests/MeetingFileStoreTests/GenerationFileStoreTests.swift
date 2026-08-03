@@ -184,6 +184,180 @@ struct GenerationFileStoreTests {
     )
   }
 
+  @Test("Publishes minutes when generation pins optimized transcript that differs from original")
+  func publishesUsingOptimizedTranscriptWhenPresent() async throws {
+    let fixture = try GenerationFixture()
+    defer { fixture.remove() }
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: fixture.root)
+    )
+    let directory = try await store.authorizeSelectedDirectory(
+      .init(opaqueReference: fixture.root.absoluteString)
+    )
+
+    // Original stays as fixture wrote; optimized has different segment text.
+    try """
+    ---
+    schemaVersion: 1
+    revisionID: optimized-fixture
+    contentFingerprint: placeholder
+    locale: zh-CN
+    audioDurationSeconds: 20.000
+    transcriptVersion: optimized
+    parentVersion: original
+    qualityStrategyID: offline-readability
+    qualityStrategyVersion: v1
+    ---
+
+    # 优化文字记录
+
+    - [000.0–010.0] 优化后的第一段
+    - [010.0–020.0] 优化后的第二段
+    """.write(
+      to: fixture.meetingURL.appending(path: "transcript.optimized.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let originalMarkdown = try String(
+      contentsOf: fixture.meetingURL.appending(path: "transcript.md"),
+      encoding: .utf8
+    )
+    let optimizedMarkdown = try String(
+      contentsOf: fixture.meetingURL.appending(path: "transcript.optimized.md"),
+      encoding: .utf8
+    )
+    #expect(originalMarkdown != optimizedMarkdown)
+
+    let source = try await store.loadTranscript(
+      in: directory,
+      meeting: fixture.entry
+    )
+    // Preferred source must be optimized text, not original.
+    #expect(source.revision.timeline.segments.map(\.text) == [
+      "优化后的第一段",
+      "优化后的第二段",
+    ])
+
+    let originalTimeline = try MeetingTranscriptMarkdownParser().parse(
+      originalMarkdown
+    )
+    let originalOnly = TranscriptRevision(
+      meetingID: fixture.entry.id,
+      localeIdentifier: "zh-CN",
+      timeline: originalTimeline
+    )
+    #expect(source.revision.contentFingerprint != originalOnly.contentFingerprint)
+    #expect(source.revision.id != originalOnly.id)
+
+    let minutes = """
+      ---
+      schemaVersion: 1
+      generationJobID: \(UUID().uuidString)
+      generationNumber: 1
+      transcriptRevisionID: \(source.revision.id)
+      transcriptFingerprint: \(source.revision.contentFingerprint)
+      model: test-model
+      informationMayBeIncomplete: false
+      ---
+
+      # 结构化纪要
+
+      基于优化文字记录生成。
+      """
+
+    try await store.publishMinutes(
+      minutes,
+      in: directory,
+      meeting: fixture.entry,
+      expectedTranscriptRevisionID: source.revision.id,
+      expectedTranscriptFingerprint: source.revision.contentFingerprint,
+      expectedExistingMinutesFingerprint: nil
+    )
+
+    #expect(
+      try String(
+        contentsOf: fixture.meetingURL.appending(path: "minutes.md"),
+        encoding: .utf8
+      ) == minutes
+    )
+    // Original asset must remain untouched after successful publish.
+    #expect(
+      try String(
+        contentsOf: fixture.meetingURL.appending(path: "transcript.md"),
+        encoding: .utf8
+      ) == originalMarkdown
+    )
+    let snapshot = try await store.loadMinutesSnapshot(
+      in: directory,
+      meeting: fixture.entry
+    )
+    #expect(snapshot?.transcriptRevisionID == source.revision.id)
+    #expect(snapshot?.transcriptFingerprint == source.revision.contentFingerprint)
+  }
+
+  @Test("Rejects publish when preferred optimized transcript changes after load")
+  func rejectsChangedOptimizedTranscript() async throws {
+    let fixture = try GenerationFixture()
+    defer { fixture.remove() }
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: fixture.root)
+    )
+    let directory = try await store.authorizeSelectedDirectory(
+      .init(opaqueReference: fixture.root.absoluteString)
+    )
+    try """
+    ---
+    audioDurationSeconds: 20.0
+    locale: zh-CN
+    ---
+
+    # 优化文字记录
+
+    - [000.0–010.0] 优化第一段
+    - [010.0–020.0] 优化第二段
+    """.write(
+      to: fixture.meetingURL.appending(path: "transcript.optimized.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    let source = try await store.loadTranscript(
+      in: directory,
+      meeting: fixture.entry
+    )
+    try """
+    ---
+    audioDurationSeconds: 20.0
+    locale: zh-CN
+    ---
+
+    # 优化文字记录
+
+    - [000.0–010.0] 优化被外部改写
+    - [010.0–020.0] 优化第二段
+    """.write(
+      to: fixture.meetingURL.appending(path: "transcript.optimized.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    await #expect(throws: GenerationFileError.sourceChanged) {
+      try await store.publishMinutes(
+        "# 结构化纪要\n\n不应发布。",
+        in: directory,
+        meeting: fixture.entry,
+        expectedTranscriptRevisionID: source.revision.id,
+        expectedTranscriptFingerprint: source.revision.contentFingerprint,
+        expectedExistingMinutesFingerprint: nil
+      )
+    }
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: fixture.meetingURL.appending(path: "minutes.md").path
+      )
+    )
+  }
+
   @Test("A transcript revision metadata change is rejected even when content is unchanged")
   func rejectsChangedTranscriptRevisionMetadata() async throws {
     let fixture = try GenerationFixture()
