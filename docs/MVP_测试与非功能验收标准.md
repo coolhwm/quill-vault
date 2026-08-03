@@ -118,7 +118,7 @@
 
 ### 3.5 AI Client
 
-- 完整 Chat Completions 接口地址按用户输入原样请求，不自动拼接路径；
+- HTTPS 接口地址按用户输入原样请求，不校验固定路径，也不自动拼接路径；
 - 只允许 HTTPS；明确开发模式除外；
 - Authorization Header 不进入日志；
 - 请求不包含音频、文件 URL 或非必要元数据；

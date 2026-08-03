@@ -46,10 +46,10 @@ public actor ModelProfileWorkflow:
     guard !name.isEmpty else {
       throw ModelProfileWorkflowError.invalidName
     }
-    if let endpointError = ModelProfileValidation.endpointError(
+    if let baseURLError = ModelProfileValidation.baseURLError(
       for: draft.baseURL
     ) {
-      throw endpointError
+      throw baseURLError
     }
     let model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !model.isEmpty else {

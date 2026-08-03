@@ -123,8 +123,8 @@ struct ModelProfileEditorView: View {
       saveErrorMessage = String(localized: "settings.models.editor.invalid_url")
       return
     }
-    if let endpointError = ModelProfileValidation.endpointError(for: url) {
-      saveErrorMessage = message(for: endpointError)
+    if let baseURLError = ModelProfileValidation.baseURLError(for: url) {
+      saveErrorMessage = message(for: baseURLError)
       return
     }
     let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -171,8 +171,6 @@ struct ModelProfileEditorView: View {
       String(localized: "settings.models.editor.invalid_name")
     case ModelProfileWorkflowError.invalidBaseURL:
       String(localized: "settings.models.editor.invalid_url")
-    case ModelProfileWorkflowError.invalidEndpoint:
-      String(localized: "settings.models.editor.invalid_endpoint")
     case ModelProfileWorkflowError.invalidModel:
       String(localized: "settings.models.editor.invalid_model")
     case ModelProfileWorkflowError.missingCredential:

@@ -765,8 +765,8 @@
     },
     "settings.models.editor.base_url_hint" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter the complete endpoint, for example https://api.deepseek.com/v1/chat/completions." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请填写完整接口地址，例如 https://api.deepseek.com/v1/chat/completions。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter the complete HTTPS URL from your model service; the path is up to you." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请填写模型服务提供的完整 HTTPS 地址，路径由你自行填写。" } }
       }
     },
     "settings.models.editor.model" : {
@@ -815,12 +815,6 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter an HTTPS endpoint." } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入 HTTPS 接口地址。" } }
-      }
-    },
-    "settings.models.editor.invalid_endpoint" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter the complete endpoint ending in /chat/completions." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请填写完整接口地址，路径应以 /chat/completions 结尾。" } }
       }
     },
     "settings.models.editor.invalid_model" : {

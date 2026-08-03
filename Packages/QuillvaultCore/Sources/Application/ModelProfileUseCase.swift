@@ -64,7 +64,6 @@ public protocol ModelProfileUseCase: Sendable {
 public enum ModelProfileWorkflowError: Error, Equatable, Sendable {
   case invalidName
   case invalidBaseURL
-  case invalidEndpoint
   case invalidModel
   case missingCredential
   case profileNotFound
@@ -74,18 +73,13 @@ public enum ModelProfileWorkflowError: Error, Equatable, Sendable {
 }
 
 public enum ModelProfileValidation {
-  public static func endpointError(
+  public static func baseURLError(
     for baseURL: URL
   ) -> ModelProfileWorkflowError? {
     guard baseURL.scheme?.lowercased() == "https",
       baseURL.host != nil
     else {
       return .invalidBaseURL
-    }
-    let endpointPath = baseURL.path
-      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    guard endpointPath.hasSuffix("chat/completions") else {
-      return .invalidEndpoint
     }
     return nil
   }

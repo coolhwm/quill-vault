@@ -5,19 +5,39 @@ import Testing
 
 @Suite("Model profile workflow")
 struct ModelProfileWorkflowTests {
-  @Test("Requires the complete chat completions endpoint")
-  func requiresCompleteEndpoint() async {
+  @Test("Accepts a user-supplied HTTPS endpoint without path assumptions")
+  func acceptsUserSuppliedEndpoint() async throws {
     let workflow = ModelProfileWorkflow(
       profiles: ModelProfileStoreStub(),
       credentials: ModelCredentialStoreStub(),
       provider: AIProviderStub()
     )
 
-    await #expect(throws: ModelProfileWorkflowError.invalidEndpoint) {
+    let profile = try await workflow.save(
+      ModelProfileDraft(
+        name: "Primary",
+        baseURL: URL(string: "https://api.example.com/custom/provider")!,
+        model: "minutes-model",
+        apiKey: "secret"
+      )
+    )
+
+    #expect(profile.baseURL.absoluteString == "https://api.example.com/custom/provider")
+  }
+
+  @Test("Rejects a non-HTTPS model endpoint")
+  func rejectsNonHTTPSBaseURL() async {
+    let workflow = ModelProfileWorkflow(
+      profiles: ModelProfileStoreStub(),
+      credentials: ModelCredentialStoreStub(),
+      provider: AIProviderStub()
+    )
+
+    await #expect(throws: ModelProfileWorkflowError.invalidBaseURL) {
       _ = try await workflow.save(
         ModelProfileDraft(
           name: "Primary",
-          baseURL: URL(string: "https://api.example.com")!,
+          baseURL: URL(string: "http://api.example.com/custom/provider")!,
           model: "minutes-model",
           apiKey: "secret"
         )
