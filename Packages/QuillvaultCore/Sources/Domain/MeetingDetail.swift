@@ -98,20 +98,32 @@ public enum MeetingMarkdownAsset: Equatable, Sendable {
 
 public struct MeetingDetail: Equatable, Sendable {
   public let meeting: MeetingIndexEntry
+  /// Immutable original transcript from `transcript.md`.
   public let transcript: MeetingTranscriptAsset
+  /// Optional optimized transcript from `transcript.optimized.md`.
+  public let optimizedTranscript: MeetingTranscriptAsset
   public let recording: MeetingRecordingAsset
   public let minutes: MeetingMarkdownAsset
 
   public init(
     meeting: MeetingIndexEntry,
     transcript: MeetingTranscriptAsset,
+    optimizedTranscript: MeetingTranscriptAsset = .missing,
     recording: MeetingRecordingAsset,
     minutes: MeetingMarkdownAsset
   ) {
     self.meeting = meeting
     self.transcript = transcript
+    self.optimizedTranscript = optimizedTranscript
     self.recording = recording
     self.minutes = minutes
+  }
+
+  public var hasOptimizedTranscript: Bool {
+    if case .available = optimizedTranscript {
+      return true
+    }
+    return false
   }
 }
 

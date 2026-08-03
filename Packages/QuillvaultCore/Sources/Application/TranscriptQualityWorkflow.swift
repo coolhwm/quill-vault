@@ -6,24 +6,37 @@ public protocol TranscriptQualityUseCase: Sendable {
     timeline: TranscriptTimeline,
     localeIdentifier: String
   ) async throws -> (timeline: TranscriptTimeline, metadata: TranscriptVersionMetadata)
+
+  /// Loads the original transcript, optimizes offline, and publishes
+  /// `transcript.optimized.md` without modifying `transcript.md`.
+  func optimizeAndPublish(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptVersionMetadata
 }
 
+// Re-export access errors for Application callers.
+public typealias TranscriptQualityError = TranscriptQualityAccessError
+
 /// Offline post-recording transcript quality optimization. Original transcript
-/// assets stay immutable; callers persist the optimized timeline separately.
+/// assets stay immutable; optimized results are published as a sibling file.
 public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
   private let profiles: any ModelProfileExecutionAccess
   private let provider: any AIProvider
+  private let access: (any TranscriptQualityAccess)?
   private let strategy: TranscriptQualityStrategy
   private let now: @Sendable () -> Date
 
   public init(
     profiles: any ModelProfileExecutionAccess,
     provider: any AIProvider,
+    access: (any TranscriptQualityAccess)? = nil,
     strategy: TranscriptQualityStrategy = .offlineV1,
     now: @escaping @Sendable () -> Date = Date.init
   ) {
     self.profiles = profiles
     self.provider = provider
+    self.access = access
     self.strategy = strategy
     self.now = now
   }
@@ -82,6 +95,54 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
       createdAt: now()
     )
     return (optimized, metadata)
+  }
+
+  public func optimizeAndPublish(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptVersionMetadata {
+    guard let access else {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+    let original = try await access.loadOriginalTranscript(
+      in: directory,
+      meeting: meeting
+    )
+    let beforeFingerprint = try await access.originalTranscriptFingerprint(
+      in: directory,
+      meeting: meeting
+    )
+    let result = try await optimize(
+      timeline: original.timeline,
+      localeIdentifier: original.localeIdentifier
+    )
+    let afterFingerprint = try await access.originalTranscriptFingerprint(
+      in: directory,
+      meeting: meeting
+    )
+    // Guard: original asset must remain unchanged after optimization.
+    guard beforeFingerprint == afterFingerprint else {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+    let optimizedRevision = TranscriptRevision(
+      meetingID: original.meetingID,
+      localeIdentifier: original.localeIdentifier,
+      timeline: result.timeline
+    )
+    try await access.publishOptimized(
+      optimizedRevision,
+      in: directory,
+      meeting: meeting,
+      metadata: result.metadata
+    )
+    let stillOriginal = try await access.originalTranscriptFingerprint(
+      in: directory,
+      meeting: meeting
+    )
+    guard stillOriginal == beforeFingerprint else {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+    return result.metadata
   }
 
   private func parseOptimizedTimeline(

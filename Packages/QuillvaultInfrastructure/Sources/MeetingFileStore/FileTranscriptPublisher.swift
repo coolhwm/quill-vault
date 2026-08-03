@@ -60,15 +60,44 @@ public actor FileTranscriptPublisher: TranscriptPublisher {
     _ revision: TranscriptRevision,
     recordingURL: URL
   ) async throws -> TranscriptRevision {
+    try await publish(
+      revision,
+      recordingURL: recordingURL,
+      fileName: "transcript.md",
+      metadata: nil
+    )
+  }
+
+  /// Publishes an optimized transcript next to the original. Never overwrites
+  /// `transcript.md`.
+  public func publishOptimized(
+    _ revision: TranscriptRevision,
+    recordingURL: URL,
+    metadata: TranscriptVersionMetadata
+  ) async throws -> TranscriptRevision {
+    try await publish(
+      revision,
+      recordingURL: recordingURL,
+      fileName: "transcript.optimized.md",
+      metadata: metadata
+    )
+  }
+
+  private func publish(
+    _ revision: TranscriptRevision,
+    recordingURL: URL,
+    fileName: String,
+    metadata: TranscriptVersionMetadata?
+  ) async throws -> TranscriptRevision {
     let directoryURL = try validatedDirectory(
       recordingURL: recordingURL,
       meetingID: revision.meetingID
     )
-    let destinationURL = directoryURL.appending(path: "transcript.md")
+    let destinationURL = directoryURL.appending(path: fileName)
     let candidateURL = directoryURL.appending(
-      path: ".transcript-\(revision.id).tmp"
+      path: ".\(fileName).\(revision.id).tmp"
     )
-    let expected = Data(markdown(for: revision).utf8)
+    let expected = Data(markdown(for: revision, metadata: metadata).utf8)
 
     do {
       guard
@@ -122,7 +151,10 @@ public actor FileTranscriptPublisher: TranscriptPublisher {
     return directoryURL
   }
 
-  private func markdown(for revision: TranscriptRevision) -> String {
+  private func markdown(
+    for revision: TranscriptRevision,
+    metadata: TranscriptVersionMetadata? = nil
+  ) -> String {
     var lines = [
       "---",
       "schemaVersion: 1",
@@ -130,11 +162,25 @@ public actor FileTranscriptPublisher: TranscriptPublisher {
       "contentFingerprint: \(revision.contentFingerprint)",
       "locale: \(revision.localeIdentifier)",
       "audioDurationSeconds: \(formatted(revision.timeline.audioDurationSeconds))",
+    ]
+    if let metadata {
+      lines.append("transcriptVersion: \(metadata.kind.rawValue)")
+      lines.append("parentVersion: \(metadata.parentKind.rawValue)")
+      lines.append("qualityStrategyID: \(metadata.strategyID)")
+      lines.append("qualityStrategyVersion: \(metadata.strategyVersion)")
+      if let modelName = metadata.modelName {
+        lines.append("model: \(modelName)")
+      }
+      lines.append(
+        "optimizedAt: \(ISO8601DateFormatter().string(from: metadata.createdAt))"
+      )
+    }
+    lines.append(contentsOf: [
       "---",
       "",
-      "# 文字记录",
+      metadata == nil ? "# 文字记录" : "# 优化文字记录",
       "",
-    ]
+    ])
     lines.append(
       contentsOf: revision.timeline.segments.map {
         TranscriptAnchorFormatter.line(

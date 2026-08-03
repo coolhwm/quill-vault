@@ -66,6 +66,7 @@ public final class HomeRecordingModel {
   private let library: (any MeetingLibraryUseCase)?
   private let generation: (any GenerationUseCase)?
   private let modelProfiles: (any ModelProfileUseCase)?
+  private let transcriptQuality: (any TranscriptQualityUseCase)?
   private var liveTranscriptTask: Task<Void, Never>?
   private var captureEventTask: Task<Void, Never>?
   private var postRecordingTask: Task<Void, Never>?
@@ -80,7 +81,8 @@ public final class HomeRecordingModel {
     quickStart: (any RecordingQuickStartUseCase)? = nil,
     library: (any MeetingLibraryUseCase)? = nil,
     generation: (any GenerationUseCase)? = nil,
-    modelProfiles: (any ModelProfileUseCase)? = nil
+    modelProfiles: (any ModelProfileUseCase)? = nil,
+    transcriptQuality: (any TranscriptQualityUseCase)? = nil
   ) {
     self.recording = recording
     self.directory = directory
@@ -93,6 +95,7 @@ public final class HomeRecordingModel {
     self.library = library
     self.generation = generation
     self.modelProfiles = modelProfiles
+    self.transcriptQuality = transcriptQuality
   }
 
   public var isSessionPresented: Bool {
@@ -463,11 +466,39 @@ public final class HomeRecordingModel {
     guard completion.transcriptRevision != nil else {
       return
     }
+    await maybeOptimizeTranscript(for: completion.session.meetingID)
     let shouldAutoGenerate = await shouldAutomaticallyGenerateMinutes()
     if shouldAutoGenerate {
       await beginMinutesGeneration(for: completion.session.meetingID)
     } else {
       processingPhase = .awaitingMinutes
+    }
+  }
+
+  private func maybeOptimizeTranscript(for meetingID: MeetingID) async {
+    guard
+      let transcriptQuality,
+      let modelProfiles,
+      let library,
+      case .authorized(let directory) = directoryState
+    else {
+      return
+    }
+    do {
+      let collection = try await modelProfiles.load()
+      guard collection.transcriptQuality.isEnabled else {
+        return
+      }
+      let meeting = try await resolveMeeting(
+        meetingID: meetingID,
+        library: library
+      )
+      _ = try await transcriptQuality.optimizeAndPublish(
+        in: directory,
+        meeting: meeting
+      )
+    } catch {
+      // Optimization is best-effort; original transcript remains authoritative.
     }
   }
 

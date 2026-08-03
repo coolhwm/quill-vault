@@ -26,6 +26,10 @@ public final class MeetingDetailModel {
   public private(set) var requiresMinutesReplacementConfirmation = false
   public private(set) var generationProfiles: [ModelProfile] = []
   public private(set) var selectedGenerationProfileID: ModelProfileID?
+  public private(set) var selectedTranscriptVersion: TranscriptVersionKind = .original
+  public private(set) var isComparingTranscripts = false
+  public private(set) var transcriptOptimizeBusy = false
+  public private(set) var transcriptOptimizeError = false
 
   private let directory: AuthoritativeDirectory
   private let meeting: MeetingIndexEntry
@@ -33,6 +37,7 @@ public final class MeetingDetailModel {
   private let player: any MeetingAudioPlayer
   private let generation: (any GenerationUseCase)?
   private let modelProfiles: (any ModelProfileUseCase)?
+  private let transcriptQuality: (any TranscriptQualityUseCase)?
   private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private var progressTask: Task<Void, Never>?
 
@@ -43,6 +48,7 @@ public final class MeetingDetailModel {
     player: any MeetingAudioPlayer,
     generation: (any GenerationUseCase)? = nil,
     modelProfiles: (any ModelProfileUseCase)? = nil,
+    transcriptQuality: (any TranscriptQualityUseCase)? = nil,
     cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil
   ) {
     self.directory = directory
@@ -51,7 +57,43 @@ public final class MeetingDetailModel {
     self.player = player
     self.generation = generation
     self.modelProfiles = modelProfiles
+    self.transcriptQuality = transcriptQuality
     self.cancelScheduledGeneration = cancelScheduledGeneration
+  }
+
+  public func selectTranscriptVersion(_ version: TranscriptVersionKind) {
+    selectedTranscriptVersion = version
+    if version != .optimized {
+      isComparingTranscripts = false
+    }
+  }
+
+  public func setTranscriptCompare(_ enabled: Bool) {
+    guard case .loaded(let detail) = state, detail.hasOptimizedTranscript else {
+      isComparingTranscripts = false
+      return
+    }
+    isComparingTranscripts = enabled
+  }
+
+  public func optimizeTranscript() async {
+    guard let transcriptQuality, !transcriptOptimizeBusy else {
+      return
+    }
+    transcriptOptimizeBusy = true
+    transcriptOptimizeError = false
+    defer { transcriptOptimizeBusy = false }
+    do {
+      _ = try await transcriptQuality.optimizeAndPublish(
+        in: directory,
+        meeting: meeting
+      )
+      state = .idle
+      await load()
+      selectedTranscriptVersion = .optimized
+    } catch {
+      transcriptOptimizeError = true
+    }
   }
 
   public func load() async {
@@ -65,6 +107,12 @@ public final class MeetingDetailModel {
         meeting: meeting
       )
       state = .loaded(loaded)
+      if loaded.hasOptimizedTranscript {
+        selectedTranscriptVersion = .optimized
+      } else {
+        selectedTranscriptVersion = .original
+      }
+      isComparingTranscripts = false
       await loadGeneration()
       await loadGenerationProfiles()
       if case .available(let asset) = loaded.recording {

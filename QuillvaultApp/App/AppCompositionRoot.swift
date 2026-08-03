@@ -77,13 +77,28 @@ final class AppCompositionRoot {
       recording: resolvedRecording,
       directory: directoryAuthorization
     )
+    let resolvedTranscriptQuality: (any TranscriptQualityUseCase)? = {
+      guard
+        !Self.isMeetingDetailUITest,
+        !Self.isRecordingUITest,
+        let execution = resolvedModelProfiles as? any ModelProfileExecutionAccess
+      else {
+        return nil
+      }
+      return TranscriptQualityWorkflow(
+        profiles: execution,
+        provider: OpenAICompatibleProvider(diagnostics: diagnostics.recorder),
+        access: fileStore
+      )
+    }()
     recordingModel = HomeRecordingModel(
       recording: resolvedRecording,
       directory: directoryAuthorization,
       quickStart: recordingQuickStart,
       library: resolvedMeetingLibrary,
       generation: resolvedGeneration,
-      modelProfiles: resolvedModelProfiles
+      modelProfiles: resolvedModelProfiles,
+      transcriptQuality: resolvedTranscriptQuality
     )
     actionButtonCoordinator = ActionButtonRecordingCoordinator(
       router: router,
@@ -109,6 +124,7 @@ final class AppCompositionRoot {
       },
       generation: resolvedGeneration,
       modelProfiles: resolvedModelProfiles,
+      transcriptQuality: resolvedTranscriptQuality,
       cancelScheduledGeneration: { [weak backgroundCoordinator] jobID in
         await backgroundCoordinator?.cancelScheduledTask(jobID: jobID)
       }

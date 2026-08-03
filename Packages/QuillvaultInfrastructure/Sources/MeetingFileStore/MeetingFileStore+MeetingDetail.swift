@@ -29,6 +29,9 @@ extension MeetingFileStore: MeetingDetailAccess {
     async let transcript = transcriptAsset(
       at: meetingURL.appending(path: "transcript.md")
     )
+    async let optimizedTranscript = transcriptAsset(
+      at: meetingURL.appending(path: "transcript.optimized.md")
+    )
     async let recording = recordingAsset(
       at: meetingURL.appending(path: "recording.m4a"),
       directoryID: directory.id,
@@ -40,6 +43,7 @@ extension MeetingFileStore: MeetingDetailAccess {
     let detail = await MeetingDetail(
       meeting: meeting,
       transcript: transcript,
+      optimizedTranscript: optimizedTranscript,
       recording: recording,
       minutes: minutes
     )

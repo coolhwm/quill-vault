@@ -12,8 +12,15 @@ extension MeetingFileStore: GenerationFileAccess {
           rootURL: rootURL,
           meeting: meeting
         )
-        let transcriptURL = meetingURL.appending(path: "transcript.md")
-        guard FileManager.default.fileExists(atPath: transcriptURL.path) else {
+        // Prefer optimized readability version when present; original remains on disk.
+        let optimizedURL = meetingURL.appending(path: "transcript.optimized.md")
+        let originalURL = meetingURL.appending(path: "transcript.md")
+        let transcriptURL: URL
+        if FileManager.default.fileExists(atPath: optimizedURL.path) {
+          transcriptURL = optimizedURL
+        } else if FileManager.default.fileExists(atPath: originalURL.path) {
+          transcriptURL = originalURL
+        } else {
           throw GenerationFileError.transcriptUnavailable
         }
         let markdown = try coordinatedReadString(at: transcriptURL)
@@ -118,7 +125,7 @@ extension MeetingFileStore: GenerationFileAccess {
     }
   }
 
-  private func withGenerationScope<T>(
+  func withGenerationScope<T>(
     in directory: AuthoritativeDirectory,
     operation: (URL) throws -> T
   ) async throws -> T {
@@ -142,7 +149,7 @@ extension MeetingFileStore: GenerationFileAccess {
     }
   }
 
-  private func generationMeetingURL(
+  func generationMeetingURL(
     rootURL: URL,
     meeting: MeetingIndexEntry
   ) throws -> URL {
@@ -184,7 +191,7 @@ extension MeetingFileStore: GenerationFileAccess {
     return meetingURL
   }
 
-  private func coordinatedReadString(at url: URL) throws -> String {
+  func coordinatedReadString(at url: URL) throws -> String {
     let data = try coordinatedReadData(at: url)
     guard let string = String(data: data, encoding: .utf8)
     else {
@@ -193,7 +200,7 @@ extension MeetingFileStore: GenerationFileAccess {
     return string
   }
 
-  private func coordinatedReadData(at url: URL) throws -> Data {
+  func coordinatedReadData(at url: URL) throws -> Data {
     var coordinationError: NSError?
     var readError: (any Error)?
     var result: Data?
@@ -308,7 +315,7 @@ extension MeetingFileStore: GenerationFileAccess {
     }
   }
 
-  private func frontMatterValue(named name: String, in text: String) -> String? {
+  func frontMatterValue(named name: String, in text: String) -> String? {
     guard text.hasPrefix("---") else {
       return nil
     }

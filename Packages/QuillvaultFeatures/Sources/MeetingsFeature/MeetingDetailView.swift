@@ -134,7 +134,25 @@ public struct MeetingDetailView: View {
           }
         )
         MeetingTranscriptSection(
-          transcript: detail.transcript,
+          original: detail.transcript,
+          optimized: detail.optimizedTranscript,
+          selectedVersion: model.selectedTranscriptVersion,
+          isComparing: model.isComparingTranscripts,
+          canOptimize: {
+            if case .available = detail.transcript {
+              return true
+            }
+            return false
+          }(),
+          optimizeBusy: model.transcriptOptimizeBusy,
+          optimizeError: model.transcriptOptimizeError,
+          selectVersion: { model.selectTranscriptVersion($0) },
+          setComparing: { model.setTranscriptCompare($0) },
+          optimize: {
+            Task {
+              await model.optimizeTranscript()
+            }
+          },
           seekAndPlay: { seconds in
             model.seek(to: seconds, beginsPlayback: true)
           }

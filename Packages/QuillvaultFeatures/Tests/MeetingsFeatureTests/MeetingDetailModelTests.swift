@@ -60,6 +60,72 @@ struct MeetingDetailModelTests {
     #expect(model.state == .idle)
     #expect(player.unloadCount == 1)
   }
+
+  @Test("Loads optimized transcript version when available")
+  func selectsOptimizedWhenPresent() async {
+    let player = MeetingAudioPlayerSpy()
+    let model = MeetingDetailModel(
+      directory: .fixture,
+      meeting: .fixture,
+      detail: MeetingDetailUseCaseStub(detail: .fixtureWithOptimized),
+      player: player
+    )
+
+    await model.load()
+
+    #expect(model.selectedTranscriptVersion == .optimized)
+    model.selectTranscriptVersion(.original)
+    #expect(model.selectedTranscriptVersion == .original)
+    #expect(model.isComparingTranscripts == false)
+    model.setTranscriptCompare(true)
+    #expect(model.isComparingTranscripts)
+    model.selectTranscriptVersion(.optimized)
+    #expect(model.selectedTranscriptVersion == .optimized)
+  }
+
+  @Test("optimizeTranscript publishes and reloads optimized version")
+  func optimizePublishesAndSelectsOptimized() async {
+    let quality = TranscriptQualityUseCaseSpy()
+    let detail = ReloadableMeetingDetailUseCase(
+      first: .fixture,
+      second: .fixtureWithOptimized
+    )
+    let model = MeetingDetailModel(
+      directory: .fixture,
+      meeting: .fixture,
+      detail: detail,
+      player: MeetingAudioPlayerSpy(),
+      transcriptQuality: quality
+    )
+
+    await model.load()
+    #expect(model.selectedTranscriptVersion == .original)
+
+    await model.optimizeTranscript()
+
+    #expect(await quality.publishCount == 1)
+    #expect(model.transcriptOptimizeError == false)
+    #expect(model.selectedTranscriptVersion == .optimized)
+    #expect(model.state == .loaded(.fixtureWithOptimized))
+  }
+
+  @Test("optimizeTranscript failure keeps original selection")
+  func optimizeFailureSurfacesError() async {
+    let quality = TranscriptQualityUseCaseSpy(shouldFail: true)
+    let model = MeetingDetailModel(
+      directory: .fixture,
+      meeting: .fixture,
+      detail: MeetingDetailUseCaseStub(detail: .fixture),
+      player: MeetingAudioPlayerSpy(),
+      transcriptQuality: quality
+    )
+
+    await model.load()
+    await model.optimizeTranscript()
+
+    #expect(model.transcriptOptimizeError)
+    #expect(model.selectedTranscriptVersion == .original)
+  }
 }
 
 private struct MeetingDetailUseCaseStub: MeetingDetailUseCase {
@@ -79,6 +145,65 @@ private struct CancellingMeetingDetailUseCase: MeetingDetailUseCase {
     meeting: MeetingIndexEntry
   ) async throws -> MeetingDetail {
     throw CancellationError()
+  }
+}
+
+private final class ReloadableMeetingDetailUseCase: MeetingDetailUseCase, @unchecked Sendable {
+  private let first: MeetingDetail
+  private let second: MeetingDetail
+  private var loadCount = 0
+
+  init(first: MeetingDetail, second: MeetingDetail) {
+    self.first = first
+    self.second = second
+  }
+
+  func load(
+    directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> MeetingDetail {
+    loadCount += 1
+    return loadCount == 1 ? first : second
+  }
+}
+
+private actor TranscriptQualityUseCaseSpy: TranscriptQualityUseCase {
+  private let shouldFail: Bool
+  private(set) var publishCount = 0
+
+  init(shouldFail: Bool = false) {
+    self.shouldFail = shouldFail
+  }
+
+  func optimize(
+    timeline: TranscriptTimeline,
+    localeIdentifier: String
+  ) async throws -> (timeline: TranscriptTimeline, metadata: TranscriptVersionMetadata) {
+    (
+      timeline,
+      TranscriptVersionMetadata(
+        strategyID: "offline-readability",
+        strategyVersion: "v1",
+        modelName: "test",
+        createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+      )
+    )
+  }
+
+  func optimizeAndPublish(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptVersionMetadata {
+    publishCount += 1
+    if shouldFail {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+    return TranscriptVersionMetadata(
+      strategyID: "offline-readability",
+      strategyVersion: "v1",
+      modelName: "test",
+      createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+    )
   }
 }
 
@@ -163,25 +288,55 @@ extension MeetingIndexEntry {
 }
 
 extension MeetingDetail {
+  fileprivate static let fixtureTimeline = try! TranscriptTimeline.normalizing(
+    [
+      TranscriptSegmentCandidate(
+        startSeconds: 0,
+        endSeconds: 10,
+        text: "中文记录"
+      ),
+      TranscriptSegmentCandidate(
+        startSeconds: 10,
+        endSeconds: 20,
+        text: "English note"
+      ),
+    ],
+    audioDurationSeconds: 20
+  )
+
+  fileprivate static let fixtureOptimizedTimeline = try! TranscriptTimeline.normalizing(
+    [
+      TranscriptSegmentCandidate(
+        startSeconds: 0,
+        endSeconds: 10,
+        text: "中文记录（优化）"
+      ),
+      TranscriptSegmentCandidate(
+        startSeconds: 10,
+        endSeconds: 20,
+        text: "English note (optimized)"
+      ),
+    ],
+    audioDurationSeconds: 20
+  )
+
   fileprivate static let fixture = Self(
     meeting: .fixture,
-    transcript: .available(
-      try! TranscriptTimeline.normalizing(
-        [
-          TranscriptSegmentCandidate(
-            startSeconds: 0,
-            endSeconds: 10,
-            text: "中文记录"
-          ),
-          TranscriptSegmentCandidate(
-            startSeconds: 10,
-            endSeconds: 20,
-            text: "English note"
-          ),
-        ],
-        audioDurationSeconds: 20
+    transcript: .available(fixtureTimeline),
+    optimizedTranscript: .missing,
+    recording: .available(
+      MeetingAudioAsset(
+        sourceID: MeetingAudioSourceID(rawValue: "test-recording"),
+        durationSeconds: 20
       )
     ),
+    minutes: .missing
+  )
+
+  fileprivate static let fixtureWithOptimized = Self(
+    meeting: .fixture,
+    transcript: .available(fixtureTimeline),
+    optimizedTranscript: .available(fixtureOptimizedTimeline),
     recording: .available(
       MeetingAudioAsset(
         sourceID: MeetingAudioSourceID(rawValue: "test-recording"),
