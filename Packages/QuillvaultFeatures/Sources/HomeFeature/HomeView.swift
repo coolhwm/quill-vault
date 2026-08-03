@@ -7,9 +7,14 @@ import UniformTypeIdentifiers
 public struct HomeView: View {
   @Bindable private var model: HomeRecordingModel
   @State private var isDirectoryImporterPresented = false
+  private let onOpenMeeting: ((MeetingID) -> Void)?
 
-  public init(model: HomeRecordingModel) {
+  public init(
+    model: HomeRecordingModel,
+    onOpenMeeting: ((MeetingID) -> Void)? = nil
+  ) {
     self.model = model
+    self.onOpenMeeting = onOpenMeeting
   }
 
   public var body: some View {
@@ -229,53 +234,7 @@ public struct HomeView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(.regularMaterial, in: .rect(cornerRadius: 20))
     case .completed(let completion):
-      Label {
-        VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
-          Text(
-            completion.transcriptRevision == nil
-              ? "recording.transcript.pending"
-              : "recording.completed"
-          )
-          .font(.headline)
-          Text(
-            Duration.seconds(completion.audio.durationSeconds),
-            format: .time(pattern: .minuteSecond)
-          )
-          .foregroundStyle(.secondary)
-          if completion.transcriptRevision == nil {
-            Button {
-              Task {
-                await model.retryTranscript()
-              }
-            } label: {
-              if model.transcriptRecoveryState == .retrying {
-                ProgressView()
-              } else {
-                Label("recording.transcript.retry", systemImage: "arrow.clockwise")
-              }
-            }
-            .buttonStyle(.bordered)
-            .disabled(model.transcriptRecoveryState == .retrying)
-            if case .failed(let error) = model.transcriptRecoveryState {
-              Text(error.transcriptRecoveryMessageKey)
-                .font(.footnote)
-                .foregroundStyle(.orange)
-            }
-          }
-        }
-      } icon: {
-        Image(
-          systemName: completion.transcriptRevision == nil
-            ? "exclamationmark.circle.fill"
-            : "checkmark.circle.fill"
-        )
-        .foregroundStyle(
-          completion.transcriptRevision == nil ? .orange : .green
-        )
-      }
-      .padding()
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.regularMaterial, in: .rect(cornerRadius: 20))
+      processingResultCard(completion: completion)
     case .startFailed(let error):
       RecordingFailureCard(error: error) {
         Task {
@@ -284,6 +243,197 @@ public struct HomeView: View {
       }
     case .idle, .starting, .recording, .finishing, .finishFailed:
       EmptyView()
+    }
+  }
+
+  @ViewBuilder
+  private func processingResultCard(
+    completion: RecordingCompletion
+  ) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
+        Text(processingTitle)
+          .font(.headline)
+          .accessibilityIdentifier("home.processing.title")
+        Text(
+          Duration.seconds(completion.audio.durationSeconds),
+          format: .time(pattern: .minuteSecond)
+        )
+        .foregroundStyle(.secondary)
+
+        processingBody
+
+        if let meetingID = model.focusedMeetingID, let onOpenMeeting {
+          Button {
+            onOpenMeeting(meetingID)
+          } label: {
+            Label("home.processing.openDetail", systemImage: "doc.text")
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("home.processing.openDetail")
+        }
+      }
+    } icon: {
+      Image(systemName: processingSystemImage)
+        .foregroundStyle(processingTint)
+    }
+    .padding()
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.regularMaterial, in: .rect(cornerRadius: 20))
+    .accessibilityIdentifier("home.processing.card")
+  }
+
+  private var processingTitle: LocalizedStringKey {
+    switch model.processingPhase {
+    case .idle:
+      "recording.completed"
+    case .finalizingTranscript:
+      "home.processing.transcript.running"
+    case .transcriptFailed:
+      "home.processing.transcript.failed"
+    case .awaitingMinutes:
+      "home.processing.minutes.pending"
+    case .generatingMinutes:
+      "home.processing.minutes.running"
+    case .generationPaused:
+      "home.processing.minutes.paused"
+    case .minutesCompleted:
+      "home.processing.minutes.completed"
+    case .generationFailed:
+      "home.processing.minutes.failed"
+    }
+  }
+
+  private var processingSystemImage: String {
+    switch model.processingPhase {
+    case .idle, .minutesCompleted:
+      "checkmark.circle.fill"
+    case .finalizingTranscript, .generatingMinutes:
+      "arrow.triangle.2.circlepath.circle.fill"
+    case .awaitingMinutes:
+      "sparkles"
+    case .generationPaused:
+      "pause.circle.fill"
+    case .transcriptFailed, .generationFailed:
+      "exclamationmark.circle.fill"
+    }
+  }
+
+  private var processingTint: Color {
+    switch model.processingPhase {
+    case .idle, .minutesCompleted:
+      .green
+    case .finalizingTranscript, .generatingMinutes, .awaitingMinutes:
+      .accentColor
+    case .generationPaused:
+      .orange
+    case .transcriptFailed, .generationFailed:
+      .orange
+    }
+  }
+
+  @ViewBuilder
+  private var processingBody: some View {
+    switch model.processingPhase {
+    case .idle:
+      EmptyView()
+    case .finalizingTranscript:
+      HStack(spacing: QuillvaultSpacing.compact) {
+        ProgressView()
+        Text("home.processing.transcript.running.description")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      }
+      .accessibilityIdentifier("home.processing.transcript.running")
+    case .transcriptFailed(let error):
+      Text(error.transcriptRecoveryMessageKey)
+        .font(.footnote)
+        .foregroundStyle(.orange)
+      Button {
+        Task {
+          await model.retryTranscript()
+        }
+      } label: {
+        if model.transcriptRecoveryState == .retrying {
+          ProgressView()
+        } else {
+          Label("recording.transcript.retry", systemImage: "arrow.clockwise")
+        }
+      }
+      .buttonStyle(.bordered)
+      .disabled(model.transcriptRecoveryState == .retrying)
+      .accessibilityIdentifier("home.processing.transcript.retry")
+    case .awaitingMinutes:
+      Text("home.processing.minutes.pending.description")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+      Button {
+        Task {
+          await model.startMinutesGeneration()
+        }
+      } label: {
+        Label("minutes.generation.start", systemImage: "sparkles")
+      }
+      .buttonStyle(.borderedProminent)
+      .accessibilityIdentifier("home.processing.minutes.start")
+    case .generatingMinutes(let snapshot):
+      VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
+        HStack {
+          ProgressView()
+          Text(snapshot.job.stage.homeStageKey)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+          Spacer()
+          Text("\(snapshot.job.progress)%")
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+        }
+        ProgressView(value: Double(snapshot.job.progress), total: 100)
+        Text("home.processing.minutes.running.description")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text(
+          "minutes.generation.progress \(snapshot.job.completedChunkCount) \(snapshot.job.chunkCount)"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+      .accessibilityIdentifier("home.processing.minutes.running")
+    case .generationPaused(let snapshot):
+      Text("home.processing.minutes.paused.description")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+      if let reason = snapshot.job.pauseReason {
+        Text(reason.homeMessageKey)
+          .font(.footnote)
+          .foregroundStyle(.orange)
+      }
+      Button {
+        Task {
+          await model.startMinutesGeneration()
+        }
+      } label: {
+        Label("minutes.generation.resume", systemImage: "play.circle")
+      }
+      .buttonStyle(.borderedProminent)
+      .accessibilityIdentifier("home.processing.minutes.resume")
+    case .minutesCompleted:
+      Text("home.processing.minutes.completed.description")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    case .generationFailed:
+      Text("home.processing.minutes.failed.description")
+        .font(.subheadline)
+        .foregroundStyle(.orange)
+      Button {
+        Task {
+          await model.startMinutesGeneration()
+        }
+      } label: {
+        Label("minutes.generation.start", systemImage: "sparkles")
+      }
+      .buttonStyle(.borderedProminent)
+      .accessibilityIdentifier("home.processing.minutes.retry")
     }
   }
 }
@@ -301,6 +451,41 @@ extension TranscriptError {
       "recording.transcript.failure.publication"
     case .invalidAudioDuration, .invalidTimeRange, .recognitionFailed:
       "recording.transcript.failure.recognition"
+    }
+  }
+}
+
+extension GenerationPauseReason {
+  fileprivate var homeMessageKey: LocalizedStringKey {
+    switch self {
+    case .networkUnavailable:
+      "home.processing.minutes.pause.network"
+    case .credentialsUnavailable, .authenticationRequired:
+      "home.processing.minutes.pause.credentials"
+    case .modelUnavailable, .rateLimited, .serviceUnavailable, .retryableRequest,
+      .invalidResponse, .retryExhausted, .requestTooLarge, .unavailable:
+      "home.processing.minutes.pause.service"
+    case .cancelled, .sourceChanged, .publicationFailed, .externalMinutesChanged:
+      "home.processing.minutes.paused.description"
+    }
+  }
+}
+
+extension GenerationStage {
+  fileprivate var homeStageKey: LocalizedStringKey {
+    switch self {
+    case .pending:
+      "home.processing.minutes.stage.pending"
+    case .summarizing:
+      "home.processing.minutes.stage.summarizing"
+    case .synthesizing:
+      "home.processing.minutes.stage.synthesizing"
+    case .normalizing:
+      "home.processing.minutes.stage.normalizing"
+    case .publishing:
+      "home.processing.minutes.stage.publishing"
+    case .completed:
+      "home.processing.minutes.stage.completed"
     }
   }
 }

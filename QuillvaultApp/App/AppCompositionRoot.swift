@@ -78,7 +78,10 @@ final class AppCompositionRoot {
     recordingModel = HomeRecordingModel(
       recording: resolvedRecording,
       directory: directoryAuthorization,
-      quickStart: recordingQuickStart
+      quickStart: recordingQuickStart,
+      library: resolvedMeetingLibrary,
+      generation: resolvedGeneration,
+      modelProfiles: resolvedModelProfiles
     )
     actionButtonCoordinator = ActionButtonRecordingCoordinator(
       router: router,

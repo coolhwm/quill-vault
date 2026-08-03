@@ -15,7 +15,9 @@ struct AppRootView: View {
   var body: some View {
     TabView(selection: $router.selectedTab) {
       NavigationStack {
-        HomeView(model: recordingModel)
+        HomeView(model: recordingModel) { _ in
+          router.selectedTab = .minutes
+        }
       }
       .tabItem {
         Label("tab.home", systemImage: AppTab.home.systemImage)

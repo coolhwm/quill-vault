@@ -97,6 +97,144 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议文件始终由你掌握。" } }
       }
     },
+    "home.processing.transcript.running" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Processing transcript…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在处理文字记录…" } }
+      }
+    },
+    "home.processing.transcript.running.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording is saved. Transcript is finishing in the background." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存，正在后台完成文字记录。" } }
+      }
+    },
+    "home.processing.transcript.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript failed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录处理失败" } }
+      }
+    },
+    "home.processing.minutes.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes pending" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "待生成纪要" } }
+      }
+    },
+    "home.processing.minutes.pending.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcript is ready. Start minutes when you are ready." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录已就绪，可在需要时生成纪要。" } }
+      }
+    },
+    "home.processing.minutes.running" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generating minutes…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成中…" } }
+      }
+    },
+    "home.processing.minutes.running.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation is running. You can open details to review the recording and transcript." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要正在生成。可打开详情查看录音和文字记录。" } }
+      }
+    },
+    "home.processing.minutes.paused" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation paused" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成已暂停" } }
+      }
+    },
+    "home.processing.minutes.paused.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generation paused. Existing recording and transcript are safe." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "生成已暂停；录音和文字记录仍安全保留。" } }
+      }
+    },
+    "home.processing.minutes.completed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes ready" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已完成" } }
+      }
+    },
+    "home.processing.minutes.completed.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes are available in the meeting library." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已写入会议资产，可在纪要列表中查看。" } }
+      }
+    },
+    "home.processing.minutes.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation failed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成失败" } }
+      }
+    },
+    "home.processing.minutes.failed.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording and transcript are safe. You can try generating again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音和文字记录仍安全；可以重新生成纪要。" } }
+      }
+    },
+    "home.processing.minutes.pause.network" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Network is unavailable. Generation can resume later." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "网络不可用，稍后可继续生成。" } }
+      }
+    },
+    "home.processing.minutes.pause.credentials" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model credentials are unavailable. Check your model profile." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型凭据不可用，请检查模型配置。" } }
+      }
+    },
+    "home.processing.minutes.pause.service" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The model service paused generation. You can resume later." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型服务暂停了生成，稍后可继续。" } }
+      }
+    },
+    "home.processing.openDetail" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open meeting details" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看会议详情" } }
+      }
+    },
+    "home.processing.minutes.stage.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Queued" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "排队中" } }
+      }
+    },
+    "home.processing.minutes.stage.summarizing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Summarizing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "分段总结中" } }
+      }
+    },
+    "home.processing.minutes.stage.synthesizing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Synthesizing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "综合整理中" } }
+      }
+    },
+    "home.processing.minutes.stage.normalizing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Normalizing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "规范化中" } }
+      }
+    },
+    "home.processing.minutes.stage.publishing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Publishing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "写入纪要中" } }
+      }
+    },
+    "home.processing.minutes.stage.completed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Completed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已完成" } }
+      }
+    },
     "home.recording.description" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio is saved first. AI, network, and transcription never block recording." } },
@@ -243,8 +381,8 @@
     },
     "recording.transcript.pending" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 文字记录待处理" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Processing transcript" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 正在处理文字记录" } }
       }
     },
     "recording.transcript.retry" : {
@@ -483,8 +621,8 @@
     },
     "minutes.asset.transcript.pending" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Transcript pending" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 文字记录待处理" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording saved · Processing transcript" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音已保存 · 正在处理文字记录" } }
       }
     },
     "minutes.asset.transcript.retry" : {

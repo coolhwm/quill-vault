@@ -89,8 +89,8 @@ struct HomeRecordingModelTests {
     #expect(model.isSessionPresented)
   }
 
-  @Test("Saved audio exits recording and can recover its pending transcript")
-  func pendingTranscriptCanRecover() async {
+  @Test("Saved audio automatically finalizes the transcript without a retry tap")
+  func pendingTranscriptAutoFinalizes() async {
     let revision = TranscriptRevision(
       meetingID: RecordingSession.fixture().meetingID,
       localeIdentifier: "zh-CN",
@@ -108,26 +108,273 @@ struct HomeRecordingModelTests {
       recording: useCase,
       directory: AuthoritativeDirectoryUseCaseStub()
     )
+    await model.selectDirectory(opaqueReference: "file:///vault")
     await model.start()
 
     await model.stop()
 
     #expect(!model.isSessionPresented)
-    guard case .completed(let pending) = model.state else {
-      Issue.record("Expected saved recording completion")
-      return
+    for _ in 0..<200 {
+      if case .completed(let completion) = model.state,
+        completion.transcriptRevision != nil
+      {
+        break
+      }
+      await Task.yield()
     }
-    #expect(pending.transcriptRevision == nil)
-
-    await model.retryTranscript()
 
     guard case .completed(let recovered) = model.state else {
       Issue.record("Expected recovered recording completion")
       return
     }
     #expect(recovered.transcriptRevision == revision)
+    #expect(model.processingPhase == .awaitingMinutes)
     #expect(model.transcriptRecoveryState == .idle)
-    #expect(await useCase.recoveryCount == 1)
+    #expect(await useCase.recoveryCount >= 1)
+  }
+
+  @Test("Transcript failure shows retry and recovers after a manual retry")
+  func transcriptFailureCanRetry() async {
+    let revision = TranscriptRevision(
+      meetingID: RecordingSession.fixture().meetingID,
+      localeIdentifier: "zh-CN",
+      timeline: TranscriptTimeline(audioDurationSeconds: 60, segments: [])
+    )
+    let useCase = RecordingUseCaseStub(
+      recoveryResults: [
+        TranscriptionRecoveryResult(
+          meetingID: revision.meetingID,
+          result: .failure(.recognitionFailed)
+        ),
+        TranscriptionRecoveryResult(
+          meetingID: revision.meetingID,
+          result: .success(revision)
+        ),
+      ]
+    )
+    let model = HomeRecordingModel(
+      recording: useCase,
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+    await model.selectDirectory(opaqueReference: "file:///vault")
+    await model.start()
+    await model.stop()
+
+    for _ in 0..<200 {
+      if case .transcriptFailed = model.processingPhase {
+        break
+      }
+      await Task.yield()
+    }
+    #expect(model.processingPhase == .transcriptFailed(.recognitionFailed))
+
+    await model.retryTranscript()
+
+    for _ in 0..<200 {
+      if case .completed(let completion) = model.state,
+        completion.transcriptRevision != nil
+      {
+        break
+      }
+      await Task.yield()
+    }
+    guard case .completed(let recovered) = model.state else {
+      Issue.record("Expected recovered recording completion")
+      return
+    }
+    #expect(recovered.transcriptRevision == revision)
+    #expect(model.processingPhase == .awaitingMinutes)
+    #expect(await useCase.recoveryCount >= 2)
+  }
+
+  @Test("Automatic generation starts minutes after transcript is ready")
+  func automaticGenerationStartsMinutes() async {
+    let revision = TranscriptRevision(
+      meetingID: RecordingSession.fixture().meetingID,
+      localeIdentifier: "zh-CN",
+      timeline: TranscriptTimeline(audioDurationSeconds: 60, segments: [])
+    )
+    let meeting = MeetingIndexEntry(
+      id: revision.meetingID,
+      createdAt: Date(timeIntervalSince1970: 1_722_470_400),
+      relativeDirectory: "meeting-test",
+      assets: [.recording, .transcript],
+      durationSeconds: 60,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint
+    )
+    let job = GenerationJob(
+      id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+      meetingID: revision.meetingID,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint,
+      modelProfile: ModelProfileSnapshot(
+        profileID: ModelProfileID(
+          rawValue: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        ),
+        baseURL: URL(string: "https://api.example.com/v1")!,
+        model: "gpt-test",
+        parameters: ModelGenerationParameters(),
+        credentialReference: ModelCredentialReference(
+          rawValue: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        )
+      ),
+      createdAt: Date(timeIntervalSince1970: 1_722_470_500),
+      updatedAt: Date(timeIntervalSince1970: 1_722_470_500),
+      state: .running,
+      stage: .summarizing,
+      progress: 20
+    )
+    let generation = GenerationUseCaseStub(
+      startSnapshot: GenerationSnapshot(job: job)
+    )
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(
+        recoveryResults: [
+          TranscriptionRecoveryResult(
+            meetingID: revision.meetingID,
+            result: .success(revision)
+          )
+        ]
+      ),
+      directory: AuthoritativeDirectoryUseCaseStub(),
+      library: MeetingLibraryUseCaseStub(meetings: [meeting]),
+      generation: generation,
+      modelProfiles: ModelProfileUseCaseStub(
+        collection: ModelProfileCollection(
+          profiles: [
+            ModelProfile(
+              id: job.modelProfile.profileID,
+              name: "Test",
+              baseURL: job.modelProfile.baseURL,
+              model: job.modelProfile.model,
+              credentialReference: job.modelProfile.credentialReference,
+              isUsable: true
+            )
+          ],
+          currentProfileID: job.modelProfile.profileID,
+          automaticGeneration: AutomaticGenerationPreferences(
+            isEnabled: true,
+            disclosureAcknowledged: true
+          )
+        )
+      )
+    )
+    await model.selectDirectory(opaqueReference: "file:///vault")
+    await model.start()
+    await model.stop()
+
+    for _ in 0..<300 {
+      if case .generatingMinutes = model.processingPhase {
+        break
+      }
+      await Task.yield()
+    }
+    guard case .generatingMinutes(let snapshot) = model.processingPhase else {
+      Issue.record("Expected generating minutes phase, got \(model.processingPhase)")
+      return
+    }
+    #expect(snapshot.job.progress == 20)
+    #expect(await generation.startCount == 1)
+  }
+
+  @Test("Manual minutes generation is available when automatic generation is off")
+  func manualMinutesGenerationWhenAutoOff() async {
+    let revision = TranscriptRevision(
+      meetingID: RecordingSession.fixture().meetingID,
+      localeIdentifier: "zh-CN",
+      timeline: TranscriptTimeline(audioDurationSeconds: 60, segments: [])
+    )
+    let meeting = MeetingIndexEntry(
+      id: revision.meetingID,
+      createdAt: Date(timeIntervalSince1970: 1_722_470_400),
+      relativeDirectory: "meeting-test",
+      assets: [.recording, .transcript],
+      durationSeconds: 60,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint
+    )
+    let completedJob = GenerationJob(
+      id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
+      meetingID: revision.meetingID,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint,
+      modelProfile: ModelProfileSnapshot(
+        profileID: ModelProfileID(
+          rawValue: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        ),
+        baseURL: URL(string: "https://api.example.com/v1")!,
+        model: "gpt-test",
+        parameters: ModelGenerationParameters(),
+        credentialReference: ModelCredentialReference(
+          rawValue: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!
+        )
+      ),
+      createdAt: Date(timeIntervalSince1970: 1_722_470_500),
+      updatedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      completedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      state: .completed,
+      stage: .completed,
+      progress: 100
+    )
+    let generation = GenerationUseCaseStub(
+      startSnapshot: GenerationSnapshot(job: completedJob)
+    )
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(
+        recoveryResults: [
+          TranscriptionRecoveryResult(
+            meetingID: revision.meetingID,
+            result: .success(revision)
+          )
+        ]
+      ),
+      directory: AuthoritativeDirectoryUseCaseStub(),
+      library: MeetingLibraryUseCaseStub(meetings: [meeting]),
+      generation: generation,
+      modelProfiles: ModelProfileUseCaseStub(
+        collection: ModelProfileCollection(
+          profiles: [
+            ModelProfile(
+              id: completedJob.modelProfile.profileID,
+              name: "Test",
+              baseURL: completedJob.modelProfile.baseURL,
+              model: completedJob.modelProfile.model,
+              credentialReference: completedJob.modelProfile.credentialReference,
+              isUsable: true
+            )
+          ],
+          currentProfileID: completedJob.modelProfile.profileID,
+          automaticGeneration: AutomaticGenerationPreferences(
+            isEnabled: false,
+            disclosureAcknowledged: true
+          )
+        )
+      )
+    )
+    await model.selectDirectory(opaqueReference: "file:///vault")
+    await model.start()
+    await model.stop()
+
+    for _ in 0..<200 {
+      if model.processingPhase == .awaitingMinutes {
+        break
+      }
+      await Task.yield()
+    }
+    #expect(model.processingPhase == .awaitingMinutes)
+    #expect(await generation.startCount == 0)
+
+    await model.startMinutesGeneration()
+
+    for _ in 0..<200 {
+      if model.processingPhase == .minutesCompleted {
+        break
+      }
+      await Task.yield()
+    }
+    #expect(model.processingPhase == .minutesCompleted)
+    #expect(await generation.startCount == 1)
   }
 
   @Test("Repeated stop taps stop the audio only once")
@@ -403,7 +650,7 @@ private actor RecordingUseCaseStub: RecordingUseCase {
   private var startErrors: [RecordingError]
   private let stopError: RecordingError?
   private let liveSnapshots: [LiveTranscriptSnapshot]
-  private let recoveryResults: [TranscriptionRecoveryResult]
+  private var recoveryResults: [TranscriptionRecoveryResult]
   private let stopDelay: Duration?
   private let restoredSnapshot: RecordingSnapshot?
   private let capturedCaptureEvents: [RecordingCaptureEvent]
@@ -526,7 +773,117 @@ private actor RecordingUseCaseStub: RecordingUseCase {
 
   func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
     recoveryCount += 1
-    return recoveryResults
+    guard !recoveryResults.isEmpty else {
+      return []
+    }
+    return [recoveryResults.removeFirst()]
+  }
+}
+
+private actor GenerationUseCaseStub: GenerationUseCase {
+  private let startSnapshot: GenerationSnapshot
+  private(set) var startCount = 0
+  private var latest: GenerationSnapshot?
+
+  init(startSnapshot: GenerationSnapshot) {
+    self.startSnapshot = startSnapshot
+    latest = startSnapshot
+  }
+
+  func start(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> GenerationSnapshot {
+    startCount += 1
+    latest = startSnapshot
+    return startSnapshot
+  }
+
+  func regenerate(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    replacingExternalMinutes: Bool
+  ) async throws -> GenerationSnapshot {
+    try await start(in: directory, meeting: meeting)
+  }
+
+  func resume(
+    _ jobID: UUID,
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    replacingExternalMinutes: Bool
+  ) async throws -> GenerationSnapshot {
+    startSnapshot
+  }
+
+  func load(meetingID: MeetingID) async throws -> GenerationSnapshot? {
+    guard latest?.job.meetingID == meetingID else {
+      return nil
+    }
+    return latest
+  }
+
+  func cancel(_ jobID: UUID) async {}
+}
+
+private struct ModelProfileUseCaseStub: ModelProfileUseCase {
+  let collection: ModelProfileCollection
+
+  func load() async throws -> ModelProfileCollection {
+    collection
+  }
+
+  func save(_ draft: ModelProfileDraft) async throws -> ModelProfile {
+    collection.profiles[0]
+  }
+
+  func select(_ id: ModelProfileID) async throws {}
+
+  func test(_ id: ModelProfileID) async throws -> ModelCapability {
+    ModelCapability(providerDomain: "api.example.com", representativeContent: true)
+  }
+
+  func setAutomaticGeneration(
+    enabled: Bool,
+    disclosureAcknowledged: Bool
+  ) async throws {}
+
+  func deletionImpact(
+    _ id: ModelProfileID
+  ) async throws -> ModelProfileDeletionImpact {
+    .safe
+  }
+
+  func delete(_ id: ModelProfileID, confirmed: Bool) async throws {}
+}
+
+private struct MeetingLibraryUseCaseStub: MeetingLibraryUseCase {
+  let meetings: [MeetingIndexEntry]
+
+  func restore() async throws -> MeetingLibrarySnapshot {
+    MeetingLibrarySnapshot(
+      directory: .fixture,
+      meetings: meetings,
+      diagnosticCount: 0
+    )
+  }
+
+  func select(
+    _ selection: AuthoritativeDirectorySelection
+  ) async throws -> MeetingLibrarySnapshot {
+    try await restore()
+  }
+
+  func rebuild() async throws -> MeetingLibrarySnapshot {
+    try await restore()
+  }
+
+  func synchronize() async throws -> MeetingLibrarySnapshot {
+    try await restore()
+  }
+
+  func search(_ query: MeetingSearchQuery) async throws -> [MeetingIndexEntry] {
+    meetings
   }
 }
 
