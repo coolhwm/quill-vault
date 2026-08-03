@@ -16,6 +16,8 @@ struct MeetingSummarySection: View {
             systemImage: "info.circle"
           )
           .foregroundStyle(.secondary)
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("minutes.detail.incomplete")
         }
         MeetingMarkdownText(markdown: content.summaryMarkdown)
       case .missing:

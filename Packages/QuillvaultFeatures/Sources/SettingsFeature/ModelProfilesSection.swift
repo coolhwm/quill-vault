@@ -6,8 +6,6 @@ struct ModelProfilesSection: View {
   @State private var editor: ModelProfileEditor?
   @State private var testRequest: ModelProfile?
   @State private var deleteRequest: ModelProfileDeleteRequest?
-  @State private var automaticGenerationRequest = false
-
   var body: some View {
     Section("settings.models.section") {
       if model.modelProfilesUnavailable {
@@ -29,14 +27,39 @@ struct ModelProfilesSection: View {
         editor = ModelProfileEditor(profile: nil)
       }
       .accessibilityIdentifier("settings.models.add")
-      Toggle(
-        "settings.models.automatic",
-        isOn: Binding(
-          get: { model.automaticGeneration.isEnabled },
-          set: { updateAutomaticGeneration($0) }
+      if model.automaticGeneration.isEnabled {
+        Toggle(
+          "settings.models.automatic",
+          isOn: Binding(
+            get: { true },
+            set: { enabled in
+              if !enabled {
+                Task {
+                  await model.setAutomaticGeneration(
+                    enabled: false,
+                    disclosureAcknowledged: true
+                  )
+                }
+              }
+            }
+          )
         )
-      )
-      .disabled(currentUsableProfile == nil)
+        .accessibilityIdentifier("settings.models.automatic")
+      } else {
+        // Use an explicit enable control so first-time disclosure always has a
+        // reliable presentation path (Toggle Binding rejections are flaky under
+        // XCTest and can swallow the confirmation alert).
+        Button {
+          model.requestAutomaticGenerationDisclosure()
+        } label: {
+          Label(
+            "settings.models.automatic",
+            systemImage: "sparkles"
+          )
+        }
+        .disabled(currentUsableProfile == nil)
+        .accessibilityIdentifier("settings.models.automatic")
+      }
       if currentUsableProfile == nil {
         Text("settings.models.automatic.requires_verified")
           .font(.caption)
@@ -71,22 +94,6 @@ struct ModelProfilesSection: View {
         "\(profile.baseURL.host ?? profile.baseURL.absoluteString)\n"
           + String(localized: "settings.models.test.disclosure")
       )
-    }
-    .alert(
-      "settings.models.automatic.confirm.title",
-      isPresented: $automaticGenerationRequest
-    ) {
-      Button("settings.models.automatic.confirm.action") {
-        Task {
-          await model.setAutomaticGeneration(
-            enabled: true,
-            disclosureAcknowledged: true
-          )
-        }
-      }
-      Button("common.cancel", role: .cancel) {}
-    } message: {
-      Text(automaticGenerationDisclosure)
     }
     .alert(item: $deleteRequest) { request in
       Alert(
@@ -219,30 +226,6 @@ struct ModelProfilesSection: View {
     }
   }
 
-  private var automaticGenerationDisclosure: String {
-    let destination =
-      currentUsableProfile?.baseURL.host
-      ?? currentUsableProfile?.baseURL.absoluteString
-      ?? ""
-    return
-      destination + "\n"
-      + String(localized: "settings.models.automatic.disclosure")
-  }
-
-  private func updateAutomaticGeneration(_ enabled: Bool) {
-    if enabled,
-      !model.automaticGeneration.disclosureAcknowledged
-    {
-      automaticGenerationRequest = true
-      return
-    }
-    Task {
-      await model.setAutomaticGeneration(
-        enabled: enabled,
-        disclosureAcknowledged: false
-      )
-    }
-  }
 }
 
 private struct ModelProfileEditor: Identifiable {

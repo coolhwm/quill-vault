@@ -21,6 +21,8 @@ public final class SettingsModel {
   private(set) var modelProfiles: [ModelProfile] = []
   private(set) var currentModelProfileID: ModelProfileID?
   private(set) var automaticGeneration = AutomaticGenerationPreferences()
+  /// Drives the automatic-generation disclosure alert from a stable parent view.
+  var isAutomaticGenerationDisclosurePresented = false
   private(set) var profileTestState: [ModelProfileID: ModelProfileTestState] = [:]
   private(set) var modelProfilesUnavailable = false
   private(set) var diagnosticPreview = DiagnosticPreview(
@@ -108,10 +110,19 @@ public final class SettingsModel {
         enabled: enabled,
         disclosureAcknowledged: disclosureAcknowledged
       )
+      isAutomaticGenerationDisclosurePresented = false
       await loadModelProfiles()
     } catch {
       modelProfilesUnavailable = true
     }
+  }
+
+  func requestAutomaticGenerationDisclosure() {
+    isAutomaticGenerationDisclosurePresented = true
+  }
+
+  func cancelAutomaticGenerationDisclosure() {
+    isAutomaticGenerationDisclosurePresented = false
   }
 
   func deletionImpact(

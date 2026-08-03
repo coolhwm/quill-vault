@@ -471,6 +471,7 @@ private struct UITestMeetingLibraryUseCase: MeetingLibraryUseCase {
 private actor UITestRecordingUseCase: RecordingUseCase {
   private var hasAcknowledgedNotice = false
   private var activeSession: RecordingSession?
+  private var lastCompletedSession: RecordingSession?
 
   func restore() async throws -> RecordingSnapshot? {
     activeSession.map {
@@ -504,6 +505,7 @@ private actor UITestRecordingUseCase: RecordingUseCase {
       throw RecordingError.noActiveRecording
     }
     activeSession = nil
+    lastCompletedSession = session
     return RecordingCompletion(
       session: session,
       audio: RecordedAudio(
@@ -538,6 +540,22 @@ private actor UITestRecordingUseCase: RecordingUseCase {
   func catchUpLiveTranscript() async {}
 
   func recoverPendingTranscriptions() -> [TranscriptionRecoveryResult] {
-    []
+    guard let session = lastCompletedSession else {
+      return []
+    }
+    let revision = TranscriptRevision(
+      meetingID: session.meetingID,
+      localeIdentifier: "en-US",
+      timeline: TranscriptTimeline(
+        audioDurationSeconds: 1,
+        segments: []
+      )
+    )
+    return [
+      TranscriptionRecoveryResult(
+        meetingID: session.meetingID,
+        result: .success(revision)
+      )
+    ]
   }
 }

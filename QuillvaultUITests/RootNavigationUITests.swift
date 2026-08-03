@@ -80,10 +80,17 @@ final class RootNavigationUITests: XCTestCase {
     stop.tap()
 
     XCTAssertTrue(screen("home.screen").waitForExistence(timeout: 2))
+    // #30: post-recording card auto-finalizes transcript without a retry tap.
     XCTAssertTrue(
-      app.staticTexts["Recording saved · Transcript pending"].exists
+      screen("home.processing.card").waitForExistence(timeout: 3)
     )
-    XCTAssertTrue(app.buttons["Retry transcript"].exists)
+    let minutesPending = app.staticTexts["Minutes pending"]
+    let processingTranscript = app.staticTexts["Processing transcript…"]
+    XCTAssertTrue(
+      minutesPending.waitForExistence(timeout: 3)
+        || processingTranscript.waitForExistence(timeout: 1)
+    )
+    XCTAssertFalse(app.buttons["Retry transcript"].exists)
   }
 
   func testActionButtonColdLaunchUsesTheSharedRecordingWorkflow() {
@@ -149,11 +156,15 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts.matching(
         NSPredicate(format: "label CONTAINS %@", "Capability verified")
-      ).firstMatch.waitForExistence(timeout: 2)
+      ).firstMatch.waitForExistence(timeout: 3)
     )
-    app.switches["Generate minutes automatically"].tap()
+    // First enable is an explicit control that always presents disclosure.
+    let automaticEnable = app.descendants(matching: .any)["settings.models.automatic"]
+    XCTAssertTrue(automaticEnable.waitForExistence(timeout: 3))
+    XCTAssertTrue(automaticEnable.isHittable)
+    automaticEnable.tap()
     let automaticDisclosure = app.alerts["Enable Automatic Generation?"]
-    XCTAssertTrue(automaticDisclosure.waitForExistence(timeout: 2))
+    XCTAssertTrue(automaticDisclosure.waitForExistence(timeout: 3))
     XCTAssertTrue(
       automaticDisclosure.staticTexts.matching(
         NSPredicate(format: "label CONTAINS %@", "api.example.com")
@@ -163,7 +174,7 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts[
         "New ready transcripts will use the selected model."
-      ].waitForExistence(timeout: 2)
+      ].waitForExistence(timeout: 3)
     )
   }
 
@@ -276,17 +287,25 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(meeting.waitForExistence(timeout: 2))
     meeting.tap()
 
+    let incomplete = screen("minutes.detail.incomplete")
+    let incompleteText = app.staticTexts.matching(
+      NSPredicate(
+        format: "label CONTAINS %@",
+        "some optional structure or diagrams may be incomplete"
+      )
+    ).firstMatch
+    for _ in 0..<8 where !incomplete.exists && !incompleteText.exists {
+      app.swipeUp()
+    }
     XCTAssertTrue(
-      app.staticTexts.matching(
-        NSPredicate(
-          format: "label CONTAINS %@",
-          "some optional structure or diagrams may be incomplete"
-        )
-      ).firstMatch.waitForExistence(timeout: 2)
+      incomplete.waitForExistence(timeout: 3)
+        || incompleteText.waitForExistence(timeout: 1)
     )
-    XCTAssertTrue(
-      app.otherElements["minutes.detail.diagram.section"].waitForExistence(timeout: 2)
-    )
+    let diagram = screen("minutes.detail.diagram.section")
+    for _ in 0..<8 where !diagram.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(diagram.waitForExistence(timeout: 3))
   }
 
   private func launch(

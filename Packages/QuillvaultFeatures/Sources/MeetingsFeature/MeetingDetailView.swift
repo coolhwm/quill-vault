@@ -84,7 +84,10 @@ public struct MeetingDetailView: View {
 
   private func detailContent(_ detail: MeetingDetail) -> some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 24) {
+      // Use a regular VStack so large Dynamic Type / VoiceOver still keeps
+      // summary and diagram sections in the accessibility hierarchy without
+      // requiring a scroll to materialize them.
+      VStack(alignment: .leading, spacing: 24) {
         MeetingGenerationSection(
           minutes: detail.minutes,
           snapshot: model.generationSnapshot,

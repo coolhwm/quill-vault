@@ -92,9 +92,40 @@ public struct SettingsView: View {
     ) {
       Button("common.ok", role: .cancel) {}
     }
+    .alert(
+      "settings.models.automatic.confirm.title",
+      isPresented: $model.isAutomaticGenerationDisclosurePresented
+    ) {
+      Button("settings.models.automatic.confirm.action") {
+        Task {
+          await model.setAutomaticGeneration(
+            enabled: true,
+            disclosureAcknowledged: true
+          )
+        }
+      }
+      Button("common.cancel", role: .cancel) {
+        model.cancelAutomaticGenerationDisclosure()
+      }
+    } message: {
+      Text(automaticGenerationDisclosure)
+    }
     .task {
       await model.load()
     }
+  }
+
+  private var automaticGenerationDisclosure: String {
+    let current = model.modelProfiles.first {
+      $0.id == model.currentModelProfileID && $0.isUsable
+    }
+    let destination =
+      current?.baseURL.host
+      ?? current?.baseURL.absoluteString
+      ?? ""
+    return
+      destination + "\n"
+      + String(localized: "settings.models.automatic.disclosure")
   }
 
   @ViewBuilder
