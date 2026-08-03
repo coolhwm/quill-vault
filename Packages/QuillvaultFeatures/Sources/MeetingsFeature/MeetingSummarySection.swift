@@ -10,8 +10,14 @@ struct MeetingSummarySection: View {
         .font(.title2.bold())
       switch minutes {
       case .available(let content):
-        Text(content.summaryMarkdown)
-          .textSelection(.enabled)
+        if content.informationMayBeIncomplete {
+          Label(
+            "minutes.detail.incomplete",
+            systemImage: "info.circle"
+          )
+          .foregroundStyle(.secondary)
+        }
+        MeetingMarkdownText(markdown: content.summaryMarkdown)
       case .missing:
         Text("minutes.detail.summary.pending")
           .foregroundStyle(.secondary)
@@ -26,4 +32,31 @@ struct MeetingSummarySection: View {
     .accessibilityIdentifier("minutes.detail.summary.section")
   }
 
+}
+
+private struct MeetingMarkdownText: View {
+  let markdown: String
+
+  private var blocks: [String] {
+    markdown
+      .components(separatedBy: "\n\n")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+  }
+
+  var body: some View {
+    LazyVStack(alignment: .leading, spacing: 14) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        if let attributed = try? AttributedString(markdown: block) {
+          Text(attributed)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+          Text(block)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+    }
+  }
 }

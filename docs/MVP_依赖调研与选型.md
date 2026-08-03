@@ -120,6 +120,11 @@ MarkdownUI 提供 SwiftUI 原生 CommonMark 展示和主题能力，可减少标
 
 **结论：采用固定版本本地资源。**
 
+MVP 当前固定 `mermaid@11.16.0`，资源 SHA-256 为
+`07fb9c98a9718885cb4b68c29bdfdbd1e96bc6e731f5387cdc70ce8aadd4b2a6`（仅清理上游产物行尾空白）；许可证文本随包保存在
+`ThirdPartyNotices/MERMAID-LICENSE.txt`。资源只进入 `MeetingsFeature` 的 SwiftPM Resource，
+不依赖 Demo Target。
+
 Mermaid 支持 flowchart、timeline、sequenceDiagram 和 mindmap，采用 MIT License，并提供 parse API 验证定义。[Mermaid 官方仓库](https://github.com/mermaid-js/mermaid) · [许可证](https://github.com/mermaid-js/mermaid/blob/develop/LICENSE)
 
 集成规范：

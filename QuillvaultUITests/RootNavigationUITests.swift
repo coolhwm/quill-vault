@@ -256,6 +256,39 @@ final class RootNavigationUITests: XCTestCase {
     add(attachment)
   }
 
+  func testCompletedMinutesKeepDegradedHintAndDiagramSectionAccessible() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-meeting-detail",
+        "-ui-test-meeting-minutes",
+        "-ui-test-dark-mode",
+        "-UIPreferredContentSizeCategoryName",
+        "UICTContentSizeCategoryAccessibilityXXXL",
+      ]
+    )
+
+    app.tabBars.buttons["Minutes"].tap()
+    let meeting = screen(
+      "minutes.meeting.EBD72F04-E276-4590-A7F4-B0DA07685418"
+    )
+    XCTAssertTrue(meeting.waitForExistence(timeout: 2))
+    meeting.tap()
+
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(
+          format: "label CONTAINS %@",
+          "some optional structure or diagrams may be incomplete"
+        )
+      ).firstMatch.waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(
+      app.otherElements["minutes.detail.diagram.section"].waitForExistence(timeout: 2)
+    )
+  }
+
   private func launch(
     language: String,
     locale: String,

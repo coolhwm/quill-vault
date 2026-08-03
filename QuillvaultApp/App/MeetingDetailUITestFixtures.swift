@@ -48,6 +48,36 @@ struct UITestMeetingDetailUseCase: MeetingDetailUseCase {
         )
       )
     }
+    if ProcessInfo.processInfo.arguments.contains("-ui-test-meeting-minutes") {
+      return MeetingDetail(
+        meeting: meeting,
+        transcript: .available(
+          try TranscriptTimeline.normalizing(
+            [
+              TranscriptSegmentCandidate(
+                startSeconds: 0,
+                endSeconds: 1,
+                text: "会议决定保留现有方案。"
+              )
+            ],
+            audioDurationSeconds: 60
+          )
+        ),
+        recording: .available(
+          MeetingAudioAsset(
+            sourceID: MeetingAudioSourceID(rawValue: "ui-test-recording"),
+            durationSeconds: 60
+          )
+        ),
+        minutes: .available(
+          MeetingMinutesContent(
+            summaryMarkdown: "# 会议纪要\n\n## 决策\n保留现有方案。",
+            diagramSource: "flowchart TD\n  A[讨论] --> B[决定]",
+            informationMayBeIncomplete: true
+          )
+        )
+      )
+    }
     let candidates = (0..<60).map { index in
       TranscriptSegmentCandidate(
         startSeconds: Double(index),

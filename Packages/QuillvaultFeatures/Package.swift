@@ -43,7 +43,8 @@ let package = Package(
         .product(name: "DesignSystem", package: "QuillvaultDesignSystem"),
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),
-      ]
+      ],
+      resources: [.process("Resources")]
     ),
     .target(
       name: "SettingsFeature",

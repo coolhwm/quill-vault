@@ -11,13 +11,7 @@ struct MeetingDiagramSection: View {
       if case .available(let content) = minutes,
         let diagram = content.diagramSource
       {
-        ScrollView(.horizontal) {
-          Text(diagram)
-            .font(.system(.footnote, design: .monospaced))
-            .textSelection(.enabled)
-            .padding()
-        }
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+        MermaidDiagramView(source: diagram)
       } else {
         Text("minutes.detail.diagram.pending")
           .foregroundStyle(.secondary)

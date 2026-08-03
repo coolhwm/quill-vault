@@ -889,6 +889,18 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成后将在此显示图示。" } }
       }
     },
+    "minutes.detail.diagram.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The diagram could not be rendered. The source is still available below." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图示暂时无法渲染，下面仍保留 Mermaid 源码。" } }
+      }
+    },
+    "minutes.detail.diagram.accessibility" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting relationship diagram. Mermaid source is available if rendering fails." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议关系图示；渲染失败时可查看 Mermaid 源码。" } }
+      }
+    },
     "minutes.generation.cancel" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop generation" } },
@@ -1143,6 +1155,12 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Summary" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要" } }
+      }
+    },
+    "minutes.detail.incomplete" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This result is readable, but some optional structure or diagrams may be incomplete. You can regenerate it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这份纪要可以阅读，但部分可选结构或图示可能不完整；你可以重新生成。" } }
       }
     },
     "minutes.detail.summary.pending" : {

@@ -736,7 +736,15 @@ public actor GenerationWorkflow: GenerationUseCase {
     }) {
       normalizedOutput = checkpoint.output
     } else {
-      normalizedOutput = Self.normalize(synthesisOutput)
+      guard
+        let normalized = MinutesOutputNormalizer.normalize(
+          synthesisOutput,
+          timelineBounds: Self.timelineBounds(for: transcript.revision)
+        )
+      else {
+        return try await pause(job, reason: .invalidResponse, completedSteps: steps)
+      }
+      normalizedOutput = normalized.markdown
       let step = GenerationStep(
         id: GenerationStepID.make(
           job: job, kind: .normalization, index: 0, inputFingerprint: normalizationFingerprint),
@@ -910,10 +918,23 @@ public actor GenerationWorkflow: GenerationUseCase {
       return try await pause(job, reason: .cancelled, completedSteps: steps)
     }
 
+    guard
+      let normalized = MinutesOutputNormalizer.normalize(
+        output,
+        timelineBounds: Self.timelineBounds(for: transcript)
+      )
+    else {
+      return try await pause(
+        job,
+        reason: .invalidResponse,
+        completedSteps: steps
+      )
+    }
     let markdown = MinutesDocumentBuilder.build(
-      output: output,
+      output: normalized.markdown,
       job: job,
-      transcript: transcript
+      transcript: transcript,
+      informationMayBeIncomplete: normalized.informationMayBeIncomplete
     )
     do {
       let existingMinutes = try await assets.loadMinutesSnapshot(
@@ -1387,16 +1408,14 @@ public actor GenerationWorkflow: GenerationUseCase {
     return UInt64(min(Double(UInt64.max), nanoseconds))
   }
 
-  private static func normalize(_ output: String) -> String {
-    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? "# 纪要\n\n暂无可用摘要" : trimmed
+  private static func isMeaningful(_ output: String) -> Bool {
+    MinutesOutputNormalizer.normalize(output) != nil
   }
 
-  private static func isMeaningful(_ output: String) -> Bool {
-    output.unicodeScalars.contains { scalar in
-      CharacterSet.alphanumerics.contains(scalar)
-        || (scalar.value >= 0x3400 && scalar.value <= 0x9FFF)
-    }
+  private static func timelineBounds(for transcript: TranscriptRevision) -> ClosedRange<Double>? {
+    let duration = transcript.timeline.audioDurationSeconds
+    guard duration.isFinite, duration > 0 else { return nil }
+    return 0...duration
   }
 }
 
@@ -1413,7 +1432,8 @@ private enum MinutesDocumentBuilder {
   static func build(
     output: String,
     job: GenerationJob,
-    transcript: TranscriptRevision
+    transcript: TranscriptRevision,
+    informationMayBeIncomplete: Bool
   ) -> String {
     [
       "---",
@@ -1423,7 +1443,7 @@ private enum MinutesDocumentBuilder {
       "transcriptRevisionID: \(transcript.id)",
       "transcriptFingerprint: \(transcript.contentFingerprint)",
       "model: \(job.modelProfile.model)",
-      "informationMayBeIncomplete: false",
+      "informationMayBeIncomplete: \(informationMayBeIncomplete)",
       "---",
       "",
       "# 结构化纪要",

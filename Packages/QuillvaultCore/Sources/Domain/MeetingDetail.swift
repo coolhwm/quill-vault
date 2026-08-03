@@ -38,10 +38,16 @@ public enum MeetingRecordingAsset: Equatable, Sendable {
 public struct MeetingMinutesContent: Equatable, Sendable {
   public let summaryMarkdown: String
   public let diagramSource: String?
+  public let informationMayBeIncomplete: Bool
 
-  public init(summaryMarkdown: String, diagramSource: String?) {
+  public init(
+    summaryMarkdown: String,
+    diagramSource: String?,
+    informationMayBeIncomplete: Bool = false
+  ) {
     self.summaryMarkdown = summaryMarkdown
     self.diagramSource = diagramSource
+    self.informationMayBeIncomplete = informationMayBeIncomplete
   }
 }
 

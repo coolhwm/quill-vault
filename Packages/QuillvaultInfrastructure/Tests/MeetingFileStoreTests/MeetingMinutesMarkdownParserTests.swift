@@ -10,6 +10,7 @@ struct MeetingMinutesMarkdownParserTests {
       ---
       title: Weekly review
       model: test-model
+      informationMayBeIncomplete: true
       ---
 
       # Weekly review
@@ -28,5 +29,6 @@ struct MeetingMinutesMarkdownParserTests {
     #expect(!content.summaryMarkdown.contains("title:"))
     #expect(!content.summaryMarkdown.contains("mermaid"))
     #expect(content.diagramSource == "flowchart TD\n  A --> B")
+    #expect(content.informationMayBeIncomplete)
   }
 }
