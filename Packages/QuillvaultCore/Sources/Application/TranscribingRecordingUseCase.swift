@@ -135,7 +135,16 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     }
 
     let current = liveSnapshots[meetingID] ?? LiveTranscriptSnapshot()
-    let candidates = current.finalSegments + caughtUp
+    // Durable file catch-up is authoritative for the covered timeline. Keep only
+    // live finals that start after the catch-up horizon so background re-entry
+    // does not duplicate already recognized speech with slightly different
+    // timestamps from the live stream.
+    let catchUpHorizon =
+      caughtUp.map(\.endSeconds).max() ?? 0
+    let retainedLive = current.finalSegments.filter {
+      $0.startSeconds >= catchUpHorizon - 0.15
+    }
+    let candidates = caughtUp + retainedLive
     let duration =
       candidates.max(by: { $0.endSeconds < $1.endSeconds })?.endSeconds
       ?? current.volatileSegment?.endSeconds
@@ -342,7 +351,10 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
       )
     case .final:
       var finals = snapshot.finalSegments
-      if !finals.contains(event.segment) {
+      if !LiveTranscriptDeduper.shouldAppend(event.segment, to: finals) {
+        // Ignore exact and near-duplicate finals re-emitted after background
+        // catch-up or speech-engine restarts.
+      } else {
         appendBounded(event.segment, to: &finals)
       }
       snapshot = LiveTranscriptSnapshot(
@@ -385,4 +397,42 @@ public actor TranscribingRecordingUseCase: RecordingUseCase {
     }
   }
 
+}
+
+public enum LiveTranscriptDeduper {
+  /// Returns false when `segment` is an exact or near-duplicate of an existing
+  /// final segment (same text with overlapping or nearly identical timing).
+  public static func shouldAppend(
+    _ segment: TranscriptSegmentCandidate,
+    to existing: [TranscriptSegmentCandidate],
+    nearWindowSeconds: Double = 0.5
+  ) -> Bool {
+    if existing.contains(segment) {
+      return false
+    }
+    let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else {
+      return false
+    }
+    for other in existing.reversed() {
+      if other.endSeconds < segment.startSeconds - 2 {
+        break
+      }
+      let otherText = other.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard otherText == text else {
+        continue
+      }
+      let overlapStart = max(other.startSeconds, segment.startSeconds)
+      let overlapEnd = min(other.endSeconds, segment.endSeconds)
+      if overlapEnd > overlapStart {
+        return false
+      }
+      if abs(other.startSeconds - segment.startSeconds) <= nearWindowSeconds,
+        abs(other.endSeconds - segment.endSeconds) <= nearWindowSeconds
+      {
+        return false
+      }
+    }
+    return true
+  }
 }

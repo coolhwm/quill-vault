@@ -50,6 +50,9 @@ public final class HomeRecordingModel {
   public private(set) var state: HomeRecordingState = .idle
   public private(set) var directoryState: HomeDirectoryState = .checking
   public private(set) var liveTranscriptText = ""
+  public private(set) var liveTranscriptLatestLineID = "empty"
+  /// When true, the recording transcript view should keep the latest line visible.
+  public private(set) var isLiveTranscriptPinnedToBottom = true
   public private(set) var transcriptRecoveryState: TranscriptRecoveryState = .idle
   public private(set) var processingPhase: HomeProcessingPhase = .idle
   public private(set) var focusedMeetingID: MeetingID?
@@ -178,6 +181,22 @@ public final class HomeRecordingModel {
       return
     }
     await recording.catchUpLiveTranscript()
+  }
+
+  /// Updates whether the live transcript should auto-follow new lines.
+  /// Callers pass scroll metrics from the recording transcript list.
+  public func updateLiveTranscriptPin(
+    offsetY: CGFloat,
+    contentHeight: CGFloat,
+    visibleHeight: CGFloat,
+    threshold: CGFloat = 48
+  ) {
+    let distanceFromBottom = contentHeight - visibleHeight - offsetY
+    isLiveTranscriptPinnedToBottom = distanceFromBottom <= threshold
+  }
+
+  public func pinLiveTranscriptToBottom() {
+    isLiveTranscriptPinnedToBottom = true
   }
 
   public func acknowledgeNoticeAndStart() async {
@@ -813,6 +832,8 @@ public final class HomeRecordingModel {
   private func observeLiveTranscript(for meetingID: MeetingID) {
     liveTranscriptTask?.cancel()
     liveTranscriptText = ""
+    liveTranscriptLatestLineID = "empty"
+    isLiveTranscriptPinnedToBottom = true
     liveTranscriptTask = Task { [weak self, recording] in
       let snapshots = await recording.liveTranscript(meetingID: meetingID)
       for await snapshot in snapshots {
@@ -820,6 +841,7 @@ public final class HomeRecordingModel {
           return
         }
         self?.liveTranscriptText = snapshot.displayText
+        self?.liveTranscriptLatestLineID = snapshot.latestLineID
       }
     }
   }

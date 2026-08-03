@@ -4,6 +4,9 @@ import SwiftUI
 
 struct RecordingSessionView: View {
   @Bindable var model: HomeRecordingModel
+  @State private var liveTranscriptOffsetY: CGFloat = 0
+  @State private var liveTranscriptContentHeight: CGFloat = 0
+  @State private var liveTranscriptViewportHeight: CGFloat = 0
 
   var body: some View {
     NavigationStack {
@@ -48,21 +51,70 @@ struct RecordingSessionView: View {
 
   private var liveTranscript: some View {
     GroupBox("recording.transcript.title") {
-      ScrollView {
-        Text(
-          model.liveTranscriptText.isEmpty
-            ? String(localized: "recording.transcript.waiting")
-            : model.liveTranscriptText
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundStyle(
-          model.liveTranscriptText.isEmpty ? .secondary : .primary
-        )
-        .textSelection(.enabled)
+      ScrollViewReader { proxy in
+        ScrollView {
+          Text(
+            model.liveTranscriptText.isEmpty
+              ? String(localized: "recording.transcript.waiting")
+              : model.liveTranscriptText
+          )
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .foregroundStyle(
+            model.liveTranscriptText.isEmpty ? .secondary : .primary
+          )
+          .textSelection(.enabled)
+          .background {
+            GeometryReader { geometry in
+              Color.clear.preference(
+                key: LiveTranscriptContentHeightKey.self,
+                value: geometry.size.height
+              )
+            }
+          }
+          .id(model.liveTranscriptLatestLineID)
+        }
+        .frame(maxHeight: .infinity)
+        .background {
+          GeometryReader { geometry in
+            Color.clear.preference(
+              key: LiveTranscriptViewportHeightKey.self,
+              value: geometry.size.height
+            )
+          }
+        }
+        .onPreferenceChange(LiveTranscriptContentHeightKey.self) { height in
+          liveTranscriptContentHeight = height
+          reportLiveTranscriptScrollMetrics()
+        }
+        .onPreferenceChange(LiveTranscriptViewportHeightKey.self) { height in
+          liveTranscriptViewportHeight = height
+          reportLiveTranscriptScrollMetrics()
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.contentOffset.y
+        } action: { _, offsetY in
+          liveTranscriptOffsetY = offsetY
+          reportLiveTranscriptScrollMetrics()
+        }
+        .onChange(of: model.liveTranscriptLatestLineID) { _, lineID in
+          guard model.isLiveTranscriptPinnedToBottom else {
+            return
+          }
+          withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo(lineID, anchor: .bottom)
+          }
+        }
       }
-      .frame(maxHeight: .infinity)
     }
     .accessibilityIdentifier("recording.transcript")
+  }
+
+  private func reportLiveTranscriptScrollMetrics() {
+    model.updateLiveTranscriptPin(
+      offsetY: liveTranscriptOffsetY,
+      contentHeight: liveTranscriptContentHeight,
+      visibleHeight: liveTranscriptViewportHeight
+    )
   }
 
   private var status: some View {
@@ -195,5 +247,19 @@ extension RecordingInterruptionReason {
     case .processTermination:
       "recording.capture.interruption.process"
     }
+  }
+}
+
+private struct LiveTranscriptContentHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
+  }
+}
+
+private struct LiveTranscriptViewportHeightKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
   }
 }

@@ -298,6 +298,69 @@ struct TranscribingRecordingUseCaseTests {
     #expect(await speech.fileURLs == [recordingURL])
   }
 
+  @Test("Foreground catch-up does not duplicate overlapping live finals")
+  func foregroundCatchUpDedupesLiveOverlap() async throws {
+    let recordingURL = URL(fileURLWithPath: "/tmp/active-recording.m4a")
+    let speech = SpeechEngineDouble(
+      liveEvents: [
+        event(0, 1, "已确认", .final),
+        event(1, 2, "继续讨论", .final),
+      ],
+      fileEvents: [
+        event(0, 1.05, "已确认", .final),
+        event(1.02, 2.1, "继续讨论", .final),
+        event(2.1, 3, "补充内容", .final),
+      ]
+    )
+    let useCase = makeUseCase(
+      base: RecordingUseCaseDouble(meetingID: meetingID),
+      capture: AudioCaptureDouble(
+        activeSegments: [
+          ActiveRecordingAudioSegment(
+            fileURL: recordingURL,
+            timelineOffsetSeconds: 0
+          )
+        ]
+      ),
+      speech: speech
+    )
+    _ = try await useCase.start()
+    let snapshots = await useCase.liveTranscript(meetingID: meetingID)
+    for await snapshot in snapshots {
+      if snapshot.finalSegments.count == 2 {
+        break
+      }
+    }
+
+    await useCase.catchUpLiveTranscript()
+    let after = await useCase.liveTranscript(meetingID: meetingID)
+    let snapshot = await after.first { snapshot in
+      snapshot.finalSegments.map(\.text).contains("补充内容")
+    }
+
+    #expect(snapshot?.finalSegments.map(\.text) == ["已确认", "继续讨论", "补充内容"])
+  }
+
+  @Test("Near-duplicate finals are not appended after catch-up")
+  func nearDuplicateFinalsAreIgnored() {
+    let existing = [
+      TranscriptSegmentCandidate(startSeconds: 0, endSeconds: 1, text: "主题确认"),
+      TranscriptSegmentCandidate(startSeconds: 1, endSeconds: 2, text: "行动项"),
+    ]
+    #expect(
+      !LiveTranscriptDeduper.shouldAppend(
+        TranscriptSegmentCandidate(startSeconds: 0.05, endSeconds: 1.02, text: "主题确认"),
+        to: existing
+      )
+    )
+    #expect(
+      LiveTranscriptDeduper.shouldAppend(
+        TranscriptSegmentCandidate(startSeconds: 2, endSeconds: 3, text: "新内容"),
+        to: existing
+      )
+    )
+  }
+
   private func makeUseCase(
     base: RecordingUseCaseDouble,
     capture: AudioCaptureDouble = AudioCaptureDouble(),

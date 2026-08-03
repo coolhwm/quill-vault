@@ -55,6 +55,18 @@ public struct LiveTranscriptSnapshot: Equatable, Sendable {
       + [volatileSegment].compactMap { $0 }.map(TranscriptAnchorFormatter.line))
       .joined(separator: "\n")
   }
+
+  /// Stable identity for the latest projected line, used by the recording UI
+  /// to pin auto-scroll to the newest content without depending on layout.
+  public var latestLineID: String {
+    if let volatileSegment {
+      return "volatile:\(TranscriptAnchorFormatter.line(for: volatileSegment))"
+    }
+    if let last = finalSegments.last {
+      return "final:\(TranscriptAnchorFormatter.line(for: last))"
+    }
+    return "empty"
+  }
 }
 
 public protocol TranscriptionRecoveryUseCase: Sendable {

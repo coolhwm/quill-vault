@@ -550,6 +550,40 @@ struct HomeRecordingModelTests {
       model.liveTranscriptText
         == "- [000.0–001.0] 已确认\n- [001.0–002.0] 临时"
     )
+    #expect(model.isLiveTranscriptPinnedToBottom)
+    #expect(model.liveTranscriptLatestLineID.hasPrefix("volatile:"))
+  }
+
+  @Test("Scrolling up unpins live transcript auto-follow until the user returns")
+  func liveTranscriptPinFollowsScrollPosition() async {
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(),
+      directory: AuthoritativeDirectoryUseCaseStub()
+    )
+    await model.start()
+    #expect(model.isLiveTranscriptPinnedToBottom)
+
+    model.updateLiveTranscriptPin(
+      offsetY: 0,
+      contentHeight: 400,
+      visibleHeight: 200
+    )
+    #expect(!model.isLiveTranscriptPinnedToBottom)
+
+    model.updateLiveTranscriptPin(
+      offsetY: 160,
+      contentHeight: 400,
+      visibleHeight: 200
+    )
+    #expect(model.isLiveTranscriptPinnedToBottom)
+
+    model.updateLiveTranscriptPin(
+      offsetY: 0,
+      contentHeight: 400,
+      visibleHeight: 200
+    )
+    model.pinLiveTranscriptToBottom()
+    #expect(model.isLiveTranscriptPinnedToBottom)
   }
 
   @Test("Audio interruption is retained as a visible gap after recovery")
