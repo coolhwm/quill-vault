@@ -759,8 +759,14 @@
     },
     "settings.models.editor.base_url" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Base URL" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "服务地址" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chat Completions endpoint" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完整接口地址" } }
+      }
+    },
+    "settings.models.editor.base_url_hint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter the complete endpoint, for example https://api.deepseek.com/v1/chat/completions." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请填写完整接口地址，例如 https://api.deepseek.com/v1/chat/completions。" } }
       }
     },
     "settings.models.editor.model" : {
@@ -795,8 +801,56 @@
     },
     "settings.models.editor.save_failed" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not save. Use an HTTPS URL and complete all required fields." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存失败，请使用 HTTPS 地址并填写所有必填项。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not save this model profile. Check the fields and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型配置保存失败，请检查字段后重试。" } }
+      }
+    },
+    "settings.models.editor.invalid_name" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter a profile name." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入配置名称。" } }
+      }
+    },
+    "settings.models.editor.invalid_url" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter an HTTPS endpoint." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入 HTTPS 接口地址。" } }
+      }
+    },
+    "settings.models.editor.invalid_endpoint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter the complete endpoint ending in /chat/completions." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请填写完整接口地址，路径应以 /chat/completions 结尾。" } }
+      }
+    },
+    "settings.models.editor.invalid_model" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter a model name." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入模型名称。" } }
+      }
+    },
+    "settings.models.editor.missing_credential" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter an API key. It is stored only in this device's Keychain." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入 API Key，密钥只保存到本机 Keychain。" } }
+      }
+    },
+    "settings.models.editor.keychain_locked" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The device is locked and the API key cannot be saved yet. Unlock it and try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设备尚未解锁，暂时无法保存 API Key。解锁后重试。" } }
+      }
+    },
+    "settings.models.editor.keychain_unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The API key could not be saved to this device's Keychain. Try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "API Key 无法保存到本机 Keychain，请重试。" } }
+      }
+    },
+    "settings.models.editor.storage_unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The model profile could not be saved locally. Try again." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型配置无法保存到本机，请重试。" } }
       }
     },
     "settings.about.section" : {

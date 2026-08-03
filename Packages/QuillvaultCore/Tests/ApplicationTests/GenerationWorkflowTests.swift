@@ -1947,7 +1947,7 @@ private struct GenerationTestSource {
     let profile = ModelProfileSnapshot(
       profileID: ModelProfileID(
         rawValue: UUID(uuidString: "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD")!),
-      baseURL: URL(string: "https://api.example.com/v1")!,
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
       model: "minutes-model",
       parameters: ModelGenerationParameters(),
       credentialReference: ModelCredentialReference(
@@ -1958,7 +1958,7 @@ private struct GenerationTestSource {
       profileID: ModelProfileID(
         rawValue: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
       ),
-      baseURL: URL(string: "https://alternate.example.com/v1")!,
+      baseURL: URL(string: "https://alternate.example.com/v1/chat/completions")!,
       model: "alternate-minutes-model",
       parameters: ModelGenerationParameters(temperature: 0.2),
       credentialReference: ModelCredentialReference(

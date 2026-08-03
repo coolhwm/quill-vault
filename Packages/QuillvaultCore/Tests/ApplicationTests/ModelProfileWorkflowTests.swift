@@ -5,6 +5,26 @@ import Testing
 
 @Suite("Model profile workflow")
 struct ModelProfileWorkflowTests {
+  @Test("Requires the complete chat completions endpoint")
+  func requiresCompleteEndpoint() async {
+    let workflow = ModelProfileWorkflow(
+      profiles: ModelProfileStoreStub(),
+      credentials: ModelCredentialStoreStub(),
+      provider: AIProviderStub()
+    )
+
+    await #expect(throws: ModelProfileWorkflowError.invalidEndpoint) {
+      _ = try await workflow.save(
+        ModelProfileDraft(
+          name: "Primary",
+          baseURL: URL(string: "https://api.example.com")!,
+          model: "minutes-model",
+          apiKey: "secret"
+        )
+      )
+    }
+  }
+
   @Test("Multiple named profiles can be saved and one selected without exposing keys")
   func savesAndSelectsProfiles() async throws {
     let profiles = ModelProfileStoreStub()
@@ -18,7 +38,7 @@ struct ModelProfileWorkflowTests {
     let first = try await workflow.save(
       ModelProfileDraft(
         name: "Fast",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "fast-model",
         apiKey: "secret-one"
       )
@@ -26,7 +46,7 @@ struct ModelProfileWorkflowTests {
     let second = try await workflow.save(
       ModelProfileDraft(
         name: "Careful",
-        baseURL: URL(string: "https://careful.example.com")!,
+        baseURL: URL(string: "https://careful.example.com/v1/chat/completions")!,
         model: "careful-model",
         apiKey: "secret-two"
       )
@@ -53,7 +73,7 @@ struct ModelProfileWorkflowTests {
     let profile = try await workflow.save(
       ModelProfileDraft(
         name: "Primary",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "model-v1",
         apiKey: "secret"
       )
@@ -85,7 +105,7 @@ struct ModelProfileWorkflowTests {
     let profile = try await workflow.save(
       ModelProfileDraft(
         name: "Primary",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "model-v1",
         apiKey: "secret"
       )
@@ -124,7 +144,7 @@ struct ModelProfileWorkflowTests {
     let profile = try await workflow.save(
       ModelProfileDraft(
         name: "Primary",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "minutes-model",
         apiKey: "saved-secret"
       )
@@ -149,7 +169,7 @@ struct ModelProfileWorkflowTests {
     let profile = try await workflow.save(
       ModelProfileDraft(
         name: "Primary",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "minutes-model",
         apiKey: "secret"
       )
@@ -193,7 +213,7 @@ struct ModelProfileWorkflowTests {
     let profile = try await workflow.save(
       ModelProfileDraft(
         name: "In use",
-        baseURL: URL(string: "https://api.example.com")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "model",
         apiKey: "secret"
       )

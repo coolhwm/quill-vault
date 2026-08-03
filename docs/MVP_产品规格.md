@@ -197,6 +197,7 @@ stateDiagram-v2
 
 - 用户可创建、命名、测试、编辑和删除多个模型配置；
 - MVP 只交付 OpenAI-compatible Chat Completions 适配器；
+- 模型配置保存完整的 Chat Completions 接口地址（例如 `https://api.deepseek.com/v1/chat/completions`），App 不自动拼接路径；
 - 业务层通过 `AIProvider` 边界与具体协议隔离；
 - 连接测试必须发送真实、最小化模型请求，验证代表性输出能力；
 - HTTP 200 不等于模型兼容；

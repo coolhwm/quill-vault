@@ -51,6 +51,11 @@ public actor ModelProfileWorkflow:
     else {
       throw ModelProfileWorkflowError.invalidBaseURL
     }
+    let endpointPath = draft.baseURL.path
+      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    guard endpointPath.hasSuffix("chat/completions") else {
+      throw ModelProfileWorkflowError.invalidEndpoint
+    }
     let model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !model.isEmpty else {
       throw ModelProfileWorkflowError.invalidModel

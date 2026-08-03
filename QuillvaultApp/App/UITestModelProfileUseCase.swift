@@ -18,7 +18,7 @@ actor UITestModelProfileUseCase: ModelProfileUseCase {
       ModelProfile(
         id: id,
         name: "Fast",
-        baseURL: URL(string: "https://api.example.com/v1")!,
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
         model: "minutes-model",
         parameters: ModelGenerationParameters(usesStreaming: true),
         credentialReference: ModelCredentialReference(

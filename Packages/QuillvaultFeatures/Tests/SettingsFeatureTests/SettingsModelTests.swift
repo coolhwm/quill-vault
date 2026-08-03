@@ -183,7 +183,7 @@ extension ModelProfile {
         )!
       ),
       name: name,
-      baseURL: URL(string: "https://api.example.com/v1")!,
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
       model: "\(name.lowercased())-model",
       credentialReference: ModelCredentialReference(rawValue: UUID()),
       isUsable: true

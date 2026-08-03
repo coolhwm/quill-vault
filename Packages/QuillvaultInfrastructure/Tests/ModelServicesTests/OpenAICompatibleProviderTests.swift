@@ -46,6 +46,42 @@ struct OpenAICompatibleProviderTests {
     #expect(result.providerDomain == "api.example.com")
   }
 
+  @Test("A configured compatible provider endpoint is used as-is")
+  func configuredEndpointIsUsedAsIs() async throws {
+    let transport = URLProtocolTransport()
+    transport.respond { request in
+      #expect(
+        request.url?.absoluteString
+          == "https://api.example.com/v1/chat/completions"
+      )
+      return (
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"]
+        )!,
+        Data(
+          #"{"choices":[{"message":{"content":"{\"quillvault_capability\":\"ready\",\"summary\":\"usable\"}"}}]}"#
+            .utf8
+        )
+      )
+    }
+
+    let profile = ModelProfileSnapshot(
+      profileID: ModelProfileID(rawValue: UUID()),
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
+      model: "minutes-model",
+      parameters: ModelGenerationParameters(usesStreaming: false),
+      credentialReference: ModelCredentialReference(rawValue: UUID())
+    )
+    let result = try await OpenAICompatibleProvider(
+      session: transport.session
+    ).test(profile: profile, apiKey: "secret")
+
+    #expect(result.representativeContent)
+  }
+
   @Test("HTTP success without representative content remains incompatible")
   func incompatibleSuccess() async throws {
     let transport = URLProtocolTransport()
@@ -483,7 +519,7 @@ struct OpenAICompatibleProviderTests {
   private func profile(streaming: Bool) -> ModelProfileSnapshot {
     ModelProfileSnapshot(
       profileID: ModelProfileID(rawValue: UUID()),
-      baseURL: URL(string: "https://api.example.com/v1")!,
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
       model: "minutes-model",
       parameters: ModelGenerationParameters(usesStreaming: streaming),
       credentialReference: ModelCredentialReference(rawValue: UUID())

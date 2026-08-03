@@ -64,6 +64,7 @@ public protocol ModelProfileUseCase: Sendable {
 public enum ModelProfileWorkflowError: Error, Equatable, Sendable {
   case invalidName
   case invalidBaseURL
+  case invalidEndpoint
   case invalidModel
   case missingCredential
   case profileNotFound

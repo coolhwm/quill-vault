@@ -428,10 +428,7 @@ public struct OpenAICompatibleProvider: AIProvider {
     guard profile.baseURL.scheme?.lowercased() == "https" else {
       throw AIProviderError.insecureBaseURL
     }
-    let endpoint = profile.baseURL
-      .appending(path: "chat")
-      .appending(path: "completions")
-    var request = URLRequest(url: endpoint)
+    var request = URLRequest(url: profile.baseURL)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")

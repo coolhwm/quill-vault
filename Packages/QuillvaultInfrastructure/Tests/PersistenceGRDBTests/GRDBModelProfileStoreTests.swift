@@ -127,7 +127,7 @@ private func modelProfile(
   ModelProfile(
     id: ModelProfileID(rawValue: UUID(uuidString: id)!),
     name: name,
-    baseURL: URL(string: "https://api.example.com/v1")!,
+    baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
     model: "\(name.lowercased())-model",
     credentialReference: ModelCredentialReference(
       rawValue: UUID(uuidString: credential)!

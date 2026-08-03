@@ -210,7 +210,7 @@ private struct GenerationStoreFixture {
       profileID: ModelProfileID(
         rawValue: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!
       ),
-      baseURL: URL(string: "https://api.example.com/v1")!,
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
       model: "minutes-model",
       parameters: ModelGenerationParameters(),
       credentialReference: ModelCredentialReference(
