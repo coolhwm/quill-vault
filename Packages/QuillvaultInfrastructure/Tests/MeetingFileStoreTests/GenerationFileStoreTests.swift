@@ -48,7 +48,8 @@ struct GenerationFileStoreTests {
       in: directory,
       meeting: fixture.entry,
       expectedTranscriptRevisionID: source.revision.id,
-      expectedTranscriptFingerprint: source.revision.contentFingerprint
+      expectedTranscriptFingerprint: source.revision.contentFingerprint,
+      expectedExistingMinutesFingerprint: nil
     )
 
     #expect(
@@ -57,10 +58,83 @@ struct GenerationFileStoreTests {
         encoding: .utf8
       ) == markdown
     )
+    let snapshot = try await store.loadMinutesSnapshot(
+      in: directory,
+      meeting: fixture.entry
+    )
+    #expect(snapshot?.contentFingerprint == GenerationInputFingerprint.make(markdown))
+    #expect(snapshot?.transcriptRevisionID == source.revision.id)
+    #expect(snapshot?.transcriptFingerprint == source.revision.contentFingerprint)
     let starts = await scopes.startCount
     let stops = await scopes.stopCount
     #expect(starts == stops)
-    #expect(starts == 3)
+    #expect(starts == 4)
+  }
+
+  @Test("An external minutes edit wins the atomic replacement race")
+  func preservesExternalMinutesDuringAtomicReplacement() async throws {
+    let fixture = try GenerationFixture()
+    defer { fixture.remove() }
+    let store = MeetingFileStore(
+      dependencies: .testing(authorizedDirectory: fixture.root)
+    )
+    let directory = try await store.authorizeSelectedDirectory(
+      .init(opaqueReference: fixture.root.absoluteString)
+    )
+    let source = try await store.loadTranscript(
+      in: directory,
+      meeting: fixture.entry
+    )
+    let originalMarkdown = """
+      ---
+      schemaVersion: 1
+      generationJobID: (UUID().uuidString)
+      generationNumber: 1
+      transcriptRevisionID: (source.revision.id)
+      transcriptFingerprint: (source.revision.contentFingerprint)
+      model: test-model
+      informationMayBeIncomplete: false
+      ---
+
+      # 结构化纪要
+
+      初始版本。
+      """
+    try await store.publishMinutes(
+      originalMarkdown,
+      in: directory,
+      meeting: fixture.entry,
+      expectedTranscriptRevisionID: source.revision.id,
+      expectedTranscriptFingerprint: source.revision.contentFingerprint,
+      expectedExistingMinutesFingerprint: nil
+    )
+    let originalSnapshot = try await store.loadMinutesSnapshot(
+      in: directory,
+      meeting: fixture.entry
+    )
+    let externalMarkdown = "# 用户手工修改的纪要\n\n保留这份版本。"
+    try externalMarkdown.write(
+      to: fixture.meetingURL.appending(path: "minutes.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    await #expect(throws: GenerationFileError.externalMinutesChanged) {
+      try await store.publishMinutes(
+        "# 模型候选版本\n\n不应覆盖外部修改。",
+        in: directory,
+        meeting: fixture.entry,
+        expectedTranscriptRevisionID: source.revision.id,
+        expectedTranscriptFingerprint: source.revision.contentFingerprint,
+        expectedExistingMinutesFingerprint: originalSnapshot?.contentFingerprint
+      )
+    }
+    #expect(
+      try String(
+        contentsOf: fixture.meetingURL.appending(path: "minutes.md"),
+        encoding: .utf8
+      ) == externalMarkdown
+    )
   }
 
   @Test("A changed transcript is rejected before minutes publication")
@@ -99,7 +173,8 @@ struct GenerationFileStoreTests {
         in: directory,
         meeting: fixture.entry,
         expectedTranscriptRevisionID: source.revision.id,
-        expectedTranscriptFingerprint: source.revision.contentFingerprint
+        expectedTranscriptFingerprint: source.revision.contentFingerprint,
+        expectedExistingMinutesFingerprint: nil
       )
     }
     #expect(
@@ -145,7 +220,8 @@ struct GenerationFileStoreTests {
         in: directory,
         meeting: fixture.entry,
         expectedTranscriptRevisionID: source.revision.id,
-        expectedTranscriptFingerprint: source.revision.contentFingerprint
+        expectedTranscriptFingerprint: source.revision.contentFingerprint,
+        expectedExistingMinutesFingerprint: nil
       )
     }
     #expect(

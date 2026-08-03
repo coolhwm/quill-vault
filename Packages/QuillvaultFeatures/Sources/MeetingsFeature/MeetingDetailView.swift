@@ -31,6 +31,28 @@ public struct MeetingDetailView: View {
     .onDisappear {
       model.unload()
     }
+    .alert(
+      "minutes.generation.replace.title",
+      isPresented: Binding(
+        get: { model.requiresMinutesReplacementConfirmation },
+        set: { isPresented in
+          if !isPresented {
+            model.dismissMinutesReplacementConfirmation()
+          }
+        }
+      )
+    ) {
+      Button("minutes.generation.replace.confirm") {
+        Task {
+          await model.regenerateGeneration(replacingExternalMinutes: true)
+        }
+      }
+      Button("minutes.generation.replace.cancel", role: .cancel) {
+        model.dismissMinutesReplacementConfirmation()
+      }
+    } message: {
+      Text("minutes.generation.replace.description")
+    }
     .accessibilityIdentifier("minutes.detail.screen")
   }
 
@@ -68,6 +90,9 @@ public struct MeetingDetailView: View {
           snapshot: model.generationSnapshot,
           isBusy: model.generationBusy,
           hasError: model.generationError,
+          isMinutesExpired: detail.meeting.status == .minutesExpired,
+          modelProfiles: model.generationProfiles,
+          selectedModelProfileID: model.selectedGenerationProfileID,
           start: {
             Task {
               await model.startGeneration()
@@ -81,6 +106,16 @@ public struct MeetingDetailView: View {
           cancel: {
             Task {
               await model.cancelGeneration()
+            }
+          },
+          regenerate: {
+            Task {
+              await model.regenerateGeneration()
+            }
+          },
+          selectModelProfile: { profileID in
+            Task {
+              await model.selectGenerationProfile(profileID)
             }
           }
         )

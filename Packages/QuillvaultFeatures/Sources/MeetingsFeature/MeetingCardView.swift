@@ -42,12 +42,15 @@ struct MeetingCardView: View {
   }
 
   private var statusKey: LocalizedStringKey {
-    if meeting.assets.contains(.minutes) {
-      return "minutes.status.completed"
-    }
-    if meeting.assets.contains(.transcript) {
+    switch meeting.status {
+    case .awaitingTranscript:
+      return "minutes.status.awaiting.transcript"
+    case .awaitingMinutes:
       return "minutes.status.awaiting.minutes"
+    case .minutesCompleted:
+      return "minutes.status.completed"
+    case .minutesExpired:
+      return "minutes.status.expired"
     }
-    return "minutes.status.awaiting.transcript"
   }
 }

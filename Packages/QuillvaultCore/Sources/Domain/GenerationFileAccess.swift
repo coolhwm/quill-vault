@@ -21,11 +21,34 @@ public struct GenerationTranscriptSource: Equatable, Sendable {
   }
 }
 
+/// The small amount of metadata needed to protect an existing minutes file
+/// from an unconfirmed replacement. The file content remains authoritative;
+/// this snapshot is only a comparison boundary for the generation workflow.
+public struct GenerationMinutesSnapshot: Equatable, Sendable {
+  public let contentFingerprint: String
+  public let generationJobID: UUID?
+  public let transcriptRevisionID: String?
+  public let transcriptFingerprint: String?
+
+  public init(
+    contentFingerprint: String,
+    generationJobID: UUID? = nil,
+    transcriptRevisionID: String? = nil,
+    transcriptFingerprint: String? = nil
+  ) {
+    self.contentFingerprint = contentFingerprint
+    self.generationJobID = generationJobID
+    self.transcriptRevisionID = transcriptRevisionID
+    self.transcriptFingerprint = transcriptFingerprint
+  }
+}
+
 public enum GenerationFileError: Error, Equatable, Sendable {
   case directoryUnavailable
   case meetingUnavailable
   case transcriptUnavailable
   case sourceChanged
+  case externalMinutesChanged
   case publicationFailed
 }
 
@@ -40,6 +63,21 @@ public protocol GenerationFileAccess: Sendable {
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry,
     expectedTranscriptRevisionID: String,
-    expectedTranscriptFingerprint: String
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) async throws
+
+  func loadMinutesSnapshot(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> GenerationMinutesSnapshot?
+}
+
+extension GenerationFileAccess {
+  public func loadMinutesSnapshot(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> GenerationMinutesSnapshot? {
+    nil
+  }
 }

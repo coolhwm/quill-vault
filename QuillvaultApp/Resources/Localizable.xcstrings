@@ -901,6 +901,12 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录已就绪，可以开始生成纪要。" } }
       }
     },
+    "minutes.generation.model" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generation model" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "生成模型" } }
+      }
+    },
     "minutes.generation.progress %lld %lld" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Chunk %lld of %lld" } },
@@ -1011,6 +1017,54 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Generate minutes" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "生成纪要" } }
+      }
+    },
+    "minutes.generation.regenerate" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Regenerate minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新生成纪要" } }
+      }
+    },
+    "minutes.generation.regenerate.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Create a new generation with the current model and text record." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "使用当前模型和最新文字记录创建新一代纪要。" } }
+      }
+    },
+    "minutes.generation.expired" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes are out of date" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已过期" } }
+      }
+    },
+    "minutes.generation.expired.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The text record changed after these minutes were generated. The existing minutes remain available." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录在纪要生成后发生了变化，现有纪要仍可查看。" } }
+      }
+    },
+    "minutes.generation.replace.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Replace edited minutes?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "替换已编辑的纪要？" } }
+      }
+    },
+    "minutes.generation.replace.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The existing minutes were changed outside Quillvault. Confirming will keep them readable until the new minutes are published; cancel keeps the edited version." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "现有纪要似乎被外部编辑。确认后会在新纪要发布前保留它；取消则保留外部版本。" } }
+      }
+    },
+    "minutes.generation.replace.confirm" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Replace after generation" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "生成后替换" } }
+      }
+    },
+    "minutes.generation.replace.cancel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keep edited version" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保留外部版本" } }
       }
     },
     "minutes.generation.title" : {
@@ -1227,6 +1281,12 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes completed" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已完成" } }
+      }
+    },
+    "minutes.status.expired" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes out of date" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已过期" } }
       }
     },
     "tab.home" : {

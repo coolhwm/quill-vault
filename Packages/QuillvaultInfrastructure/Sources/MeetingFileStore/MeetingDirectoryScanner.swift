@@ -93,6 +93,12 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
       var title: String?
       var durationSeconds: Double?
       var modelName: String?
+      var transcriptRevisionID: String?
+      var transcriptFingerprint: String?
+      var minutesTranscriptRevisionID: String?
+      var minutesTranscriptFingerprint: String?
+      var minutesContentFingerprint: String?
+      var minutesGenerationJobID: UUID?
       var searchableSummary = ""
       var searchableTranscript = ""
       var hasInvalidMarkdown = false
@@ -122,6 +128,14 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
             MeetingTranscriptMarkdownParser.audioDuration(from: markdown)
             ?? durationSeconds
           searchableTranscript = timeline.segments.map(\.text).joined(separator: "\n")
+          let locale = frontMatterValue(named: "locale", in: markdown) ?? "und"
+          let revision = TranscriptRevision(
+            meetingID: meetingID,
+            localeIdentifier: locale,
+            timeline: timeline
+          )
+          transcriptRevisionID = revision.id
+          transcriptFingerprint = revision.contentFingerprint
         case .minutes:
           guard let markdown = fullText(at: fileURL) else {
             hasInvalidMarkdown = true
@@ -138,6 +152,10 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
           let metadata = minutesMetadata(in: markdown)
           title = metadata.title
           modelName = metadata.modelName
+          minutesTranscriptRevisionID = metadata.transcriptRevisionID
+          minutesTranscriptFingerprint = metadata.transcriptFingerprint
+          minutesContentFingerprint = GenerationInputFingerprint.make(markdown)
+          minutesGenerationJobID = metadata.generationJobID
           searchableSummary = content.summaryMarkdown
         }
         meetingFingerprints.append(
@@ -166,7 +184,13 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
           assets: assets,
           title: title,
           durationSeconds: durationSeconds,
-          modelName: modelName
+          modelName: modelName,
+          transcriptRevisionID: transcriptRevisionID,
+          transcriptFingerprint: transcriptFingerprint,
+          minutesTranscriptRevisionID: minutesTranscriptRevisionID,
+          minutesTranscriptFingerprint: minutesTranscriptFingerprint,
+          minutesContentFingerprint: minutesContentFingerprint,
+          minutesGenerationJobID: minutesGenerationJobID
         )
       )
       searchDocuments.append(
@@ -200,13 +224,23 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
 
   private func minutesMetadata(
     in text: String?
-  ) -> (title: String?, modelName: String?) {
+  ) -> (
+    title: String?,
+    modelName: String?,
+    transcriptRevisionID: String?,
+    transcriptFingerprint: String?,
+    generationJobID: UUID?
+  ) {
     guard let text else {
-      return (nil, nil)
+      return (nil, nil, nil, nil, nil)
     }
     return (
       frontMatterValue(named: "title", in: text),
-      frontMatterValue(named: "model", in: text)
+      frontMatterValue(named: "model", in: text),
+      frontMatterValue(named: "transcriptRevisionID", in: text),
+      frontMatterValue(named: "transcriptFingerprint", in: text),
+      frontMatterValue(named: "generationJobID", in: text)
+        .flatMap(UUID.init(uuidString:))
     )
   }
 

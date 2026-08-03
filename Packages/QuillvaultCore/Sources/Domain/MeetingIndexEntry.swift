@@ -8,6 +8,12 @@ public struct MeetingIndexEntry: Equatable, Sendable {
   public let title: String?
   public let durationSeconds: Double?
   public let modelName: String?
+  public let transcriptRevisionID: String?
+  public let transcriptFingerprint: String?
+  public let minutesTranscriptRevisionID: String?
+  public let minutesTranscriptFingerprint: String?
+  public let minutesContentFingerprint: String?
+  public let minutesGenerationJobID: UUID?
 
   public init(
     id: MeetingID,
@@ -16,7 +22,13 @@ public struct MeetingIndexEntry: Equatable, Sendable {
     assets: MeetingAssetPresence,
     title: String? = nil,
     durationSeconds: Double? = nil,
-    modelName: String? = nil
+    modelName: String? = nil,
+    transcriptRevisionID: String? = nil,
+    transcriptFingerprint: String? = nil,
+    minutesTranscriptRevisionID: String? = nil,
+    minutesTranscriptFingerprint: String? = nil,
+    minutesContentFingerprint: String? = nil,
+    minutesGenerationJobID: UUID? = nil
   ) {
     self.id = id
     self.createdAt = createdAt
@@ -25,10 +37,32 @@ public struct MeetingIndexEntry: Equatable, Sendable {
     self.title = title
     self.durationSeconds = durationSeconds
     self.modelName = modelName
+    self.transcriptRevisionID = transcriptRevisionID
+    self.transcriptFingerprint = transcriptFingerprint
+    self.minutesTranscriptRevisionID = minutesTranscriptRevisionID
+    self.minutesTranscriptFingerprint = minutesTranscriptFingerprint
+    self.minutesContentFingerprint = minutesContentFingerprint
+    self.minutesGenerationJobID = minutesGenerationJobID
   }
 
   public var status: MeetingIndexStatus {
     if assets.contains(.minutes) {
+      let freshnessMetadataMissing =
+        transcriptRevisionID == nil
+        || transcriptFingerprint == nil
+        || minutesTranscriptRevisionID == nil
+        || minutesTranscriptFingerprint == nil
+      let fingerprintChanged =
+        transcriptFingerprint != nil
+        && minutesTranscriptFingerprint != nil
+        && transcriptFingerprint != minutesTranscriptFingerprint
+      let revisionChanged =
+        transcriptRevisionID != nil
+        && minutesTranscriptRevisionID != nil
+        && transcriptRevisionID != minutesTranscriptRevisionID
+      if freshnessMetadataMissing || fingerprintChanged || revisionChanged {
+        return .minutesExpired
+      }
       return .minutesCompleted
     }
     if assets.contains(.transcript) {

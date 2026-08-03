@@ -86,6 +86,7 @@ final class AppCompositionRoot {
         )
       },
       generation: resolvedGeneration,
+      modelProfiles: resolvedModelProfiles,
       cancelScheduledGeneration: { [weak backgroundCoordinator] jobID in
         await backgroundCoordinator?.cancelScheduledTask(jobID: jobID)
       }

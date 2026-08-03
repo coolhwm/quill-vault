@@ -4,6 +4,7 @@ enum MeetingCatalogMigrator {
   static let initialMigration = "v1_create_rebuildable_meeting_catalog"
   static let detailMetadataMigration = "v2_add_meeting_detail_metadata"
   static let localSearchMigration = "v3_add_local_meeting_search"
+  static let generationFreshnessMigration = "v4_add_generation_freshness_metadata"
 
   static func make() -> DatabaseMigrator {
     var migrator = makeInitial()
@@ -21,6 +22,16 @@ enum MeetingCatalogMigrator {
         table.column("title")
         table.column("summary")
         table.column("transcript")
+      }
+    }
+    migrator.registerMigration(generationFreshnessMigration) { database in
+      try database.alter(table: "meeting_index") { table in
+        table.add(column: "transcript_revision_id", .text)
+        table.add(column: "transcript_fingerprint", .text)
+        table.add(column: "minutes_transcript_revision_id", .text)
+        table.add(column: "minutes_transcript_fingerprint", .text)
+        table.add(column: "minutes_content_fingerprint", .text)
+        table.add(column: "minutes_generation_job_id", .text)
       }
     }
     return migrator

@@ -164,7 +164,10 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
           sql: """
             SELECT
               meeting_id, created_at, relative_directory, asset_presence,
-              title, duration_seconds, model_name
+              title, duration_seconds, model_name,
+              transcript_revision_id, transcript_fingerprint,
+              minutes_transcript_revision_id, minutes_transcript_fingerprint,
+              minutes_content_fingerprint, minutes_generation_job_id
             FROM meeting_index
             ORDER BY created_at DESC, meeting_id ASC
             """
@@ -235,7 +238,10 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
           sql: """
             SELECT
               i.meeting_id, i.created_at, i.relative_directory, i.asset_presence,
-              i.title, i.duration_seconds, i.model_name
+              i.title, i.duration_seconds, i.model_name,
+              i.transcript_revision_id, i.transcript_fingerprint,
+              i.minutes_transcript_revision_id, i.minutes_transcript_fingerprint,
+              i.minutes_content_fingerprint, i.minutes_generation_job_id
             FROM meeting_index i
             \(join)
             \(whereClause)
@@ -328,7 +334,14 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
       assets: MeetingAssetPresence(rawValue: rawAssetPresence),
       title: row["title"],
       durationSeconds: row["duration_seconds"],
-      modelName: row["model_name"]
+      modelName: row["model_name"],
+      transcriptRevisionID: row["transcript_revision_id"],
+      transcriptFingerprint: row["transcript_fingerprint"],
+      minutesTranscriptRevisionID: row["minutes_transcript_revision_id"],
+      minutesTranscriptFingerprint: row["minutes_transcript_fingerprint"],
+      minutesContentFingerprint: row["minutes_content_fingerprint"],
+      minutesGenerationJobID: (row["minutes_generation_job_id"] as String?)
+        .flatMap(UUID.init(uuidString:))
     )
   }
 
@@ -346,7 +359,15 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
         [transcriptMask, minutesMask]
       )
     case .minutesCompleted:
-      return ("(i.asset_presence & ?) != 0", [minutesMask])
+      return (
+        "(i.asset_presence & ?) != 0 AND i.transcript_revision_id IS NOT NULL AND i.transcript_fingerprint IS NOT NULL AND i.minutes_transcript_revision_id IS NOT NULL AND i.minutes_transcript_fingerprint IS NOT NULL AND i.transcript_fingerprint = i.minutes_transcript_fingerprint AND i.transcript_revision_id = i.minutes_transcript_revision_id",
+        [minutesMask]
+      )
+    case .minutesExpired:
+      return (
+        "(i.asset_presence & ?) != 0 AND (i.transcript_revision_id IS NULL OR i.transcript_fingerprint IS NULL OR i.minutes_transcript_revision_id IS NULL OR i.minutes_transcript_fingerprint IS NULL OR i.transcript_fingerprint <> i.minutes_transcript_fingerprint OR i.transcript_revision_id <> i.minutes_transcript_revision_id)",
+        [minutesMask]
+      )
     }
   }
 
@@ -394,16 +415,25 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
         INSERT INTO meeting_index
           (
             meeting_id, created_at, relative_directory, asset_presence,
-            title, duration_seconds, model_name
+            title, duration_seconds, model_name,
+            transcript_revision_id, transcript_fingerprint,
+            minutes_transcript_revision_id, minutes_transcript_fingerprint,
+            minutes_content_fingerprint, minutes_generation_job_id
           )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(meeting_id) DO UPDATE SET
           created_at = excluded.created_at,
           relative_directory = excluded.relative_directory,
           asset_presence = excluded.asset_presence,
           title = excluded.title,
           duration_seconds = excluded.duration_seconds,
-          model_name = excluded.model_name
+          model_name = excluded.model_name,
+          transcript_revision_id = excluded.transcript_revision_id,
+          transcript_fingerprint = excluded.transcript_fingerprint,
+          minutes_transcript_revision_id = excluded.minutes_transcript_revision_id,
+          minutes_transcript_fingerprint = excluded.minutes_transcript_fingerprint,
+          minutes_content_fingerprint = excluded.minutes_content_fingerprint,
+          minutes_generation_job_id = excluded.minutes_generation_job_id
         """,
       arguments: [
         meeting.id.rawValue.uuidString,
@@ -413,6 +443,12 @@ public actor GRDBMeetingCatalog: MeetingCatalog, MeetingSearchCatalog {
         meeting.title,
         meeting.durationSeconds,
         meeting.modelName,
+        meeting.transcriptRevisionID,
+        meeting.transcriptFingerprint,
+        meeting.minutesTranscriptRevisionID,
+        meeting.minutesTranscriptFingerprint,
+        meeting.minutesContentFingerprint,
+        meeting.minutesGenerationJobID?.uuidString,
       ]
     )
   }

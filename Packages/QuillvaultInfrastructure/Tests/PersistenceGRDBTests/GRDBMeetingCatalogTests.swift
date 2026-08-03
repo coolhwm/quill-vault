@@ -203,6 +203,79 @@ struct GRDBMeetingCatalogTests {
     )
   }
 
+  @Test("Indexes transcript freshness and exposes expired minutes separately")
+  func minutesFreshnessStatus() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let fresh = MeetingIndexEntry(
+      id: MeetingID(rawValue: UUID(uuidString: "E1111111-1111-1111-1111-111111111111")!),
+      createdAt: Date(timeIntervalSince1970: 1_800_000_001),
+      relativeDirectory: "meeting-fresh",
+      assets: [.transcript, .minutes],
+      transcriptRevisionID: "revision-2",
+      transcriptFingerprint: "fingerprint-2",
+      minutesTranscriptRevisionID: "revision-2",
+      minutesTranscriptFingerprint: "fingerprint-2",
+      minutesContentFingerprint: "minutes-2"
+    )
+    let expired = MeetingIndexEntry(
+      id: MeetingID(rawValue: UUID(uuidString: "E2222222-2222-2222-2222-222222222222")!),
+      createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+      relativeDirectory: "meeting-expired",
+      assets: [.transcript, .minutes],
+      transcriptRevisionID: "revision-3",
+      transcriptFingerprint: "fingerprint-3-new",
+      minutesTranscriptRevisionID: "revision-3-old",
+      minutesTranscriptFingerprint: "fingerprint-3-old",
+      minutesContentFingerprint: "minutes-3"
+    )
+    try await catalog.replaceAll(
+      with: MeetingDirectoryScan(
+        meetings: [fresh, expired],
+        fingerprints: [],
+        diagnostics: []
+      )
+    )
+
+    #expect((try await catalog.meetings()).first?.status == .minutesCompleted)
+    #expect((try await catalog.meetings()).last?.status == .minutesExpired)
+    #expect(
+      try await catalog.search(.init(statuses: [.minutesCompleted])).map(\.id)
+        == [fresh.id]
+    )
+    #expect(
+      try await catalog.search(.init(statuses: [.minutesExpired])).map(\.id)
+        == [expired.id]
+    )
+  }
+
+  @Test("Metadata-stripped minutes remain readable but require regeneration")
+  func metadataStrippedMinutesAreExpired() async throws {
+    let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
+    let unknown = MeetingIndexEntry(
+      id: MeetingID(rawValue: UUID(uuidString: "E3333333-3333-3333-3333-333333333333")!),
+      createdAt: Date(timeIntervalSince1970: 1_800_000_002),
+      relativeDirectory: "meeting-metadata-stripped",
+      assets: [.transcript, .minutes],
+      transcriptRevisionID: "revision-4",
+      transcriptFingerprint: "fingerprint-4",
+      minutesContentFingerprint: "minutes-4"
+    )
+    try await catalog.replaceAll(
+      with: MeetingDirectoryScan(
+        meetings: [unknown],
+        fingerprints: [],
+        diagnostics: []
+      )
+    )
+
+    #expect(unknown.status == .minutesExpired)
+    #expect(
+      try await catalog.search(.init(statuses: [.minutesExpired])).map(\.id)
+        == [unknown.id]
+    )
+    #expect(try await catalog.meetings() == [unknown])
+  }
+
   @Test("FTS replacement removes deleted and externally changed content")
   func searchReplacement() async throws {
     let catalog = try GRDBMeetingCatalog.openRecovering(at: temporaryDatabaseURL())
@@ -295,7 +368,12 @@ struct GRDBMeetingCatalogTests {
         assets: [.transcript, .minutes],
         title: "Meeting \(index)",
         durationSeconds: 60,
-        modelName: index.isMultiple(of: 2) ? "model-a" : "model-b"
+        modelName: index.isMultiple(of: 2) ? "model-a" : "model-b",
+        transcriptRevisionID: "revision-\(index)",
+        transcriptFingerprint: "fingerprint-\(index)",
+        minutesTranscriptRevisionID: "revision-\(index)",
+        minutesTranscriptFingerprint: "fingerprint-\(index)",
+        minutesContentFingerprint: "minutes-\(index)"
       )
     }
     let target = meetings[1_337]
@@ -460,6 +538,7 @@ private let expectedMigrations = [
   "v1_create_rebuildable_meeting_catalog",
   "v2_add_meeting_detail_metadata",
   "v3_add_local_meeting_search",
+  "v4_add_generation_freshness_metadata",
 ]
 
 private enum MigrationProbeError: Error {
@@ -550,14 +629,21 @@ extension MeetingIndexEntry {
     title: String = "Weekly review",
     modelName: String? = "test-model"
   ) -> Self {
-    .init(
+    let hasFreshnessMetadata =
+      assets.contains(.transcript) && assets.contains(.minutes)
+    return .init(
       id: MeetingID(rawValue: UUID(uuidString: id)!),
       createdAt: Date(timeIntervalSince1970: createdAt),
       relativeDirectory: directory,
       assets: assets,
       title: title,
       durationSeconds: 61,
-      modelName: modelName
+      modelName: modelName,
+      transcriptRevisionID: hasFreshnessMetadata ? "revision-\(id)" : nil,
+      transcriptFingerprint: hasFreshnessMetadata ? "fingerprint-\(id)" : nil,
+      minutesTranscriptRevisionID: hasFreshnessMetadata ? "revision-\(id)" : nil,
+      minutesTranscriptFingerprint: hasFreshnessMetadata ? "fingerprint-\(id)" : nil,
+      minutesContentFingerprint: hasFreshnessMetadata ? "minutes-\(id)" : nil
     )
   }
 }

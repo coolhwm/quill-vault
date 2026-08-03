@@ -267,6 +267,8 @@ extension MeetingIndexStatus {
       "minutes.status.awaiting.minutes"
     case .minutesCompleted:
       "minutes.status.completed"
+    case .minutesExpired:
+      "minutes.status.expired"
     }
   }
 }

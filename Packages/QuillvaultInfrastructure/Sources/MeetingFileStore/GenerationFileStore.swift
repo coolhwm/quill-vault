@@ -33,12 +33,49 @@ extension MeetingFileStore: GenerationFileAccess {
     }
   }
 
+  public func loadMinutesSnapshot(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> GenerationMinutesSnapshot? {
+    do {
+      return try await withGenerationScope(in: directory) { rootURL in
+        let meetingURL = try generationMeetingURL(
+          rootURL: rootURL,
+          meeting: meeting
+        )
+        let minutesURL = meetingURL.appending(path: "minutes.md")
+        guard FileManager.default.fileExists(atPath: minutesURL.path) else {
+          return nil
+        }
+        let markdown = try coordinatedReadString(at: minutesURL)
+        return GenerationMinutesSnapshot(
+          contentFingerprint: GenerationInputFingerprint.make(markdown),
+          generationJobID: frontMatterValue(named: "generationJobID", in: markdown)
+            .flatMap(UUID.init(uuidString:)),
+          transcriptRevisionID: frontMatterValue(
+            named: "transcriptRevisionID",
+            in: markdown
+          ),
+          transcriptFingerprint: frontMatterValue(
+            named: "transcriptFingerprint",
+            in: markdown
+          )
+        )
+      }
+    } catch let error as GenerationFileError {
+      throw error
+    } catch {
+      throw GenerationFileError.publicationFailed
+    }
+  }
+
   public func publishMinutes(
     _ markdown: String,
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry,
     expectedTranscriptRevisionID: String,
-    expectedTranscriptFingerprint: String
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) async throws {
     do {
       try await withGenerationScope(in: directory) { rootURL in
@@ -47,25 +84,6 @@ extension MeetingFileStore: GenerationFileAccess {
           meeting: meeting
         )
         let transcriptURL = meetingURL.appending(path: "transcript.md")
-        let transcriptMarkdown = try coordinatedReadString(at: transcriptURL)
-        let timeline = try MeetingTranscriptMarkdownParser().parse(
-          transcriptMarkdown
-        )
-        let locale =
-          frontMatterValue(named: "locale", in: transcriptMarkdown)
-          ?? "und"
-        let currentRevision = TranscriptRevision(
-          meetingID: meeting.id,
-          localeIdentifier: locale,
-          timeline: timeline
-        )
-        guard
-          currentRevision.id == expectedTranscriptRevisionID,
-          currentRevision.contentFingerprint == expectedTranscriptFingerprint
-        else {
-          throw GenerationFileError.sourceChanged
-        }
-
         let destinationURL = meetingURL.appending(path: "minutes.md")
         let candidateURL = meetingURL.appending(
           path: ".minutes-\(dependencies.makeUUID().uuidString).tmp"
@@ -78,7 +96,12 @@ extension MeetingFileStore: GenerationFileAccess {
           )
           try replaceGenerationFile(
             candidateURL: candidateURL,
-            destinationURL: destinationURL
+            transcriptURL: transcriptURL,
+            destinationURL: destinationURL,
+            meetingID: meeting.id,
+            expectedTranscriptRevisionID: expectedTranscriptRevisionID,
+            expectedTranscriptFingerprint: expectedTranscriptFingerprint,
+            expectedExistingMinutesFingerprint: expectedExistingMinutesFingerprint
           )
           guard try coordinatedReadData(at: destinationURL) == expectedData else {
             throw GenerationFileError.publicationFailed
@@ -199,17 +222,68 @@ extension MeetingFileStore: GenerationFileAccess {
 
   private func replaceGenerationFile(
     candidateURL: URL,
-    destinationURL: URL
+    transcriptURL: URL,
+    destinationURL: URL,
+    meetingID: MeetingID,
+    expectedTranscriptRevisionID: String,
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) throws {
     var coordinationError: NSError?
     var replacementError: (any Error)?
     NSFileCoordinator().coordinate(
+      readingItemAt: transcriptURL,
+      options: [],
       writingItemAt: destinationURL,
       options: .forReplacing,
       error: &coordinationError
-    ) { coordinatedDestinationURL in
+    ) { coordinatedTranscriptURL, coordinatedDestinationURL in
       do {
-        if FileManager.default.fileExists(atPath: coordinatedDestinationURL.path) {
+        let transcriptData = try Data(contentsOf: coordinatedTranscriptURL)
+        guard
+          let transcriptMarkdown = String(data: transcriptData, encoding: .utf8)
+        else {
+          throw GenerationFileError.sourceChanged
+        }
+        let timeline = try MeetingTranscriptMarkdownParser().parse(
+          transcriptMarkdown
+        )
+        let locale =
+          frontMatterValue(named: "locale", in: transcriptMarkdown)
+          ?? "und"
+        let currentRevision = TranscriptRevision(
+          meetingID: meetingID,
+          localeIdentifier: locale,
+          timeline: timeline
+        )
+        guard
+          currentRevision.id == expectedTranscriptRevisionID,
+          currentRevision.contentFingerprint == expectedTranscriptFingerprint
+        else {
+          throw GenerationFileError.sourceChanged
+        }
+
+        let destinationExists = FileManager.default.fileExists(
+          atPath: coordinatedDestinationURL.path
+        )
+        let currentFingerprint: String?
+        if destinationExists {
+          guard
+            let currentMarkdown = try String(
+              data: Data(contentsOf: coordinatedDestinationURL),
+              encoding: .utf8
+            )
+          else {
+            throw GenerationFileError.externalMinutesChanged
+          }
+          currentFingerprint = GenerationInputFingerprint.make(currentMarkdown)
+        } else {
+          currentFingerprint = nil
+        }
+        guard currentFingerprint == expectedExistingMinutesFingerprint else {
+          throw GenerationFileError.externalMinutesChanged
+        }
+        if destinationExists {
           try dependencies.fileMutator.replace(
             itemAt: coordinatedDestinationURL,
             with: candidateURL,

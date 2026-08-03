@@ -53,7 +53,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
           sql: """
             CREATE UNIQUE INDEX generation_job_active_meeting
             ON generation_job (meeting_id)
-            WHERE state <> 'completed'
+            WHERE state IN ('pending', 'running', 'paused')
             """
         )
         try database.create(table: "generation_step") { table in
@@ -83,6 +83,21 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
           table.add(column: "next_retry_at", .double)
         }
       }
+      migrator.registerMigration("v3_generation_replacement_metadata") { database in
+        try database.alter(table: "generation_job") { table in
+          table.add(column: "published_minutes_fingerprint", .text)
+        }
+      }
+      migrator.registerMigration("v4_allow_superseded_generations") { database in
+        try database.execute(sql: "DROP INDEX generation_job_active_meeting")
+        try database.execute(
+          sql: """
+            CREATE UNIQUE INDEX generation_job_active_meeting
+            ON generation_job (meeting_id)
+            WHERE state IN ('pending', 'running', 'paused')
+            """
+        )
+      }
       try migrator.migrate(pool)
       return GRDBGenerationJobStore(databasePool: pool)
     } catch {
@@ -96,11 +111,55 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
         let activeCount =
           try Int.fetchOne(
             database,
-            sql: "SELECT COUNT(*) FROM generation_job WHERE state <> 'completed'"
+            sql:
+              "SELECT COUNT(*) FROM generation_job WHERE state IN ('pending', 'running', 'paused')"
           ) ?? 0
         guard activeCount < 20 else {
           throw GenerationJobStoreError.queueFull
         }
+        try Self.insert(job, in: database)
+      }
+    } catch let error as GenerationJobStoreError {
+      throw error
+    } catch let error as DatabaseError
+      where error.resultCode == .SQLITE_CONSTRAINT
+    {
+      throw GenerationJobStoreError.conflict
+    } catch {
+      throw GenerationJobStoreError.unavailable
+    }
+  }
+
+  public func replaceActive(
+    _ jobID: UUID,
+    with job: GenerationJob
+  ) async throws {
+    do {
+      try await databasePool.write { database in
+        guard
+          let state: String = try String.fetchOne(
+            database,
+            sql: "SELECT state FROM generation_job WHERE job_id = ?",
+            arguments: [jobID.uuidString]
+          ),
+          state == GenerationJobState.pending.rawValue
+            || state == GenerationJobState.paused.rawValue
+        else {
+          throw GenerationJobStoreError.conflict
+        }
+        try database.execute(
+          sql: """
+            UPDATE generation_job
+            SET state = 'superseded', stage = 'completed',
+                updated_at = ?, completed_at = ?
+            WHERE job_id = ?
+            """,
+          arguments: [
+            job.updatedAt.timeIntervalSince1970,
+            job.updatedAt.timeIntervalSince1970,
+            jobID.uuidString,
+          ]
+        )
         try Self.insert(job, in: database)
       }
     } catch let error as GenerationJobStoreError {
@@ -151,8 +210,40 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
             database,
             sql: """
               SELECT * FROM generation_job
-              WHERE meeting_id = ? AND state <> 'completed'
+              WHERE meeting_id = ? AND state IN ('pending', 'running', 'paused')
               ORDER BY generation_number DESC
+              LIMIT 1
+              """,
+            arguments: [meetingID.rawValue.uuidString]
+          )
+        else {
+          return nil
+        }
+        let job = try Self.decodeJob(row)
+        return GenerationSnapshot(
+          job: job,
+          completedSteps: try Self.decodeSteps(jobID: job.id, in: database)
+        )
+      }
+    } catch let error as GenerationJobStoreError {
+      throw error
+    } catch {
+      throw GenerationJobStoreError.unavailable
+    }
+  }
+
+  public func latestJob(
+    for meetingID: MeetingID
+  ) async throws -> GenerationSnapshot? {
+    do {
+      return try await databasePool.read { database in
+        guard
+          let row = try Row.fetchOne(
+            database,
+            sql: """
+              SELECT * FROM generation_job
+              WHERE meeting_id = ?
+              ORDER BY generation_number DESC, updated_at DESC
               LIMIT 1
               """,
             arguments: [meetingID.rawValue.uuidString]
@@ -180,7 +271,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
           database,
           sql: """
             SELECT * FROM generation_job
-            WHERE state <> 'completed'
+            WHERE state IN ('pending', 'running', 'paused')
             ORDER BY created_at ASC, job_id ASC
             """
         ).map { row in
@@ -287,9 +378,10 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
             schema_version, chunk_plan_version, generation_number,
             chunk_count, total_steps, completed_step_count,
             completed_chunk_count, progress, retry_attempt, next_retry_at,
-            stage, state, pause_reason, created_at, updated_at, completed_at
+            stage, state, pause_reason, created_at, updated_at, completed_at,
+            published_minutes_fingerprint
           )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
       arguments: Self.arguments(for: job)
     )
@@ -310,9 +402,10 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
             schema_version, chunk_plan_version, generation_number,
             chunk_count, total_steps, completed_step_count,
             completed_chunk_count, progress, retry_attempt, next_retry_at,
-            stage, state, pause_reason, created_at, updated_at, completed_at
+            stage, state, pause_reason, created_at, updated_at, completed_at,
+            published_minutes_fingerprint
           )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(job_id) DO UPDATE SET
           chunk_count = excluded.chunk_count,
           total_steps = excluded.total_steps,
@@ -324,6 +417,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
           stage = excluded.stage,
           state = excluded.state,
           pause_reason = excluded.pause_reason,
+          published_minutes_fingerprint = excluded.published_minutes_fingerprint,
           updated_at = excluded.updated_at,
           completed_at = excluded.completed_at
         """,
@@ -361,6 +455,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       job.createdAt.timeIntervalSince1970,
       job.updatedAt.timeIntervalSince1970,
       job.completedAt?.timeIntervalSince1970,
+      job.publishedMinutesFingerprint,
     ]
   }
 
@@ -418,7 +513,8 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       retryAttempt: row["retry_attempt"],
       nextRetryAt: (row["next_retry_at"] as Double?)
         .map(Date.init(timeIntervalSince1970:)),
-      pauseReason: pauseRaw.flatMap(GenerationPauseReason.init(rawValue:))
+      pauseReason: pauseRaw.flatMap(GenerationPauseReason.init(rawValue:)),
+      publishedMinutesFingerprint: row["published_minutes_fingerprint"]
     )
   }
 

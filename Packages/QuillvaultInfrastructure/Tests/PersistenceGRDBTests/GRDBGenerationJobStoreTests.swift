@@ -25,6 +25,70 @@ struct GRDBGenerationJobStoreTests {
     removeDatabase(at: databaseURL)
   }
 
+  @Test("Persists generation lineage and returns completed jobs as the latest job")
+  func persistsGenerationLineage() async throws {
+    let databaseURL = temporaryGenerationDatabaseURL()
+    let store = try GRDBGenerationJobStore.open(at: databaseURL)
+    let source = GenerationStoreFixture()
+    var job = source.job
+    job = GenerationJob(
+      id: job.id,
+      meetingID: job.meetingID,
+      transcriptRevisionID: job.transcriptRevisionID,
+      transcriptFingerprint: job.transcriptFingerprint,
+      modelProfile: job.modelProfile,
+      generationNumber: 2,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      completedAt: job.updatedAt,
+      state: .completed,
+      stage: .completed,
+      progress: 100,
+      publishedMinutesFingerprint: "published-fingerprint"
+    )
+    try await store.create(job)
+    let snapshot = try await store.latestJob(for: job.meetingID)
+    #expect(snapshot?.job == job)
+    #expect(snapshot?.job.publishedMinutesFingerprint == "published-fingerprint")
+    try await store.close()
+
+    let reopened = try GRDBGenerationJobStore.open(at: databaseURL)
+    #expect((try await reopened.latestJob(for: job.meetingID))?.job == job)
+    try await reopened.close()
+    removeDatabase(at: databaseURL)
+  }
+
+  @Test("Superseding a paused generation preserves lineage and frees the active slot")
+  func supersedesPausedGeneration() async throws {
+    let databaseURL = temporaryGenerationDatabaseURL()
+    let store = try GRDBGenerationJobStore.open(at: databaseURL)
+    let source = GenerationStoreFixture()
+    var paused = source.job
+    paused.state = .paused
+    paused.pauseReason = .cancelled
+    try await store.create(paused)
+    var replacement = source.job
+    replacement = GenerationJob(
+      id: UUID(),
+      meetingID: paused.meetingID,
+      transcriptRevisionID: paused.transcriptRevisionID,
+      transcriptFingerprint: paused.transcriptFingerprint,
+      modelProfile: paused.modelProfile,
+      generationNumber: paused.generationNumber + 1,
+      createdAt: paused.updatedAt.addingTimeInterval(1),
+      updatedAt: paused.updatedAt.addingTimeInterval(1)
+    )
+
+    try await store.replaceActive(paused.id, with: replacement)
+
+    #expect((try await store.load(paused.id))?.job.state == .superseded)
+    #expect((try await store.activeJob(for: paused.meetingID))?.job.id == replacement.id)
+    #expect((try await store.latestJob(for: paused.meetingID))?.job.id == replacement.id)
+    #expect((try await store.resumableJobs()).map(\.job.id) == [replacement.id])
+    try await store.close()
+    removeDatabase(at: databaseURL)
+  }
+
   @Test("Allows only one unfinished generation job per meeting")
   func activeMeetingConflict() async throws {
     let store = try GRDBGenerationJobStore.open(

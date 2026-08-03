@@ -23,12 +23,16 @@ public final class MeetingDetailModel {
   public private(set) var generationSnapshot: GenerationSnapshot?
   public private(set) var generationBusy = false
   public private(set) var generationError = false
+  public private(set) var requiresMinutesReplacementConfirmation = false
+  public private(set) var generationProfiles: [ModelProfile] = []
+  public private(set) var selectedGenerationProfileID: ModelProfileID?
 
   private let directory: AuthoritativeDirectory
   private let meeting: MeetingIndexEntry
   private let detail: any MeetingDetailUseCase
   private let player: any MeetingAudioPlayer
   private let generation: (any GenerationUseCase)?
+  private let modelProfiles: (any ModelProfileUseCase)?
   private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private var progressTask: Task<Void, Never>?
 
@@ -38,6 +42,7 @@ public final class MeetingDetailModel {
     detail: any MeetingDetailUseCase,
     player: any MeetingAudioPlayer,
     generation: (any GenerationUseCase)? = nil,
+    modelProfiles: (any ModelProfileUseCase)? = nil,
     cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil
   ) {
     self.directory = directory
@@ -45,6 +50,7 @@ public final class MeetingDetailModel {
     self.detail = detail
     self.player = player
     self.generation = generation
+    self.modelProfiles = modelProfiles
     self.cancelScheduledGeneration = cancelScheduledGeneration
   }
 
@@ -60,6 +66,7 @@ public final class MeetingDetailModel {
       )
       state = .loaded(loaded)
       await loadGeneration()
+      await loadGenerationProfiles()
       if case .available(let asset) = loaded.recording {
         do {
           playback = try await player.load(asset)
@@ -85,6 +92,7 @@ public final class MeetingDetailModel {
     }
     generationBusy = true
     generationError = false
+    requiresMinutesReplacementConfirmation = false
     let poller = makeGenerationPoller(generation)
     defer {
       poller.cancel()
@@ -96,6 +104,8 @@ public final class MeetingDetailModel {
         meeting: meeting
       )
       generationSnapshot = snapshot
+      requiresMinutesReplacementConfirmation =
+        snapshot.job.pauseReason == .externalMinutesChanged
       if snapshot.job.state == .completed {
         state = .idle
         await load()
@@ -109,13 +119,21 @@ public final class MeetingDetailModel {
     }
   }
 
-  public func resumeGeneration() async {
+  public func resumeGeneration(
+    replacingExternalMinutes: Bool = false
+  ) async {
     guard
       let generation,
       let snapshot = generationSnapshot,
       snapshot.job.state != .completed,
       !generationBusy
     else {
+      return
+    }
+    if snapshot.job.pauseReason == .externalMinutesChanged,
+      !replacingExternalMinutes
+    {
+      requiresMinutesReplacementConfirmation = true
       return
     }
     generationBusy = true
@@ -129,9 +147,12 @@ public final class MeetingDetailModel {
       let resumed = try await generation.resume(
         snapshot.job.id,
         in: directory,
-        meeting: meeting
+        meeting: meeting,
+        replacingExternalMinutes: replacingExternalMinutes
       )
       generationSnapshot = resumed
+      requiresMinutesReplacementConfirmation =
+        resumed.job.pauseReason == .externalMinutesChanged
       if resumed.job.state == .completed {
         state = .idle
         await load()
@@ -142,13 +163,87 @@ public final class MeetingDetailModel {
     }
   }
 
+  public func regenerateGeneration(
+    replacingExternalMinutes: Bool = false
+  ) async {
+    guard let generation, !generationBusy else {
+      return
+    }
+    if let snapshot = generationSnapshot,
+      snapshot.job.pauseReason == .externalMinutesChanged,
+      !replacingExternalMinutes
+    {
+      requiresMinutesReplacementConfirmation = true
+      return
+    }
+    generationBusy = true
+    generationError = false
+    if replacingExternalMinutes {
+      requiresMinutesReplacementConfirmation = false
+    }
+    let poller = makeGenerationPoller(generation)
+    defer {
+      poller.cancel()
+      generationBusy = false
+    }
+    do {
+      let regenerated: GenerationSnapshot
+      if replacingExternalMinutes,
+        let snapshot = generationSnapshot,
+        snapshot.job.state == .paused
+      {
+        regenerated = try await generation.resume(
+          snapshot.job.id,
+          in: directory,
+          meeting: meeting,
+          replacingExternalMinutes: true
+        )
+      } else {
+        regenerated = try await generation.regenerate(
+          in: directory,
+          meeting: meeting,
+          replacingExternalMinutes: replacingExternalMinutes
+        )
+      }
+      generationSnapshot = regenerated
+      requiresMinutesReplacementConfirmation =
+        regenerated.job.pauseReason == .externalMinutesChanged
+      if regenerated.job.state == .completed {
+        state = .idle
+        await load()
+      }
+    } catch GenerationWorkflowError.externalMinutesChanged {
+      requiresMinutesReplacementConfirmation = true
+    } catch {
+      generationError = true
+      await loadGeneration()
+    }
+  }
+
+  public func selectGenerationProfile(_ id: ModelProfileID) async {
+    guard let modelProfiles else {
+      return
+    }
+    do {
+      try await modelProfiles.select(id)
+      await loadGenerationProfiles()
+    } catch {
+      generationError = true
+    }
+  }
+
   public func cancelGeneration() async {
     guard let generation, let snapshot = generationSnapshot else {
       return
     }
     await generation.cancel(snapshot.job.id)
     await cancelScheduledGeneration?(snapshot.job.id)
+    requiresMinutesReplacementConfirmation = false
     await loadGeneration()
+  }
+
+  public func dismissMinutesReplacementConfirmation() {
+    requiresMinutesReplacementConfirmation = false
   }
 
   public func togglePlayback() {
@@ -206,8 +301,26 @@ public final class MeetingDetailModel {
     }
     do {
       generationSnapshot = try await generation.load(meetingID: meeting.id)
+      requiresMinutesReplacementConfirmation =
+        generationSnapshot?.job.pauseReason == .externalMinutesChanged
     } catch {
       generationError = true
+    }
+  }
+
+  private func loadGenerationProfiles() async {
+    guard let modelProfiles else {
+      generationProfiles = []
+      selectedGenerationProfileID = nil
+      return
+    }
+    do {
+      let collection = try await modelProfiles.load()
+      generationProfiles = collection.profiles.filter(\.isUsable)
+      selectedGenerationProfileID = collection.currentProfileID
+    } catch {
+      generationProfiles = []
+      selectedGenerationProfileID = nil
     }
   }
 

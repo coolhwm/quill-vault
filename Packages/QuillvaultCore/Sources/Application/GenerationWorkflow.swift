@@ -48,12 +48,57 @@ public actor GenerationWorkflow: GenerationUseCase {
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry
   ) async throws -> GenerationSnapshot {
+    try await createGeneration(
+      in: directory,
+      meeting: meeting,
+      replacingExternalMinutes: false,
+      replacingActiveJobID: nil
+    )
+  }
+
+  public func regenerate(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    replacingExternalMinutes: Bool
+  ) async throws -> GenerationSnapshot {
+    let replacingActiveJobID: UUID?
+    if let active = try await jobs.activeJob(for: meeting.id) {
+      if active.job.pauseReason == .externalMinutesChanged,
+        !replacingExternalMinutes
+      {
+        throw GenerationWorkflowError.externalMinutesChanged
+      }
+      guard active.job.state == .paused || active.job.state == .pending else {
+        throw GenerationWorkflowError.activeJobExists
+      }
+      replacingActiveJobID = active.job.id
+    } else {
+      replacingActiveJobID = nil
+    }
+    return try await createGeneration(
+      in: directory,
+      meeting: meeting,
+      replacingExternalMinutes: replacingExternalMinutes,
+      replacingActiveJobID: replacingActiveJobID
+    )
+  }
+
+  private func createGeneration(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    replacingExternalMinutes: Bool,
+    replacingActiveJobID: UUID?
+  ) async throws -> GenerationSnapshot {
     await reconcileProfileUsage()
-    if try await jobs.activeJob(for: meeting.id) != nil {
+    if let active = try await jobs.activeJob(for: meeting.id),
+      active.job.id != replacingActiveJobID
+    {
       throw GenerationWorkflowError.activeJobExists
     }
     let queuedJobs = try await jobs.resumableJobs()
-    guard queuedJobs.count < 20 else {
+    let activeQueueCount =
+      queuedJobs.count - (replacingActiveJobID == nil ? 0 : 1)
+    guard activeQueueCount < 20 else {
       throw GenerationWorkflowError.queueFull
     }
     let transcript = try await assets.loadTranscript(
@@ -74,12 +119,25 @@ public actor GenerationWorkflow: GenerationUseCase {
       throw GenerationWorkflowError.profileUnavailable
     }
 
-    let previousGeneration =
-      try await jobs.resumableJobs().filter {
-        $0.job.meetingID == meeting.id
-      }.map(\.job.generationNumber).max() ?? 0
+    let previousJob = try await jobs.latestJob(for: meeting.id)
+    let replacedActiveJob: GenerationSnapshot?
+    if let replacingActiveJobID {
+      replacedActiveJob = try await jobs.load(replacingActiveJobID)
+    } else {
+      replacedActiveJob = nil
+    }
+    let previousGeneration = previousJob?.job.generationNumber ?? 0
+    // Jobs created before the replacement metadata migration have no stored
+    // minutes fingerprint. The catalog fingerprint is the safest available
+    // baseline for that legacy completed result; a later edit is still caught
+    // by the preflight comparison below.
+    let previousPublishedFingerprint =
+      previousJob?.job.publishedMinutesFingerprint
+      ?? (previousJob?.job.state == .completed
+        ? meeting.minutesContentFingerprint
+        : nil)
     let createdAt = now()
-    let job = GenerationJob(
+    var job = GenerationJob(
       id: makeJobID(),
       meetingID: meeting.id,
       transcriptRevisionID: transcript.revision.id,
@@ -90,7 +148,8 @@ public actor GenerationWorkflow: GenerationUseCase {
       chunkCount: chunkPlan.chunks.count,
       totalSteps: chunkPlan.chunks.count + 3,
       createdAt: createdAt,
-      updatedAt: createdAt
+      updatedAt: createdAt,
+      publishedMinutesFingerprint: previousPublishedFingerprint
     )
     pendingProfileTasks.insert(job.taskReference)
     do {
@@ -99,7 +158,19 @@ public actor GenerationWorkflow: GenerationUseCase {
         profileID: job.modelProfile.profileID
       )
       do {
-        try await jobs.create(job)
+        if let replacingActiveJobID {
+          try await jobs.replaceActive(replacingActiveJobID, with: job)
+          // The old generation is no longer resumable after the transactional
+          // replacement. Release its model-profile usage now; reconciliation
+          // remains a safety net if this cleanup fails.
+          if let replacedActiveJob {
+            await finishTaskWithRetry(replacedActiveJob.job.taskReference)
+            executionContexts.removeValue(forKey: replacedActiveJob.job.id)
+            cancelledJobs.remove(replacedActiveJob.job.id)
+          }
+        } else {
+          try await jobs.create(job)
+        }
       } catch GenerationJobStoreError.queueFull {
         throw GenerationWorkflowError.queueFull
       }
@@ -114,6 +185,44 @@ public actor GenerationWorkflow: GenerationUseCase {
       directory: directory,
       meeting: meeting
     )
+
+    // Detect an externally edited minutes file before spending model budget.
+    // A confirmed replacement is pinned to the file fingerprint observed at
+    // confirmation time; publication checks that fingerprint again to avoid a
+    // later external edit being silently overwritten.
+    if meeting.assets.contains(.minutes) {
+      do {
+        let existingMinutes = try await assets.loadMinutesSnapshot(
+          in: directory,
+          meeting: meeting
+        )
+        if existingMinutes?.contentFingerprint != previousPublishedFingerprint {
+          if replacingExternalMinutes {
+            // The user has explicitly accepted replacing the currently
+            // edited minutes. Pin that exact version as the replacement
+            // baseline; publication performs the same comparison again
+            // inside the coordinated atomic write.
+            job.publishedMinutesFingerprint = existingMinutes?.contentFingerprint
+            job.updatedAt = now()
+          } else {
+            job.publishedMinutesFingerprint = existingMinutes?.contentFingerprint
+            job.updatedAt = now()
+            return try await pause(
+              job,
+              reason: .externalMinutesChanged,
+              completedSteps: []
+            )
+          }
+        }
+      } catch {
+        return try await pause(
+          job,
+          reason: .publicationFailed,
+          completedSteps: []
+        )
+      }
+    }
+
     if activeExecutionJobID != nil {
       return try await jobs.load(job.id) ?? GenerationSnapshot(job: job)
     }
@@ -129,7 +238,8 @@ public actor GenerationWorkflow: GenerationUseCase {
   public func resume(
     _ jobID: UUID,
     in directory: AuthoritativeDirectory,
-    meeting: MeetingIndexEntry
+    meeting: MeetingIndexEntry,
+    replacingExternalMinutes: Bool
   ) async throws -> GenerationSnapshot {
     if executingJobs.contains(jobID) {
       guard let snapshot = try await jobs.load(jobID) else {
@@ -160,7 +270,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     cancelledJobs.remove(jobID)
     executingJobs.insert(jobID)
     defer { executingJobs.remove(jobID) }
-    guard let snapshot = try await jobs.load(jobID) else {
+    guard var snapshot = try await jobs.load(jobID) else {
       throw GenerationWorkflowError.jobNotFound
     }
     guard snapshot.job.meetingID == meeting.id else {
@@ -170,8 +280,44 @@ public actor GenerationWorkflow: GenerationUseCase {
       directory: directory,
       meeting: meeting
     )
-    if snapshot.job.state == .completed {
+    guard snapshot.job.isActive else {
       return snapshot
+    }
+    if snapshot.job.pauseReason == .externalMinutesChanged,
+      !replacingExternalMinutes
+    {
+      throw GenerationWorkflowError.externalMinutesChanged
+    }
+    if replacingExternalMinutes {
+      let confirmedMinutesFingerprint: String?
+      do {
+        confirmedMinutesFingerprint = try await assets.loadMinutesSnapshot(
+          in: directory,
+          meeting: meeting
+        )?.contentFingerprint
+      } catch {
+        return try await pause(
+          snapshot.job,
+          reason: .publicationFailed,
+          completedSteps: snapshot.completedSteps
+        )
+      }
+      if snapshot.job.pauseReason == .externalMinutesChanged,
+        confirmedMinutesFingerprint != snapshot.job.publishedMinutesFingerprint
+      {
+        var changedJob = snapshot.job
+        changedJob.publishedMinutesFingerprint = confirmedMinutesFingerprint
+        changedJob.updatedAt = now()
+        try await jobs.saveCheckpoint(changedJob, step: nil)
+        return GenerationSnapshot(
+          job: changedJob,
+          completedSteps: snapshot.completedSteps
+        )
+      }
+      var confirmedJob = snapshot.job
+      confirmedJob.updatedAt = now()
+      try await jobs.saveCheckpoint(confirmedJob, step: nil)
+      snapshot = GenerationSnapshot(job: confirmedJob, completedSteps: snapshot.completedSteps)
     }
     await onJobRegistered?(snapshot.job)
     if cancelledJobs.contains(jobID) {
@@ -232,6 +378,19 @@ public actor GenerationWorkflow: GenerationUseCase {
     )
   }
 
+  public func resume(
+    _ jobID: UUID,
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> GenerationSnapshot {
+    try await resume(
+      jobID,
+      in: directory,
+      meeting: meeting,
+      replacingExternalMinutes: false
+    )
+  }
+
   public func load(
     meetingID: MeetingID
   ) async throws -> GenerationSnapshot? {
@@ -264,7 +423,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     guard let snapshot = try? await jobs.load(jobID) else {
       return
     }
-    guard snapshot.job.state != .completed else {
+    guard snapshot.job.isActive else {
       cancelledJobs.remove(jobID)
       return
     }
@@ -345,7 +504,8 @@ public actor GenerationWorkflow: GenerationUseCase {
         completedChunkCount: originalJob.completedChunkCount,
         retryAttempt: originalJob.retryAttempt,
         nextRetryAt: originalJob.nextRetryAt,
-        pauseReason: originalJob.pauseReason
+        pauseReason: originalJob.pauseReason,
+        publishedMinutesFingerprint: originalJob.publishedMinutesFingerprint
       )
       try await persist(migratedJob, step: nil)
       return try await execute(
@@ -756,17 +916,51 @@ public actor GenerationWorkflow: GenerationUseCase {
       transcript: transcript
     )
     do {
+      let existingMinutes = try await assets.loadMinutesSnapshot(
+        in: directory,
+        meeting: meeting
+      )
+      guard
+        existingMinutes?.contentFingerprint == job.publishedMinutesFingerprint
+      else {
+        var changedJob = job
+        changedJob.publishedMinutesFingerprint = existingMinutes?.contentFingerprint
+        return try await pause(
+          changedJob,
+          reason: .externalMinutesChanged,
+          completedSteps: steps
+        )
+      }
+    } catch {
+      return try await pause(
+        job,
+        reason: .publicationFailed,
+        completedSteps: steps
+      )
+    }
+    do {
       try await assets.publishMinutes(
         markdown,
         in: directory,
         meeting: meeting,
         expectedTranscriptRevisionID: job.transcriptRevisionID,
-        expectedTranscriptFingerprint: job.transcriptFingerprint
+        expectedTranscriptFingerprint: job.transcriptFingerprint,
+        expectedExistingMinutesFingerprint: job.publishedMinutesFingerprint
       )
     } catch {
+      let reason = isCancelled(job.id) ? .cancelled : pauseReason(for: error)
+      var pausedJob = job
+      if reason == .externalMinutesChanged {
+        do {
+          pausedJob.publishedMinutesFingerprint = try await assets
+            .loadMinutesSnapshot(in: directory, meeting: meeting)?.contentFingerprint
+        } catch {
+          // Keep the last confirmed fingerprint if the file cannot be read.
+        }
+      }
       return try await pause(
-        job,
-        reason: isCancelled(job.id) ? .cancelled : pauseReason(for: error),
+        pausedJob,
+        reason: reason,
         completedSteps: steps
       )
     }
@@ -774,6 +968,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       return try await pause(job, reason: .cancelled, completedSteps: steps)
     }
 
+    job.publishedMinutesFingerprint = GenerationInputFingerprint.make(markdown)
     job.state = .completed
     job.stage = .completed
     job.progress = 100
@@ -991,6 +1186,8 @@ public actor GenerationWorkflow: GenerationUseCase {
       switch error {
       case .sourceChanged:
         return .sourceChanged
+      case .externalMinutesChanged:
+        return .externalMinutesChanged
       case .publicationFailed:
         return .publicationFailed
       case .directoryUnavailable, .meetingUnavailable, .transcriptUnavailable:

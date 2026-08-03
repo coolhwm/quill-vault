@@ -4,6 +4,7 @@ public enum MeetingIndexStatus: String, CaseIterable, Codable, Sendable {
   case awaitingTranscript
   case awaitingMinutes
   case minutesCompleted
+  case minutesExpired
 }
 
 public struct MeetingSearchDocument: Equatable, Sendable {

@@ -45,6 +45,245 @@ struct GenerationWorkflowTests {
     #expect(await registrations.ids == [snapshot.job.id])
   }
 
+  @Test("Regeneration creates a new generation from the current model and latest transcript")
+  func regenerationCreatesNewGeneration() async throws {
+    let source = try GenerationTestSource()
+    let assets = VersionedMinutesAssets(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let alternate = source.alternateExecution
+    let profiles = SwitchingExecutionProfiles(initial: source.execution)
+    let provider = SequencedGenerationProvider(
+      results: [
+        .success("第一版纪要"),
+        .success("第二版纪要"),
+      ]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let first = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+    await profiles.select(alternate)
+    let regenerated = try await workflow.regenerate(
+      in: source.directory,
+      meeting: source.meetingWithMinutes
+    )
+
+    #expect(first.job.state == .completed)
+    #expect(regenerated.job.state == .completed)
+    #expect(regenerated.job.generationNumber == first.job.generationNumber + 1)
+    #expect(regenerated.job.modelProfile == alternate.snapshot)
+    #expect(regenerated.job.transcriptFingerprint == source.transcript.revision.contentFingerprint)
+    #expect(provider.requestCount == 2)
+    #expect(await assets.minutes?.contains("第二版纪要") == true)
+    #expect(await jobs.load(first.job.id)?.job.state == .completed)
+  }
+
+  @Test("Legacy completed generations use the catalog fingerprint as a safe baseline")
+  func legacyCompletedGenerationRegeneratesWithoutFalseConflict() async throws {
+    let source = try GenerationTestSource()
+    let legacyMinutes = "legacy minutes"
+    let assets = VersionedMinutesAssets(source: source.transcript)
+    await assets.replaceMinutes(legacyMinutes)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let provider = RecordingGenerationProvider(result: .success("新纪要"))
+    let createdAt = source.meeting.createdAt
+    let legacyJob = GenerationJob(
+      id: UUID(uuidString: "23232323-2323-2323-2323-232323232323")!,
+      meetingID: source.meeting.id,
+      transcriptRevisionID: source.transcript.revision.id,
+      transcriptFingerprint: source.transcript.revision.contentFingerprint,
+      modelProfile: source.execution.snapshot,
+      generationNumber: 1,
+      createdAt: createdAt,
+      updatedAt: createdAt,
+      completedAt: createdAt,
+      state: .completed,
+      stage: .completed,
+      progress: 100
+    )
+    try await jobs.create(legacyJob)
+    let meeting = MeetingIndexEntry(
+      id: source.meeting.id,
+      createdAt: source.meeting.createdAt,
+      relativeDirectory: source.meeting.relativeDirectory,
+      assets: [.recording, .transcript, .minutes],
+      durationSeconds: source.meeting.durationSeconds,
+      minutesContentFingerprint: GenerationInputFingerprint.make(legacyMinutes)
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let regenerated = try await workflow.regenerate(
+      in: source.directory,
+      meeting: meeting
+    )
+
+    #expect(regenerated.job.state == .completed)
+    #expect(regenerated.job.generationNumber == 2)
+    #expect(provider.recordedRequests().count == 1)
+    #expect(await assets.minutes?.contains("新纪要") == true)
+  }
+
+  @Test("Regeneration supersedes a paused generation without leaving a stale resumable task")
+  func regenerationSupersedesPausedGeneration() async throws {
+    let source = try GenerationTestSource()
+    let assets = GenerationAssetsStub(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let failure = AIProviderError.serviceUnavailable(statusCode: 503)
+    let provider = SequencedGenerationProvider(
+      results: [
+        .failure(failure),
+        .failure(failure),
+        .failure(failure),
+        .failure(failure),
+        .success("替代版本纪要"),
+      ]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let paused = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+    #expect(paused.job.state == .paused)
+    #expect(paused.job.pauseReason == .retryExhausted)
+
+    let replacement = try await workflow.regenerate(
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(replacement.job.state == .completed)
+    #expect(replacement.job.generationNumber == paused.job.generationNumber + 1)
+    #expect(await jobs.load(paused.job.id)?.job.state == .superseded)
+    #expect(await jobs.activeJob(for: source.meeting.id) == nil)
+    #expect(await profiles.finished.contains(paused.job.taskReference))
+    #expect(await profiles.finished.contains(replacement.job.taskReference))
+
+    let staleResume = try await workflow.resume(
+      paused.job.id,
+      in: source.directory,
+      meeting: source.meeting
+    )
+    #expect(staleResume.job.state == .superseded)
+    #expect(await provider.requestCount == 5)
+  }
+
+  @Test("An external minutes edit pauses a recoverable generation before model work")
+  func externalMinutesEditPausesRecoverableGeneration() async throws {
+    let source = try GenerationTestSource()
+    let assets = VersionedMinutesAssets(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = SwitchingExecutionProfiles(initial: source.execution)
+    let provider = SequencedGenerationProvider(
+      results: [
+        .success("第一版纪要"),
+        .success("确认后的纪要"),
+      ]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    _ = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+    await assets.replaceMinutes("用户在文件中补充的内容")
+
+    let paused = try await workflow.regenerate(
+      in: source.directory,
+      meeting: source.meetingWithMinutes
+    )
+
+    #expect(paused.job.state == .paused)
+    #expect(paused.job.pauseReason == .externalMinutesChanged)
+    #expect(provider.requestCount == 1)
+    #expect(await assets.minutes == "用户在文件中补充的内容")
+    #expect(await jobs.activeJob(for: source.meeting.id)?.job.id == paused.job.id)
+
+    let resumed = try await workflow.resume(
+      paused.job.id,
+      in: source.directory,
+      meeting: source.meetingWithMinutes,
+      replacingExternalMinutes: true
+    )
+
+    #expect(resumed.job.state == .completed)
+    #expect(resumed.job.generationNumber == paused.job.generationNumber)
+    #expect(await assets.minutes?.contains("确认后的纪要") == true)
+    #expect(provider.requestCount == 2)
+  }
+
+  @Test("Explicit replacement confirmation accepts an edited completed minutes file")
+  func explicitReplacementConfirmationAcceptsEditedCompletedMinutes() async throws {
+    let source = try GenerationTestSource()
+    let assets = VersionedMinutesAssets(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let provider = SequencedGenerationProvider(
+      results: [
+        .success("第一版纪要"),
+        .success("确认后的纪要"),
+      ]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let first = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+    await assets.replaceMinutes("用户在文件中补充的内容")
+
+    let replaced = try await workflow.regenerate(
+      in: source.directory,
+      meeting: source.meetingWithMinutes,
+      replacingExternalMinutes: true
+    )
+
+    #expect(first.job.state == .completed)
+    #expect(replaced.job.state == .completed)
+    #expect(replaced.job.generationNumber == first.job.generationNumber + 1)
+    #expect(await assets.minutes?.contains("确认后的纪要") == true)
+    #expect(provider.requestCount == 2)
+  }
+
   @Test("A provider failure pauses the job without publishing or damaging source assets")
   func providerFailureIsRecoverable() async throws {
     let source = try GenerationTestSource()
@@ -431,6 +670,70 @@ struct GenerationWorkflowTests {
     let secondSnapshot = try await workflow.load(meetingID: secondMeeting.id)
     #expect(secondSnapshot?.job.state == .paused)
     #expect(secondSnapshot?.job.pauseReason == .cancelled)
+  }
+
+  @Test("Regeneration replaces a queued pending generation before it starts")
+  func regenerationReplacesQueuedPendingGeneration() async throws {
+    let source = try GenerationTestSource()
+    let assets = GenerationAssetsStub(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = SwitchingExecutionProfiles(initial: source.execution)
+    let provider = BlockingGenerationProvider()
+    let firstJobID = UUID(uuidString: "19191919-1919-1919-1919-191919191919")!
+    let queuedJobID = UUID(uuidString: "20202020-2020-2020-2020-202020202020")!
+    let replacementJobID = UUID(uuidString: "21212121-2121-2121-2121-212121212121")!
+    let jobIDs = GenerationIDSequence(
+      ids: [firstJobID, queuedJobID, replacementJobID]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      makeJobID: { jobIDs.next() }
+    )
+    let first = Task {
+      try await workflow.start(in: source.directory, meeting: source.meeting)
+    }
+    await provider.waitUntilStarted()
+
+    let queuedMeeting = MeetingIndexEntry(
+      id: MeetingID(
+        rawValue: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+      ),
+      createdAt: source.meeting.createdAt.addingTimeInterval(1),
+      relativeDirectory: "meeting-queued",
+      assets: [.recording, .transcript],
+      durationSeconds: 20
+    )
+    let queued = try await workflow.start(
+      in: source.directory,
+      meeting: queuedMeeting
+    )
+    await profiles.select(source.alternateExecution)
+    let replacement = try await workflow.regenerate(
+      in: source.directory,
+      meeting: queuedMeeting
+    )
+
+    #expect(queued.job.id == queuedJobID)
+    #expect(queued.job.state == .pending)
+    #expect(replacement.job.id == replacementJobID)
+    #expect(replacement.job.state == .pending)
+    #expect(replacement.job.generationNumber == queued.job.generationNumber + 1)
+    #expect(replacement.job.modelProfile == source.alternateExecution.snapshot)
+    #expect(await jobs.load(queuedJobID)?.job.state == .superseded)
+    #expect(provider.requestCount == 1)
+    #expect((await jobs.resumableJobs()).map(\.job.id) == [firstJobID, replacementJobID])
+
+    await workflow.cancel(firstJobID)
+    #expect(await provider.waitUntilTerminated())
+    provider.finish()
+    _ = try await first.value
+    await provider.waitUntilRequestCount(2)
+    await workflow.cancel(replacementJobID)
+    #expect(await provider.waitUntilTerminated())
+    provider.finish()
   }
 
   @Test("A publication failure pauses the job and preserves the existing minutes")
@@ -985,12 +1288,12 @@ private actor InMemoryGenerationJobStore: GenerationJobStore {
   private var jobs: [UUID: GenerationSnapshot] = [:]
 
   func create(_ job: GenerationJob) throws {
-    guard jobs.values.filter({ $0.job.state != .completed }).count < 20 else {
+    guard jobs.values.filter({ $0.job.isActive }).count < 20 else {
       throw GenerationJobStoreError.queueFull
     }
     guard
       jobs.values.allSatisfy({
-        $0.job.meetingID != job.meetingID || $0.job.state == .completed
+        $0.job.meetingID != job.meetingID || !$0.job.isActive
       })
     else {
       throw GenerationJobStoreError.conflict
@@ -1004,13 +1307,41 @@ private actor InMemoryGenerationJobStore: GenerationJobStore {
 
   func activeJob(for meetingID: MeetingID) -> GenerationSnapshot? {
     jobs.values.first {
-      $0.job.meetingID == meetingID && $0.job.state != .completed
+      $0.job.meetingID == meetingID && $0.job.isActive
     }
+  }
+
+  func replaceActive(_ jobID: UUID, with job: GenerationJob) throws {
+    guard
+      let state = jobs[jobID]?.job.state,
+      state == .pending || state == .paused
+    else {
+      throw GenerationJobStoreError.conflict
+    }
+    guard jobs.values.filter({ $0.job.isActive && $0.job.id != jobID }).count < 20 else {
+      throw GenerationJobStoreError.queueFull
+    }
+    var superseded = jobs[jobID]!.job
+    superseded.state = .superseded
+    superseded.stage = .completed
+    superseded.completedAt = job.updatedAt
+    superseded.updatedAt = job.updatedAt
+    jobs[jobID] = GenerationSnapshot(job: superseded, completedSteps: jobs[jobID]!.completedSteps)
+    jobs[job.id] = GenerationSnapshot(job: job)
+  }
+
+  func latestJob(for meetingID: MeetingID) -> GenerationSnapshot? {
+    jobs.values
+      .filter { $0.job.meetingID == meetingID }
+      .max {
+        ($0.job.generationNumber, $0.job.updatedAt)
+          < ($1.job.generationNumber, $1.job.updatedAt)
+      }
   }
 
   func resumableJobs() -> [GenerationSnapshot] {
     jobs.values
-      .filter { $0.job.state != .completed }
+      .filter { $0.job.isActive }
       .sorted {
         if $0.job.createdAt != $1.job.createdAt {
           return $0.job.createdAt < $1.job.createdAt
@@ -1078,7 +1409,8 @@ private actor GenerationAssetsStub: GenerationFileAccess {
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry,
     expectedTranscriptRevisionID: String,
-    expectedTranscriptFingerprint: String
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) throws {
     guard
       source.revision.id == expectedTranscriptRevisionID,
@@ -1096,6 +1428,55 @@ private actor GenerationAssetsStub: GenerationFileAccess {
 
   func replaceSource(_ source: GenerationTranscriptSource) {
     self.source = source
+  }
+}
+
+private actor VersionedMinutesAssets: GenerationFileAccess {
+  let source: GenerationTranscriptSource
+  private(set) var minutes: String?
+
+  init(source: GenerationTranscriptSource) {
+    self.source = source
+  }
+
+  func loadTranscript(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) -> GenerationTranscriptSource {
+    source
+  }
+
+  func loadMinutesSnapshot(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) -> GenerationMinutesSnapshot? {
+    guard let minutes else {
+      return nil
+    }
+    return GenerationMinutesSnapshot(
+      contentFingerprint: GenerationInputFingerprint.make(minutes)
+    )
+  }
+
+  func publishMinutes(
+    _ markdown: String,
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    expectedTranscriptRevisionID: String,
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
+  ) throws {
+    guard
+      source.revision.id == expectedTranscriptRevisionID,
+      source.revision.contentFingerprint == expectedTranscriptFingerprint
+    else {
+      throw GenerationFileError.sourceChanged
+    }
+    minutes = markdown
+  }
+
+  func replaceMinutes(_ markdown: String) {
+    minutes = markdown
   }
 }
 
@@ -1120,7 +1501,8 @@ private actor BlockingPublicationAssets: GenerationFileAccess {
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry,
     expectedTranscriptRevisionID: String,
-    expectedTranscriptFingerprint: String
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) async throws {
     guard
       source.revision.id == expectedTranscriptRevisionID,
@@ -1173,7 +1555,8 @@ private actor BlockingTranscriptAssets: GenerationFileAccess {
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry,
     expectedTranscriptRevisionID: String,
-    expectedTranscriptFingerprint: String
+    expectedTranscriptFingerprint: String,
+    expectedExistingMinutesFingerprint: String?
   ) throws {
     guard
       source.revision.id == expectedTranscriptRevisionID,
@@ -1229,6 +1612,45 @@ private actor ExecutionProfilesStub: ModelProfileExecutionAccess {
   func finishTask(_ task: ModelProfileTaskReference) {
     finished.append(task)
   }
+
+  func reconcileUnfinishedTasks(
+    keeping taskReferences: Set<ModelProfileTaskReference>
+  ) {}
+}
+
+private actor SwitchingExecutionProfiles: ModelProfileExecutionAccess {
+  private var current: ModelExecutionProfile
+  private var profiles: [ModelProfileID: ModelExecutionProfile]
+
+  init(initial: ModelExecutionProfile) {
+    current = initial
+    profiles = [initial.snapshot.profileID: initial]
+  }
+
+  func select(_ profile: ModelExecutionProfile) {
+    current = profile
+    profiles[profile.snapshot.profileID] = profile
+  }
+
+  func currentExecutionProfile() -> ModelExecutionProfile {
+    current
+  }
+
+  func executionProfile(
+    for snapshot: ModelProfileSnapshot
+  ) throws -> ModelExecutionProfile {
+    guard let profile = profiles[snapshot.profileID], profile.snapshot == snapshot else {
+      throw ModelCredentialError.notFound
+    }
+    return profile
+  }
+
+  func registerUnfinishedTask(
+    _ task: ModelProfileTaskReference,
+    profileID: ModelProfileID
+  ) {}
+
+  func finishTask(_ task: ModelProfileTaskReference) {}
 
   func reconcileUnfinishedTasks(
     keeping taskReferences: Set<ModelProfileTaskReference>
@@ -1453,9 +1875,11 @@ private final class BlockingGenerationProvider: AIProvider, @unchecked Sendable 
 private struct GenerationTestSource {
   let directory: AuthoritativeDirectory
   let meeting: MeetingIndexEntry
+  let meetingWithMinutes: MeetingIndexEntry
   let transcript: GenerationTranscriptSource
   let changedTranscript: GenerationTranscriptSource
   let execution: ModelExecutionProfile
+  let alternateExecution: ModelExecutionProfile
 
   init() throws {
     let meetingID = MeetingID(rawValue: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!)
@@ -1469,6 +1893,13 @@ private struct GenerationTestSource {
       createdAt: Date(timeIntervalSince1970: 1_800_000_000),
       relativeDirectory: "meeting-20270115-080000",
       assets: [.recording, .transcript],
+      durationSeconds: 20
+    )
+    meetingWithMinutes = MeetingIndexEntry(
+      id: meetingID,
+      createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+      relativeDirectory: "meeting-20270115-080000",
+      assets: [.recording, .transcript, .minutes],
       durationSeconds: 20
     )
     let timeline = TranscriptTimeline(
@@ -1523,5 +1954,20 @@ private struct GenerationTestSource {
         rawValue: UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!)
     )
     execution = ModelExecutionProfile(snapshot: profile, apiKey: "secret")
+    let alternateProfile = ModelProfileSnapshot(
+      profileID: ModelProfileID(
+        rawValue: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
+      ),
+      baseURL: URL(string: "https://alternate.example.com/v1")!,
+      model: "alternate-minutes-model",
+      parameters: ModelGenerationParameters(temperature: 0.2),
+      credentialReference: ModelCredentialReference(
+        rawValue: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+      )
+    )
+    alternateExecution = ModelExecutionProfile(
+      snapshot: alternateProfile,
+      apiKey: "alternate-secret"
+    )
   }
 }

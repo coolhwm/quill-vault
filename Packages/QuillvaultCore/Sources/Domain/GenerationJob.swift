@@ -5,6 +5,7 @@ public enum GenerationJobState: String, Codable, CaseIterable, Sendable {
   case running
   case paused
   case completed
+  case superseded
 }
 
 public enum GenerationStage: String, Codable, CaseIterable, Sendable {
@@ -30,6 +31,7 @@ public enum GenerationPauseReason: String, Codable, CaseIterable, Sendable {
   case requestTooLarge
   case sourceChanged
   case publicationFailed
+  case externalMinutesChanged
   case unavailable
 }
 
@@ -65,6 +67,7 @@ public struct GenerationJob: Codable, Equatable, Sendable {
   public var retryAttempt: Int
   public var nextRetryAt: Date?
   public var pauseReason: GenerationPauseReason?
+  public var publishedMinutesFingerprint: String?
 
   public init(
     id: UUID,
@@ -88,7 +91,8 @@ public struct GenerationJob: Codable, Equatable, Sendable {
     completedChunkCount: Int = 0,
     retryAttempt: Int = 0,
     nextRetryAt: Date? = nil,
-    pauseReason: GenerationPauseReason? = nil
+    pauseReason: GenerationPauseReason? = nil,
+    publishedMinutesFingerprint: String? = nil
   ) {
     self.id = id
     self.meetingID = meetingID
@@ -119,6 +123,7 @@ public struct GenerationJob: Codable, Equatable, Sendable {
     self.retryAttempt = max(0, retryAttempt)
     self.nextRetryAt = nextRetryAt
     self.pauseReason = pauseReason
+    self.publishedMinutesFingerprint = publishedMinutesFingerprint
   }
 
   public var taskReference: ModelProfileTaskReference {
@@ -126,7 +131,12 @@ public struct GenerationJob: Codable, Equatable, Sendable {
   }
 
   public var isActive: Bool {
-    state != .completed
+    switch state {
+    case .pending, .running, .paused:
+      return true
+    case .completed, .superseded:
+      return false
+    }
   }
 }
 
@@ -186,10 +196,29 @@ public protocol GenerationJobStore: Sendable {
   func create(_ job: GenerationJob) async throws
   func load(_ id: UUID) async throws -> GenerationSnapshot?
   func activeJob(for meetingID: MeetingID) async throws -> GenerationSnapshot?
+  func latestJob(for meetingID: MeetingID) async throws -> GenerationSnapshot?
+  func replaceActive(
+    _ jobID: UUID,
+    with job: GenerationJob
+  ) async throws
   func resumableJobs() async throws -> [GenerationSnapshot]
   func saveCheckpoint(
     _ job: GenerationJob,
     step: GenerationStep?
   ) async throws
   func delete(_ id: UUID) async throws
+}
+
+extension GenerationJobStore {
+  public func latestJob(for meetingID: MeetingID) async throws -> GenerationSnapshot? {
+    let snapshots = try await resumableJobs()
+
+    return
+      snapshots
+      .filter { $0.job.meetingID == meetingID }
+      .max {
+        ($0.job.generationNumber, $0.job.updatedAt)
+          < ($1.job.generationNumber, $1.job.updatedAt)
+      }
+  }
 }
