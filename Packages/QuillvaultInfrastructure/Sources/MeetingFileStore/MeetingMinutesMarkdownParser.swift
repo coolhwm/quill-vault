@@ -7,24 +7,31 @@ struct MeetingMinutesMarkdownParser: Sendable {
       key: "informationMayBeIncomplete",
       in: markdown
     )
-    let diagram = capturedGroup(
-      pattern: #"(?s)```mermaid\s*(.*?)\s*```"#,
-      in: markdown
-    )
     let withoutFrontMatter = markdown.replacingOccurrences(
       of: #"(?s)^---\r?\n.*?\r?\n---\r?\n"#,
       with: "",
       options: .regularExpression
     )
+    let diagramSources = captureAllGroups(
+      pattern: #"(?is)```\s*mermaid\s*\n?(.*?)\s*```"#,
+      in: withoutFrontMatter
+    )
     let summary = withoutFrontMatter.replacingOccurrences(
-      of: #"(?s)```mermaid.*?```"#,
+      of: #"(?is)```\s*mermaid.*?```"#,
       with: "",
       options: .regularExpression
     )
     .trimmingCharacters(in: .whitespacesAndNewlines)
+    let diagrams = diagramSources.enumerated().map { index, source in
+      MeetingDiagram(
+        id: "diagram-\(index)",
+        title: index == 0 ? nil : "Diagram \(index + 1)",
+        source: source.trimmingCharacters(in: .whitespacesAndNewlines)
+      )
+    }
     return MeetingMinutesContent(
       summaryMarkdown: summary,
-      diagramSource: diagram,
+      diagrams: diagrams,
       informationMayBeIncomplete: informationMayBeIncomplete
     )
   }
@@ -44,20 +51,21 @@ struct MeetingMinutesMarkdownParser: Sendable {
     return text[valueRange].lowercased() == "true"
   }
 
-  private func capturedGroup(
+  private func captureAllGroups(
     pattern: String,
     in text: String
-  ) -> String? {
-    guard
-      let expression = try? NSRegularExpression(pattern: pattern),
-      let match = expression.firstMatch(
-        in: text,
-        range: NSRange(text.startIndex..., in: text)
-      ),
-      let range = Range(match.range(at: 1), in: text)
-    else {
-      return nil
+  ) -> [String] {
+    guard let expression = try? NSRegularExpression(pattern: pattern) else {
+      return []
     }
-    return String(text[range])
+    let range = NSRange(text.startIndex..., in: text)
+    return expression.matches(in: text, range: range).compactMap { match in
+      guard match.numberOfRanges > 1,
+        let capture = Range(match.range(at: 1), in: text)
+      else {
+        return nil
+      }
+      return String(text[capture])
+    }
   }
 }

@@ -1105,6 +1105,20 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不自动统计或上传" } }
       }
     },
+    "minutes.detail.diagram.none" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No diagram was needed for this meeting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本次会议没有适合的图示。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "本次會議沒有適合的圖示。" } }
+      }
+    },
+    "minutes.detail.diagram.partial" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Some diagrams may be incomplete. You can regenerate minutes." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "部分图示可能未完成，可重新生成纪要。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "部分圖示可能未完成，可重新生成紀要。" } }
+      }
+    },
     "minutes.detail.diagram" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagram" } },

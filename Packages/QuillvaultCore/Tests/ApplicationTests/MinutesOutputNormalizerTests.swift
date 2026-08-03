@@ -103,4 +103,43 @@ struct MinutesOutputNormalizerTests {
 
     #expect(normalized?.markdown.count == body.count)
   }
+
+  @Test("Preserves multiple safe mermaid diagrams")
+  func preservesMultipleDiagrams() {
+    let response = """
+      # 会议纪要
+
+      ## 总览
+      讨论了流程与角色。
+
+      ```mermaid
+      flowchart TD
+      A[开始] --> B[评审]
+      ```
+
+      ```mermaid
+      sequenceDiagram
+      Alice->>Bob: 确认
+      ```
+      """
+
+    let normalized = MinutesOutputNormalizer.normalize(response)
+    let count =
+      normalized?.markdown.components(separatedBy: "```mermaid").count ?? 0
+    #expect(count == 3)  // split yields n+1 pieces
+    #expect(normalized?.markdown.contains("flowchart TD") == true)
+    #expect(normalized?.markdown.contains("sequenceDiagram") == true)
+  }
+
+  @Test("Accepts diagrams array from JSON payload")
+  func acceptsDiagramsArray() {
+    let response = """
+      {"summary":"## 决策\\n推进。","diagrams":["flowchart TD\\n  A-->B","flowchart LR\\n  C-->D"]}
+      """
+    let normalized = MinutesOutputNormalizer.normalize(response)
+    #expect(normalized?.markdown.contains("A-->B") == true || normalized?.markdown.contains("A --> B") == true || normalized?.markdown.contains("flowchart") == true)
+    let fences =
+      normalized?.markdown.components(separatedBy: "```mermaid").count ?? 0
+    #expect(fences >= 2)
+  }
 }

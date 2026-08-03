@@ -56,19 +56,16 @@ public enum MinutesOutputNormalizer {
       return nil
     }
     var body = payload?.body ?? trimmed
-    var mermaid = payload?.diagram
+    var candidateDiagrams = payload?.diagrams ?? []
 
     body = body.replacingOccurrences(
       of: frontMatterPattern,
       with: "",
       options: .regularExpression
     )
-    if let block = capturedGroup(
-      pattern: mermaidBlockPattern,
-      in: body,
-      options: [.caseInsensitive, .dotMatchesLineSeparators]
-    ) {
-      mermaid = mermaid ?? block
+    let bodyDiagrams = extractMermaidBlocks(from: body)
+    if !bodyDiagrams.isEmpty {
+      candidateDiagrams.append(contentsOf: bodyDiagrams)
       body = body.replacingOccurrences(
         of: mermaidBlockPattern,
         with: "",
@@ -82,19 +79,54 @@ public enum MinutesOutputNormalizer {
       return nil
     }
 
-    let normalizedMermaid = normalizeMermaid(mermaid)
-    if let normalizedMermaid {
-      body += "\n\n```mermaid\n\(normalizedMermaid)\n```"
+    var safeDiagrams: [String] = []
+    var seen = Set<String>()
+    for candidate in candidateDiagrams {
+      guard let normalized = normalizeMermaid(candidate),
+        seen.insert(normalized).inserted
+      else {
+        continue
+      }
+      safeDiagrams.append(normalized)
+    }
+    for diagram in safeDiagrams {
+      body += "\n\n```mermaid\n\(diagram)\n```"
     }
 
     let hasStructuredSections = containsStructuredSection(body)
+    // Missing diagrams is incomplete only when the body also lacks structure.
+    // When diagrams were requested but all rejected, mark incomplete.
+    let diagramsRejected = !candidateDiagrams.isEmpty && safeDiagrams.isEmpty
     return NormalizedMinutesOutput(
       markdown: body,
-      informationMayBeIncomplete: normalizedMermaid == nil || !hasStructuredSections
+      informationMayBeIncomplete:
+        diagramsRejected
+        || (safeDiagrams.isEmpty && !hasStructuredSections)
+        || !hasStructuredSections
     )
   }
 
-  private static func jsonPayload(from text: String) -> (body: String, diagram: String?)? {
+  private static func extractMermaidBlocks(from text: String) -> [String] {
+    guard
+      let expression = try? NSRegularExpression(
+        pattern: mermaidBlockPattern,
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+      )
+    else {
+      return []
+    }
+    let range = NSRange(text.startIndex..., in: text)
+    return expression.matches(in: text, range: range).compactMap { match in
+      guard match.numberOfRanges > 1,
+        let capture = Range(match.range(at: 1), in: text)
+      else {
+        return nil
+      }
+      return String(text[capture])
+    }
+  }
+
+  private static func jsonPayload(from text: String) -> (body: String, diagrams: [String])? {
     var candidates: [String] = []
     if let fenced = capturedGroup(
       pattern: #"(?is)^```\s*(?:json|javascript|text)?\s*\n?(.*?)\s*```$"#,
@@ -133,9 +165,28 @@ public enum MinutesOutputNormalizer {
       else {
         continue
       }
-      return (body, diagramValue(in: object))
+      return (body, diagramValues(in: object))
     }
     return nil
+  }
+
+  private static func diagramValues(in value: Any) -> [String] {
+    var results: [String] = []
+    if let single = diagramValue(in: value) {
+      results.append(single)
+    }
+    if let dictionary = value as? [String: Any] {
+      if let array = dictionary["diagrams"] as? [Any] {
+        for item in array {
+          if let text = item as? String {
+            results.append(text)
+          } else if let nested = diagramValue(in: item) {
+            results.append(nested)
+          }
+        }
+      }
+    }
+    return results
   }
 
   private static func looksLikeUnparseablePayload(_ text: String) -> Bool {
