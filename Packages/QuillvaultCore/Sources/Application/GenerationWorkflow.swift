@@ -10,6 +10,7 @@ public actor GenerationWorkflow: GenerationUseCase {
   private let makeJobID: @Sendable () -> UUID
   private let retryDelayScale: TimeInterval
   private let jitter: @Sendable (Int) -> TimeInterval
+  private let onJobRegistered: (@Sendable (GenerationJob) async -> Void)?
   private var cancelledJobs: Set<UUID> = []
   private var executingJobs: Set<UUID> = []
   private var activeExecutionJobID: UUID?
@@ -29,7 +30,8 @@ public actor GenerationWorkflow: GenerationUseCase {
     retryDelayScale: TimeInterval = 1,
     jitter: @escaping @Sendable (Int) -> TimeInterval = { attempt in
       Double.random(in: 0...(0.25 * pow(2, Double(max(0, attempt - 1)))))
-    }
+    },
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
   ) {
     self.jobs = jobs
     self.assets = assets
@@ -39,6 +41,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     self.makeJobID = makeJobID
     self.retryDelayScale = max(0, retryDelayScale)
     self.jitter = jitter
+    self.onJobRegistered = onJobRegistered
   }
 
   public func start(
@@ -106,6 +109,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       throw error
     }
     pendingProfileTasks.remove(job.taskReference)
+    await onJobRegistered?(job)
     executionContexts[job.id] = GenerationExecutionContext(
       directory: directory,
       meeting: meeting
@@ -169,6 +173,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     if snapshot.job.state == .completed {
       return snapshot
     }
+    await onJobRegistered?(snapshot.job)
     if cancelledJobs.contains(jobID) {
       return try await pause(
         snapshot.job,
@@ -268,6 +273,10 @@ public actor GenerationWorkflow: GenerationUseCase {
       reason: .cancelled,
       completedSteps: snapshot.completedSteps
     )
+  }
+
+  func resumableSnapshots() async throws -> [GenerationSnapshot] {
+    try await jobs.resumableJobs()
   }
 
   private func execute(
@@ -783,6 +792,9 @@ public actor GenerationWorkflow: GenerationUseCase {
   ) async throws -> String {
     var attempt = 0
     while true {
+      guard !isCancelled(job.id) else {
+        throw CancellationError()
+      }
       attempt += 1
       job.retryAttempt = attempt
       job.nextRetryAt = nil

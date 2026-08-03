@@ -914,6 +914,69 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已进入纪要生成队列，前序任务完成后自动开始。" } }
       }
     },
+    "minutes.background.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generating meeting minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在生成纪要" } }
+      }
+    },
+    "minutes.background.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your recording and text record are safe while this runs." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音与文字记录会安全保留，生成可在后台继续。" } }
+      }
+    },
+    "minutes.background.progress %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Progress %lld%%" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "进度 %lld%%" } }
+      }
+    },
+    "minutes.background.stage.completed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Completed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已完成" } }
+      }
+    },
+    "minutes.background.stage.normalizing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking and formatting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "校验与整理" } }
+      }
+    },
+    "minutes.background.stage.pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preparing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "准备中" } }
+      }
+    },
+    "minutes.background.stage.publishing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Saving minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存纪要" } }
+      }
+    },
+    "minutes.background.stage.summarizing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Summarizing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "分段总结" } }
+      }
+    },
+    "minutes.background.stage.synthesizing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Combining minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "合并纪要" } }
+      }
+    },
     "minutes.generation.paused" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation paused" } },

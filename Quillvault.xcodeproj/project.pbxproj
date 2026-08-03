@@ -28,6 +28,7 @@
 		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
 		961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */; };
 		A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */; };
+		C21B7A1E4F8D49C2A6E0B3D1 /* GenerationBackgroundCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21B7A1E4F8D49C2A6E0B3D2 /* GenerationBackgroundCoordinator.swift */; };
 		A3181EAC5B3B4EB29B0B39AA /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */; };
 		B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 721031C655B87E518827D0EC /* DesignSystem */; };
 		B60B15227AEEC217D44E9649 /* QuillvaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */; };
@@ -62,6 +63,7 @@
 		B19000000000000000000002 /* UITestModelProfileUseCase.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UITestModelProfileUseCase.swift; sourceTree = "<group>"; };
 		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
 		B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLifecycleCoordinator.swift; sourceTree = "<group>"; };
+		C21B7A1E4F8D49C2A6E0B3D2 /* GenerationBackgroundCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GenerationBackgroundCoordinator.swift; sourceTree = "<group>"; };
 		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
 		DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -110,6 +112,7 @@
 				9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */,
 				B19000000000000000000002 /* UITestModelProfileUseCase.swift */,
 				B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */,
+				C21B7A1E4F8D49C2A6E0B3D2 /* GenerationBackgroundCoordinator.swift */,
 				07DD9DE903D6014F01C42586 /* AppRouter.swift */,
 				957B75AE625AD703BD1D6A0D /* AppRootView.swift */,
 			);
@@ -316,6 +319,7 @@
 				781EFF80FC12423C52064ABE /* MeetingDetailUITestFixtures.swift in Sources */,
 				B19000000000000000000001 /* UITestModelProfileUseCase.swift in Sources */,
 				A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */,
+				C21B7A1E4F8D49C2A6E0B3D1 /* GenerationBackgroundCoordinator.swift in Sources */,
 				C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */,
 				9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */,
 			);

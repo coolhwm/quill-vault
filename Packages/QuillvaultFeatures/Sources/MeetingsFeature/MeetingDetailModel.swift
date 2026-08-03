@@ -29,6 +29,7 @@ public final class MeetingDetailModel {
   private let detail: any MeetingDetailUseCase
   private let player: any MeetingAudioPlayer
   private let generation: (any GenerationUseCase)?
+  private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private var progressTask: Task<Void, Never>?
 
   public init(
@@ -36,13 +37,15 @@ public final class MeetingDetailModel {
     meeting: MeetingIndexEntry,
     detail: any MeetingDetailUseCase,
     player: any MeetingAudioPlayer,
-    generation: (any GenerationUseCase)? = nil
+    generation: (any GenerationUseCase)? = nil,
+    cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil
   ) {
     self.directory = directory
     self.meeting = meeting
     self.detail = detail
     self.player = player
     self.generation = generation
+    self.cancelScheduledGeneration = cancelScheduledGeneration
   }
 
   public func load() async {
@@ -144,6 +147,7 @@ public final class MeetingDetailModel {
       return
     }
     await generation.cancel(snapshot.job.id)
+    await cancelScheduledGeneration?(snapshot.job.id)
     await loadGeneration()
   }
 

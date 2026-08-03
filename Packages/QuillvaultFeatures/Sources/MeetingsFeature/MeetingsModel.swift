@@ -18,6 +18,7 @@ public final class MeetingsModel {
   private let transcriptionRecovery: (any TranscriptionRecoveryUseCase)?
   private let detail: any MeetingDetailUseCase
   private let generation: (any GenerationUseCase)?
+  private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private let makePlayer: @MainActor () -> any MeetingAudioPlayer
   private let now: @Sendable () -> Date
   private let calendar: Calendar
@@ -31,6 +32,7 @@ public final class MeetingsModel {
     detail: any MeetingDetailUseCase,
     makePlayer: @escaping @MainActor () -> any MeetingAudioPlayer,
     generation: (any GenerationUseCase)? = nil,
+    cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil,
     now: @escaping @Sendable () -> Date = Date.init,
     calendar: Calendar = .current,
     waitForSynchronization: @escaping @Sendable () async throws -> Void = {
@@ -41,6 +43,7 @@ public final class MeetingsModel {
     self.transcriptionRecovery = transcriptionRecovery
     self.detail = detail
     self.generation = generation
+    self.cancelScheduledGeneration = cancelScheduledGeneration
     self.makePlayer = makePlayer
     self.now = now
     self.calendar = calendar
@@ -56,7 +59,8 @@ public final class MeetingsModel {
       meeting: meeting,
       detail: detail,
       player: makePlayer(),
-      generation: generation
+      generation: generation,
+      cancelScheduledGeneration: cancelScheduledGeneration
     )
   }
 

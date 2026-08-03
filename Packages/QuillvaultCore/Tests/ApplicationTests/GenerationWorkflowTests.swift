@@ -12,13 +12,17 @@ struct GenerationWorkflowTests {
     let jobs = InMemoryGenerationJobStore()
     let profiles = ExecutionProfilesStub(profile: source.execution)
     let provider = RecordingGenerationProvider(result: .success("已确认下一步。"))
+    let registrations = GenerationJobRegistrationCollector()
     let workflow = GenerationWorkflow(
       jobs: jobs,
       assets: assets,
       profiles: profiles,
       provider: provider,
       now: { Date(timeIntervalSince1970: 1_800_000_000) },
-      makeJobID: { UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")! }
+      makeJobID: { UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")! },
+      onJobRegistered: { job in
+        await registrations.append(job)
+      }
     )
 
     let snapshot = try await workflow.start(
@@ -38,6 +42,7 @@ struct GenerationWorkflowTests {
     #expect(await profiles.registered.count == 1)
     #expect(await profiles.finished.count == 1)
     #expect(await jobs.load(snapshot.job.id)?.job.progress == 100)
+    #expect(await registrations.ids == [snapshot.job.id])
   }
 
   @Test("A provider failure pauses the job without publishing or damaging source assets")
@@ -590,6 +595,46 @@ struct GenerationWorkflowTests {
     #expect(await jobs.load(job.id)?.job.state == .paused)
   }
 
+  @Test("Lifecycle reconciliation resumes persisted pending work")
+  func lifecycleReconciliationResumesPendingWork() async throws {
+    let source = try GenerationTestSource()
+    let jobs = InMemoryGenerationJobStore()
+    let job = GenerationJob(
+      id: UUID(uuidString: "13131313-1313-1313-1313-131313131313")!,
+      meetingID: source.meeting.id,
+      transcriptRevisionID: source.transcript.revision.id,
+      transcriptFingerprint: source.transcript.revision.contentFingerprint,
+      modelProfile: source.execution.snapshot,
+      chunkPlanVersion: GenerationChunkPlan.currentVersion,
+      chunkCount: 1,
+      totalSteps: 4,
+      createdAt: source.meeting.createdAt,
+      updatedAt: source.meeting.createdAt,
+      state: .pending
+    )
+    try await jobs.create(job)
+    let provider = RecordingGenerationProvider(result: .success("恢复后的纪要。"))
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: GenerationAssetsStub(source: source.transcript),
+      profiles: ExecutionProfilesStub(profile: source.execution),
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    try await workflow.reconcile(
+      in: MeetingLibrarySnapshot(
+        directory: source.directory,
+        meetings: [source.meeting],
+        diagnosticCount: 0
+      )
+    )
+
+    #expect(await jobs.load(job.id)?.job.state == .completed)
+    #expect(provider.recordedRequests().count == 1)
+  }
+
   @Test("Resumes from a persisted summary step without repeating the model request")
   func resumesFromCheckpoint() async throws {
     let source = try GenerationTestSource()
@@ -992,6 +1037,14 @@ private actor InMemoryGenerationJobStore: GenerationJobStore {
 
   func delete(_ id: UUID) {
     jobs[id] = nil
+  }
+}
+
+private actor GenerationJobRegistrationCollector {
+  private(set) var ids: [UUID] = []
+
+  func append(_ job: GenerationJob) {
+    ids.append(job.id)
   }
 }
 

@@ -60,6 +60,9 @@ struct AppRootView: View {
         await lifecycleCoordinator.didBecomeActive()
       }
     }
+    .task {
+      await lifecycleCoordinator.didBecomeActive()
+    }
   }
 
   private var interfaceStyleOverride: ColorScheme? {

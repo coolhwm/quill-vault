@@ -21,6 +21,7 @@ final class AppCompositionRoot {
   let settingsModel: SettingsModel
   let lifecycleCoordinator: AppLifecycleCoordinator
   let actionButtonCoordinator: ActionButtonRecordingCoordinator
+  let generationBackgroundCoordinator: GenerationBackgroundCoordinator
 
   init(
     router: AppRouter = AppRouter(),
@@ -41,9 +42,17 @@ final class AppCompositionRoot {
     let resolvedRecording =
       recording ?? Self.makeDefaultRecording(fileStore: fileStore)
     let resolvedModelProfiles = Self.makeDefaultModelProfiles()
+    let backgroundCoordinator = GenerationBackgroundCoordinator()
     let resolvedGeneration = Self.makeDefaultGeneration(
       fileStore: fileStore,
-      modelProfiles: resolvedModelProfiles
+      modelProfiles: resolvedModelProfiles,
+      onJobRegistered: { [weak backgroundCoordinator] job in
+        await backgroundCoordinator?.schedule(jobID: job.id)
+      }
+    )
+    backgroundCoordinator.configure(
+      library: resolvedMeetingLibrary,
+      generation: resolvedGeneration
     )
     let recordingQuickStart = RecordingQuickStartWorkflow(
       recording: resolvedRecording,
@@ -60,8 +69,10 @@ final class AppCompositionRoot {
       quickStart: recordingQuickStart
     )
     lifecycleCoordinator = AppLifecycleCoordinator(
-      recordingModel: recordingModel
+      recordingModel: recordingModel,
+      generationBackgroundCoordinator: backgroundCoordinator
     )
+    generationBackgroundCoordinator = backgroundCoordinator
     meetingsModel = MeetingsModel(
       library: resolvedMeetingLibrary,
       transcriptionRecovery: resolvedRecording,
@@ -74,7 +85,10 @@ final class AppCompositionRoot {
           access: MeetingAudioFileAccessAdapter(store: fileStore)
         )
       },
-      generation: resolvedGeneration
+      generation: resolvedGeneration,
+      cancelScheduledGeneration: { [weak backgroundCoordinator] jobID in
+        await backgroundCoordinator?.cancelScheduledTask(jobID: jobID)
+      }
     )
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
@@ -157,7 +171,8 @@ final class AppCompositionRoot {
 
   private static func makeDefaultGeneration(
     fileStore: MeetingFileStore,
-    modelProfiles: any ModelProfileUseCase
+    modelProfiles: any ModelProfileUseCase,
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     guard
       !isMeetingDetailUITest,
@@ -167,13 +182,15 @@ final class AppCompositionRoot {
     }
     return makeGeneration(
       fileStore: fileStore,
-      profiles: executionAccess
+      profiles: executionAccess,
+      onJobRegistered: onJobRegistered
     )
   }
 
   nonisolated private static func makeGeneration(
     fileStore: MeetingFileStore,
-    profiles: any ModelProfileExecutionAccess
+    profiles: any ModelProfileExecutionAccess,
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     do {
       let stateDirectory =
@@ -186,7 +203,8 @@ final class AppCompositionRoot {
         jobs: jobs,
         assets: fileStore,
         profiles: profiles,
-        provider: OpenAICompatibleProvider()
+        provider: OpenAICompatibleProvider(),
+        onJobRegistered: onJobRegistered
       )
     } catch {
       return nil
