@@ -19,7 +19,7 @@ public actor GRDBModelProfileStore:
         at: databaseURL.deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
-      let databasePool = try DatabasePool(path: databaseURL.path())
+      let databasePool = try DatabasePool(path: databaseURL.path)
       var migrator = DatabaseMigrator()
       migrator.registerMigration("v1_create_model_profiles") { database in
         try database.create(table: "model_profile") { table in

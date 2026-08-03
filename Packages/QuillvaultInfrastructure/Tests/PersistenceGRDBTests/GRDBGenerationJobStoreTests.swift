@@ -242,7 +242,7 @@ private struct GenerationStoreFixture {
 
 private func temporaryGenerationDatabaseURL() -> URL {
   let directory = FileManager.default.temporaryDirectory.appending(
-    path: "generation-store-\(UUID().uuidString)",
+    path: "generation store-\(UUID().uuidString)",
     directoryHint: .isDirectory
   )
   try! FileManager.default.createDirectory(

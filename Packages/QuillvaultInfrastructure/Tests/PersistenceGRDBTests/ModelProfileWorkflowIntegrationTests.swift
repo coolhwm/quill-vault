@@ -11,7 +11,7 @@ struct ModelProfileWorkflowIntegrationTests {
   @Test("The real workflow persists a new profile and its Keychain credential")
   func persistsProfileAndCredential() async throws {
     let databaseURL = FileManager.default.temporaryDirectory
-      .appending(path: "model-profile-integration-\(UUID().uuidString)")
+      .appending(path: "model profile integration-\(UUID().uuidString)")
       .appending(path: "profiles.sqlite")
     let service = "com.coolhwm.Quillvault.tests.\(UUID().uuidString)"
     let reference = ModelCredentialReference(rawValue: UUID())

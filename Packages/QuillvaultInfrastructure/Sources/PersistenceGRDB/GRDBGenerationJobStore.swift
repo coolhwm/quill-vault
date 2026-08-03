@@ -20,7 +20,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       var configuration = Configuration()
       configuration.foreignKeysEnabled = true
       configuration.busyMode = .timeout(5)
-      let pool = try DatabasePool(path: databaseURL.path(), configuration: configuration)
+      let pool = try DatabasePool(path: databaseURL.path, configuration: configuration)
       var migrator = DatabaseMigrator()
       migrator.registerMigration("v1_create_generation_jobs") { database in
         try database.create(table: "generation_job") { table in
