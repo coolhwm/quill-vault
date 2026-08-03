@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A41C0N0000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A41C0N0000000000000001 /* Assets.xcassets */; };
 		1DF2DA6D4AEE888B0F4C18BE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
 		16AC7100B4F843E8A2C9D101 /* ActionButtonShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AC7100B4F843E8A2C9D102 /* ActionButtonShortcut.swift */; };
 		16AC7100B4F843E8A2C9D103 /* ActionButtonFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 16AC7100B4F843E8A2C9D104 /* ActionButtonFeature */; };
@@ -37,6 +38,7 @@
 		D86E7933698DE2B3E9DE4FDF /* RootNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE2F917E9201A3D368EC4B6 /* RootNavigationUITests.swift */; };
 		E6F3A3EFA8EF96C4809EF56E /* GRDB-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */; };
 		F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */; };
+		F38PROFILE00000000000001 /* ProfileFeature in Frameworks */ = {isa = PBXBuildFile; productRef = F38PROFILE00000000000002 /* ProfileFeature */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A41C0N0000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		02D47DA788E214C5FF1935ED /* Quillvault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Quillvault.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		16AC7100B4F843E8A2C9D102 /* ActionButtonShortcut.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ActionButtonShortcut.swift; sourceTree = "<group>"; };
 		07DD9DE903D6014F01C42586 /* AppRouter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
@@ -87,6 +90,7 @@
 				93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */,
 				27BFBAC4E2E59E92A319ADF7 /* HomeFeature in Frameworks */,
 				F37E50401E3A957B9AC5946E /* MeetingsFeature in Frameworks */,
+				F38PROFILE00000000000001 /* ProfileFeature in Frameworks */,
 				82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */,
 				B5DCFE6E3E1CBF5264D9E033 /* DesignSystem in Frameworks */,
 				64277C4B607361AA929BEFEA /* Application in Frameworks */,
@@ -185,6 +189,7 @@
 			children = (
 				8421122B9D6E4EFC86D8AC99 /* InfoPlist.xcstrings */,
 				E8A9F004A504866AB6F9E7AD /* Localizable.xcstrings */,
+				A41C0N0000000000000001 /* Assets.xcassets */,
 				DFDAB1A67AC8A48D36FDA0A5 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
@@ -211,6 +216,7 @@
 				9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */,
 				1F77943C5C19E39633AD0355 /* HomeFeature */,
 				62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */,
+				F38PROFILE00000000000002 /* ProfileFeature */,
 				AB1DFCA2DF85450E6929AFAC /* SettingsFeature */,
 				721031C655B87E518827D0EC /* DesignSystem */,
 				D5729DFB800F95B2F3EFB536 /* Application */,
@@ -286,6 +292,7 @@
 			files = (
 				A3181EAC5B3B4EB29B0B39AA /* InfoPlist.xcstrings in Resources */,
 				961AD04F2D47CD0277CD1B68 /* Localizable.xcstrings in Resources */,
+				A41C0N0000000000000002 /* Assets.xcassets in Resources */,
 				BFF0CE1F0F661A113965E826 /* PrivacyInfo.xcprivacy in Resources */,
 				E6F3A3EFA8EF96C4809EF56E /* GRDB-LICENSE.txt in Resources */,
 			);
@@ -662,6 +669,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "Packages/QuillvaultFeatures" */;
 			productName = SettingsFeature;
+		};
+		F38PROFILE00000000000002 /* ProfileFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E13783A1F14E4808E86924 /* XCLocalSwiftPackageReference "Packages/QuillvaultFeatures" */;
+			productName = ProfileFeature;
 		};
 		D5729DFB800F95B2F3EFB536 /* Application */ = {
 			isa = XCSwiftPackageProductDependency;

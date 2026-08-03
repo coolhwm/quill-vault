@@ -66,8 +66,9 @@ public struct HomeView: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
-      Text("Quillvault")
+      Text("brand.name")
         .font(.largeTitle.bold())
+        .accessibilityIdentifier("home.brand")
       Text("home.subtitle")
         .font(.title3)
         .foregroundStyle(.secondary)

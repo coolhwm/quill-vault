@@ -16,7 +16,9 @@ final class RootNavigationUITests: XCTestCase {
     app.tabBars.buttons["Minutes"].tap()
     XCTAssertTrue(screen("minutes.screen").waitForExistence(timeout: 2))
 
-    app.tabBars.buttons["Settings"].tap()
+    app.tabBars.buttons["Me"].tap()
+    XCTAssertTrue(screen("profile.screen").waitForExistence(timeout: 2))
+    app.buttons["profile.settings"].tap()
     XCTAssertTrue(screen("settings.screen").waitForExistence(timeout: 2))
 
     app.tabBars.buttons["Home"].tap()
@@ -30,7 +32,8 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertEqual(app.tabBars.buttons.count, 3)
     XCTAssertTrue(app.tabBars.buttons["首页"].isHittable)
     XCTAssertTrue(app.tabBars.buttons["纪要"].isHittable)
-    XCTAssertTrue(app.tabBars.buttons["设置"].isHittable)
+    XCTAssertTrue(app.tabBars.buttons["我的"].isHittable)
+    XCTAssertTrue(app.staticTexts["墨匣"].waitForExistence(timeout: 2))
   }
 
   func testDarkAppearanceAndAccessibilityTextKeepNavigationUsable() {
@@ -48,7 +51,7 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertEqual(app.tabBars.buttons.count, 3)
     XCTAssertTrue(app.tabBars.buttons["Home"].isHittable)
     XCTAssertTrue(app.tabBars.buttons["Minutes"].isHittable)
-    XCTAssertTrue(app.tabBars.buttons["Settings"].isHittable)
+    XCTAssertTrue(app.tabBars.buttons["Me"].isHittable)
   }
 
   func testRecordingNoticeStartStatusAndStopAreAccessible() {
@@ -141,7 +144,10 @@ final class RootNavigationUITests: XCTestCase {
       extraArguments: ["-ui-test-model-profiles"]
     )
 
-    app.tabBars.buttons["Settings"].tap()
+    app.tabBars.buttons["Me"].tap()
+    XCTAssertTrue(screen("profile.screen").waitForExistence(timeout: 2))
+    app.buttons["profile.settings"].tap()
+    XCTAssertTrue(screen("settings.screen").waitForExistence(timeout: 2))
     XCTAssertTrue(app.staticTexts["Fast"].waitForExistence(timeout: 2))
     app.buttons["Model actions"].tap()
     app.buttons["Test Connection"].tap()

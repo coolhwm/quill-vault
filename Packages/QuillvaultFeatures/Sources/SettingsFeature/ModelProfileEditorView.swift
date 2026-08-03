@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ModelProfileEditorView: View {
   @Environment(\.dismiss) private var dismiss
+  @State private var selectedPresetID: String
   @State private var name: String
   @State private var baseURL: String
   @State private var modelName: String
@@ -14,6 +15,7 @@ struct ModelProfileEditorView: View {
 
   private let profile: ModelProfile?
   private let onSave: (ModelProfileDraft) async throws -> Void
+  private let presets = ModelProviderCatalog.all
 
   init(
     profile: ModelProfile?,
@@ -21,19 +23,49 @@ struct ModelProfileEditorView: View {
   ) {
     self.profile = profile
     self.onSave = onSave
-    _name = State(initialValue: profile?.name ?? "")
-    _baseURL = State(
-      initialValue: profile?.baseURL.absoluteString ?? "https://"
+    let matched = profile.flatMap {
+      ModelProviderCatalog.matchingPreset(baseURL: $0.baseURL)
+    }
+    _selectedPresetID = State(
+      initialValue: matched?.id ?? ModelProviderCatalog.customID
     )
-    _modelName = State(initialValue: profile?.model ?? "")
+    _name = State(initialValue: profile?.name ?? matched?.displayName ?? "")
+    _baseURL = State(
+      initialValue: profile?.baseURL.absoluteString
+        ?? matched?.defaultBaseURL.absoluteString
+        ?? "https://"
+    )
+    _modelName = State(
+      initialValue: profile?.model ?? matched?.recommendedModels.first ?? ""
+    )
     _usesStreaming = State(
-      initialValue: profile?.parameters.usesStreaming ?? true
+      initialValue: profile?.parameters.usesStreaming
+        ?? matched?.supportsStreaming
+        ?? true
     )
   }
 
   var body: some View {
     NavigationStack {
       Form {
+        Section("settings.models.editor.provider") {
+          Picker("settings.models.editor.provider", selection: $selectedPresetID) {
+            Text("settings.models.editor.provider.custom")
+              .tag(ModelProviderCatalog.customID)
+            ForEach(presets) { preset in
+              Text(preset.displayName).tag(preset.id)
+            }
+          }
+          .accessibilityIdentifier("settings.models.editor.provider")
+          .onChange(of: selectedPresetID) { _, newValue in
+            applyPreset(id: newValue)
+          }
+          if let preset = ModelProviderCatalog.preset(id: selectedPresetID) {
+            Text(preset.configurationHint)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
+        }
         Section("settings.models.editor.profile") {
           TextField("settings.models.editor.name", text: $name)
             .accessibilityIdentifier("settings.models.editor.name")
@@ -46,6 +78,19 @@ struct ModelProfileEditorView: View {
             Text("settings.models.editor.base_url_hint")
               .font(.footnote)
               .foregroundStyle(.secondary)
+            if let models = ModelProviderCatalog.preset(id: selectedPresetID)?
+              .recommendedModels, !models.isEmpty
+            {
+              Picker("settings.models.editor.model", selection: $modelName) {
+                ForEach(models, id: \.self) { model in
+                  Text(model).tag(model)
+                }
+                if !models.contains(modelName), !modelName.isEmpty {
+                  Text(modelName).tag(modelName)
+                }
+              }
+              .accessibilityIdentifier("settings.models.editor.model.preset")
+            }
             TextField("settings.models.editor.model", text: $modelName)
               .textInputAutocapitalization(.never)
               .autocorrectionDisabled(true)
@@ -110,6 +155,22 @@ struct ModelProfileEditorView: View {
     profile == nil
       ? "settings.models.editor.add.title"
       : "settings.models.editor.edit.title"
+  }
+
+  private func applyPreset(id: String) {
+    guard let preset = ModelProviderCatalog.preset(id: id) else {
+      return
+    }
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      || presets.contains(where: { $0.displayName == name })
+    {
+      name = preset.displayName
+    }
+    baseURL = preset.defaultBaseURL.absoluteString
+    if let first = preset.recommendedModels.first {
+      modelName = first
+    }
+    usesStreaming = preset.supportsStreaming
   }
 
   private func save() {

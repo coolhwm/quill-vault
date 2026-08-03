@@ -1541,6 +1541,111 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要已过期" } }
       }
     },
+    "brand.name" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "墨匣" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "墨匣" } }
+      }
+    },
+    "tab.profile" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Me" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我的" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "我的" } }
+      }
+    },
+    "profile.navigation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Me" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我的" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "我的" } }
+      }
+    },
+    "profile.stats.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local usage" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地使用统计" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "本地使用統計" } }
+      }
+    },
+    "profile.stats.loading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading stats…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在加载统计…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在載入統計…" } }
+      }
+    },
+    "profile.stats.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stats are temporarily unavailable." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "统计暂时不可用。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "統計暫時不可用。" } }
+      }
+    },
+    "profile.stats.meetings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meetings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议次数" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "會議次數" } }
+      }
+    },
+    "profile.stats.total_duration" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Total duration" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总时长" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "總時長" } }
+      }
+    },
+    "profile.stats.month_meetings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This month" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本月会议" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "本月會議" } }
+      }
+    },
+    "profile.stats.month_duration" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This month duration" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本月时长" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "本月時長" } }
+      }
+    },
+    "profile.heatmap.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Activity" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "活跃度" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "活躍度" } }
+      }
+    },
+    "profile.heatmap.caption" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Daily meeting duration (last 12 weeks)" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "近 12 周每日会议时长" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "近 12 週每日會議時長" } }
+      }
+    },
+    "profile.settings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設定" } }
+      }
+    },
+    "settings.models.editor.provider" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Provider" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "厂商" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "廠商" } }
+      }
+    },
+    "settings.models.editor.provider.custom" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自定义" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自訂" } }
+      }
+    },
     "tab.home" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },

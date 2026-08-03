@@ -23,6 +23,7 @@ struct QuillvaultApp: App {
         router: compositionRoot.router,
         recordingModel: compositionRoot.recordingModel,
         meetingsModel: compositionRoot.meetingsModel,
+        profileModel: compositionRoot.profileModel,
         settingsModel: compositionRoot.settingsModel,
         lifecycleCoordinator: compositionRoot.lifecycleCoordinator
       )

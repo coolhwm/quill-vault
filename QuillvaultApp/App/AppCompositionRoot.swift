@@ -9,6 +9,7 @@ import MeetingsFeature
 import ModelServices
 import Observation
 import PersistenceGRDB
+import ProfileFeature
 import SettingsFeature
 import SpeechTranscription
 
@@ -18,6 +19,7 @@ final class AppCompositionRoot {
   let router: AppRouter
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
+  let profileModel: ProfileModel
   let settingsModel: SettingsModel
   let lifecycleCoordinator: AppLifecycleCoordinator
   let actionButtonCoordinator: ActionButtonRecordingCoordinator
@@ -117,6 +119,7 @@ final class AppCompositionRoot {
       modelProfiles: resolvedModelProfiles,
       diagnostics: diagnostics.useCase
     )
+    profileModel = ProfileModel(library: resolvedMeetingLibrary)
   }
 
   private static func makeMeetingLibrary(

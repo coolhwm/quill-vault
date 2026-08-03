@@ -1,6 +1,7 @@
 import AppNavigation
 import HomeFeature
 import MeetingsFeature
+import ProfileFeature
 import SettingsFeature
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct AppRootView: View {
   @Bindable var router: AppRouter
   let recordingModel: HomeRecordingModel
   let meetingsModel: MeetingsModel
+  let profileModel: ProfileModel
   let settingsModel: SettingsModel
   let lifecycleCoordinator: AppLifecycleCoordinator
 
@@ -33,12 +35,12 @@ struct AppRootView: View {
       .tag(AppTab.minutes)
 
       NavigationStack {
-        SettingsView(model: settingsModel)
+        ProfileView(model: profileModel, settingsModel: settingsModel)
       }
       .tabItem {
-        Label("tab.settings", systemImage: AppTab.settings.systemImage)
+        Label("tab.profile", systemImage: AppTab.profile.systemImage)
       }
-      .tag(AppTab.settings)
+      .tag(AppTab.profile)
     }
     .tint(.accentColor)
     .preferredColorScheme(interfaceStyleOverride)
@@ -49,7 +51,8 @@ struct AppRootView: View {
           await recordingModel.refreshDirectory()
         case .minutes:
           await meetingsModel.load()
-        case .settings:
+        case .profile:
+          await profileModel.load()
           await settingsModel.load()
         }
       }

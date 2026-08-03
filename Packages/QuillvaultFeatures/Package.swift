@@ -15,6 +15,7 @@ let package = Package(
     .library(name: "AppNavigation", targets: ["AppNavigation"]),
     .library(name: "HomeFeature", targets: ["HomeFeature"]),
     .library(name: "MeetingsFeature", targets: ["MeetingsFeature"]),
+    .library(name: "ProfileFeature", targets: ["ProfileFeature"]),
     .library(name: "SettingsFeature", targets: ["SettingsFeature"]),
   ],
   dependencies: [
@@ -45,6 +46,15 @@ let package = Package(
         .product(name: "Domain", package: "QuillvaultCore"),
       ],
       resources: [.process("Resources")]
+    ),
+    .target(
+      name: "ProfileFeature",
+      dependencies: [
+        "SettingsFeature",
+        .product(name: "DesignSystem", package: "QuillvaultDesignSystem"),
+        .product(name: "Application", package: "QuillvaultCore"),
+        .product(name: "Domain", package: "QuillvaultCore"),
+      ]
     ),
     .target(
       name: "SettingsFeature",
@@ -85,6 +95,14 @@ let package = Package(
       name: "SettingsFeatureTests",
       dependencies: [
         "SettingsFeature",
+        .product(name: "Application", package: "QuillvaultCore"),
+        .product(name: "Domain", package: "QuillvaultCore"),
+      ]
+    ),
+    .testTarget(
+      name: "ProfileFeatureTests",
+      dependencies: [
+        "ProfileFeature",
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),
       ]

@@ -5,7 +5,7 @@ import Testing
 struct AppTabTests {
   @Test("MVP exposes exactly the three product areas in their scan order")
   func exposesProductAreas() {
-    #expect(AppTab.allCases == [.home, .minutes, .settings])
+    #expect(AppTab.allCases == [.home, .minutes, .profile])
   }
 
   @Test("Each product area has stable navigation and accessibility metadata")
@@ -14,7 +14,7 @@ struct AppTabTests {
     #expect(AppTab.home.systemImage == "house")
     #expect(AppTab.minutes.id == "minutes")
     #expect(AppTab.minutes.systemImage == "doc.text")
-    #expect(AppTab.settings.id == "settings")
-    #expect(AppTab.settings.systemImage == "gearshape")
+    #expect(AppTab.profile.id == "profile")
+    #expect(AppTab.profile.systemImage == "person.crop.circle")
   }
 }

@@ -1,7 +1,7 @@
 public enum AppTab: String, CaseIterable, Hashable, Identifiable, Sendable {
   case home
   case minutes
-  case settings
+  case profile
 
   public var id: String { rawValue }
 
@@ -11,8 +11,8 @@ public enum AppTab: String, CaseIterable, Hashable, Identifiable, Sendable {
       "house"
     case .minutes:
       "doc.text"
-    case .settings:
-      "gearshape"
+    case .profile:
+      "person.crop.circle"
     }
   }
 }
