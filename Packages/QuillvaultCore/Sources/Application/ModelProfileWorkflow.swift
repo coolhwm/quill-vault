@@ -46,15 +46,10 @@ public actor ModelProfileWorkflow:
     guard !name.isEmpty else {
       throw ModelProfileWorkflowError.invalidName
     }
-    guard draft.baseURL.scheme?.lowercased() == "https",
-      draft.baseURL.host != nil
-    else {
-      throw ModelProfileWorkflowError.invalidBaseURL
-    }
-    let endpointPath = draft.baseURL.path
-      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    guard endpointPath.hasSuffix("chat/completions") else {
-      throw ModelProfileWorkflowError.invalidEndpoint
+    if let endpointError = ModelProfileValidation.endpointError(
+      for: draft.baseURL
+    ) {
+      throw endpointError
     }
     let model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !model.isEmpty else {
@@ -102,7 +97,9 @@ public actor ModelProfileWorkflow:
       }
       throw error
     }
-    if try await profiles.currentProfileID() == profile.id,
+    if existing != nil,
+      let currentProfileID = try? await profiles.currentProfileID(),
+      currentProfileID == profile.id,
       !profile.isUsable
     {
       try await profiles.setCurrentProfileID(nil)

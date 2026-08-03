@@ -72,3 +72,21 @@ public enum ModelProfileWorkflowError: Error, Equatable, Sendable {
   case automaticGenerationDisclosureRequired
   case deletionConfirmationRequired
 }
+
+public enum ModelProfileValidation {
+  public static func endpointError(
+    for baseURL: URL
+  ) -> ModelProfileWorkflowError? {
+    guard baseURL.scheme?.lowercased() == "https",
+      baseURL.host != nil
+    else {
+      return .invalidBaseURL
+    }
+    let endpointPath = baseURL.path
+      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    guard endpointPath.hasSuffix("chat/completions") else {
+      return .invalidEndpoint
+    }
+    return nil
+  }
+}

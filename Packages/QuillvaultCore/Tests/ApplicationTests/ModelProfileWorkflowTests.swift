@@ -25,6 +25,67 @@ struct ModelProfileWorkflowTests {
     }
   }
 
+  @Test("A new profile remains saved when current selection cannot be read")
+  func savesNewProfileBeforeSelectionFailure() async throws {
+    let profiles = ModelProfileStoreStub(
+      currentProfileReadError: ModelProfileStoreError.unavailable
+    )
+    let workflow = ModelProfileWorkflow(
+      profiles: profiles,
+      credentials: ModelCredentialStoreStub(),
+      provider: AIProviderStub()
+    )
+
+    let profile = try await workflow.save(
+      ModelProfileDraft(
+        name: "Primary",
+        baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
+        model: "minutes-model",
+        apiKey: "secret"
+      )
+    )
+
+    #expect(try await profiles.loadAll().contains(where: { $0.id == profile.id }))
+  }
+
+  @Test("An existing profile remains saved when current selection cannot be read")
+  func savesExistingProfileBeforeSelectionFailure() async throws {
+    let id = ModelProfileID(rawValue: UUID())
+    let reference = ModelCredentialReference(rawValue: UUID())
+    let existing = ModelProfile(
+      id: id,
+      name: "Primary",
+      baseURL: URL(string: "https://api.example.com/v1/chat/completions")!,
+      model: "minutes-model",
+      credentialReference: reference,
+      isUsable: true
+    )
+    let profiles = ModelProfileStoreStub(
+      profiles: [existing],
+      currentID: id,
+      currentProfileReadError: ModelProfileStoreError.unavailable
+    )
+    let workflow = ModelProfileWorkflow(
+      profiles: profiles,
+      credentials: ModelCredentialStoreStub(),
+      provider: AIProviderStub()
+    )
+
+    let updated = try await workflow.save(
+      ModelProfileDraft(
+        id: id,
+        name: "Primary",
+        baseURL: existing.baseURL,
+        model: "minutes-model-v2",
+        credentialReference: reference,
+        apiKey: nil
+      )
+    )
+
+    #expect(updated.model == "minutes-model-v2")
+    #expect(try await profiles.loadAll().first?.model == "minutes-model-v2")
+  }
+
   @Test("Multiple named profiles can be saved and one selected without exposing keys")
   func savesAndSelectsProfiles() async throws {
     let profiles = ModelProfileStoreStub()
@@ -237,6 +298,17 @@ private actor ModelProfileStoreStub: ModelProfileStore {
   private var profiles: [ModelProfile] = []
   private var currentID: ModelProfileID?
   private var automaticGeneration = AutomaticGenerationPreferences()
+  private let currentProfileReadError: ModelProfileStoreError?
+
+  init(
+    profiles: [ModelProfile] = [],
+    currentID: ModelProfileID? = nil,
+    currentProfileReadError: ModelProfileStoreError? = nil
+  ) {
+    self.profiles = profiles
+    self.currentID = currentID
+    self.currentProfileReadError = currentProfileReadError
+  }
 
   func loadAll() async throws -> [ModelProfile] {
     profiles
@@ -251,7 +323,10 @@ private actor ModelProfileStoreStub: ModelProfileStore {
   }
 
   func currentProfileID() async throws -> ModelProfileID? {
-    currentID
+    if let currentProfileReadError {
+      throw currentProfileReadError
+    }
+    return currentID
   }
 
   func setCurrentProfileID(_ id: ModelProfileID?) async throws {

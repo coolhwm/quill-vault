@@ -84,6 +84,7 @@ let package = Package(
       name: "PersistenceGRDBTests",
       dependencies: [
         "PersistenceGRDB",
+        "ModelServices",
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),
         .product(name: "GRDB", package: "GRDB.swift"),

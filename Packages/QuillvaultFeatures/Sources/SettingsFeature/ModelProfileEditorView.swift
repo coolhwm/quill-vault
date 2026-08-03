@@ -123,6 +123,10 @@ struct ModelProfileEditorView: View {
       saveErrorMessage = String(localized: "settings.models.editor.invalid_url")
       return
     }
+    if let endpointError = ModelProfileValidation.endpointError(for: url) {
+      saveErrorMessage = message(for: endpointError)
+      return
+    }
     let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedModel.isEmpty else {
       saveErrorMessage = String(localized: "settings.models.editor.invalid_model")
