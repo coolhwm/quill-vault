@@ -901,6 +901,19 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录已就绪，可以开始生成纪要。" } }
       }
     },
+    "minutes.generation.progress %lld %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chunk %lld of %lld" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "第 %lld/%lld 段" } }
+      }
+    },
+    "minutes.generation.queued" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Waiting in the generation queue." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已进入纪要生成队列，前序任务完成后自动开始。" } }
+      }
+    },
     "minutes.generation.paused" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation paused" } },

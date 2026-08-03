@@ -94,6 +94,44 @@ struct GRDBGenerationJobStoreTests {
     try await store.close()
     removeDatabase(at: databaseURL)
   }
+
+  @Test("Caps the durable generation queue at twenty unfinished jobs")
+  func queueCapacityIsBounded() async throws {
+    let databaseURL = temporaryGenerationDatabaseURL()
+    let store = try GRDBGenerationJobStore.open(at: databaseURL)
+    let source = GenerationStoreFixture()
+
+    for index in 0..<20 {
+      try await store.create(
+        GenerationJob(
+          id: UUID(),
+          meetingID: MeetingID(rawValue: UUID()),
+          transcriptRevisionID: source.job.transcriptRevisionID,
+          transcriptFingerprint: source.job.transcriptFingerprint,
+          modelProfile: source.job.modelProfile,
+          createdAt: source.job.createdAt.addingTimeInterval(Double(index)),
+          updatedAt: source.job.updatedAt.addingTimeInterval(Double(index))
+        )
+      )
+    }
+
+    await #expect(throws: GenerationJobStoreError.queueFull) {
+      try await store.create(
+        GenerationJob(
+          id: UUID(),
+          meetingID: MeetingID(rawValue: UUID()),
+          transcriptRevisionID: source.job.transcriptRevisionID,
+          transcriptFingerprint: source.job.transcriptFingerprint,
+          modelProfile: source.job.modelProfile,
+          createdAt: source.job.createdAt,
+          updatedAt: source.job.updatedAt
+        )
+      )
+    }
+    #expect((try await store.resumableJobs()).count == 20)
+    try await store.close()
+    removeDatabase(at: databaseURL)
+  }
 }
 
 private struct GenerationStoreFixture {

@@ -69,6 +69,20 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
           table.uniqueKey(["job_id", "kind", "step_index"])
         }
       }
+      migrator.registerMigration("v2_generation_pipeline") { database in
+        try database.alter(table: "generation_job") { table in
+          table.add(column: "chunk_count", .integer)
+            .notNull()
+            .defaults(to: 1)
+          table.add(column: "completed_chunk_count", .integer)
+            .notNull()
+            .defaults(to: 0)
+          table.add(column: "retry_attempt", .integer)
+            .notNull()
+            .defaults(to: 0)
+          table.add(column: "next_retry_at", .double)
+        }
+      }
       try migrator.migrate(pool)
       return GRDBGenerationJobStore(databasePool: pool)
     } catch {
@@ -79,6 +93,14 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
   public func create(_ job: GenerationJob) async throws {
     do {
       try await databasePool.write { database in
+        let activeCount =
+          try Int.fetchOne(
+            database,
+            sql: "SELECT COUNT(*) FROM generation_job WHERE state <> 'completed'"
+          ) ?? 0
+        guard activeCount < 20 else {
+          throw GenerationJobStoreError.queueFull
+        }
         try Self.insert(job, in: database)
       }
     } catch let error as GenerationJobStoreError {
@@ -263,10 +285,11 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
             profile_model, temperature, maximum_output_tokens,
             uses_streaming, credential_reference, prompt_version,
             schema_version, chunk_plan_version, generation_number,
-            total_steps, completed_step_count, progress, stage, state,
-            pause_reason, created_at, updated_at, completed_at
+            chunk_count, total_steps, completed_step_count,
+            completed_chunk_count, progress, retry_attempt, next_retry_at,
+            stage, state, pause_reason, created_at, updated_at, completed_at
           )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
       arguments: Self.arguments(for: job)
     )
@@ -285,13 +308,19 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
             profile_model, temperature, maximum_output_tokens,
             uses_streaming, credential_reference, prompt_version,
             schema_version, chunk_plan_version, generation_number,
-            total_steps, completed_step_count, progress, stage, state,
-            pause_reason, created_at, updated_at, completed_at
+            chunk_count, total_steps, completed_step_count,
+            completed_chunk_count, progress, retry_attempt, next_retry_at,
+            stage, state, pause_reason, created_at, updated_at, completed_at
           )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(job_id) DO UPDATE SET
+          chunk_count = excluded.chunk_count,
+          total_steps = excluded.total_steps,
           completed_step_count = excluded.completed_step_count,
+          completed_chunk_count = excluded.completed_chunk_count,
           progress = excluded.progress,
+          retry_attempt = excluded.retry_attempt,
+          next_retry_at = excluded.next_retry_at,
           stage = excluded.stage,
           state = excluded.state,
           pause_reason = excluded.pause_reason,
@@ -319,9 +348,13 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       job.schemaVersion,
       job.chunkPlanVersion,
       job.generationNumber,
+      job.chunkCount,
       job.totalSteps,
       job.completedStepCount,
+      job.completedChunkCount,
       job.progress,
+      job.retryAttempt,
+      job.nextRetryAt?.timeIntervalSince1970,
       job.stage.rawValue,
       job.state.rawValue,
       job.pauseReason?.rawValue,
@@ -372,6 +405,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       schemaVersion: row["schema_version"],
       chunkPlanVersion: row["chunk_plan_version"],
       generationNumber: row["generation_number"],
+      chunkCount: row["chunk_count"],
       totalSteps: row["total_steps"],
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -380,6 +414,10 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       stage: stage,
       progress: row["progress"],
       completedStepCount: row["completed_step_count"],
+      completedChunkCount: row["completed_chunk_count"],
+      retryAttempt: row["retry_attempt"],
+      nextRetryAt: (row["next_retry_at"] as Double?)
+        .map(Date.init(timeIntervalSince1970:)),
       pauseReason: pauseRaw.flatMap(GenerationPauseReason.init(rawValue:))
     )
   }
@@ -393,7 +431,7 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
       sql: """
         SELECT * FROM generation_step
         WHERE job_id = ?
-        ORDER BY step_index ASC
+        ORDER BY kind ASC, step_index ASC
         """,
       arguments: [jobID.uuidString]
     ).map { row in

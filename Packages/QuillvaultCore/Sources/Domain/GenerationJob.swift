@@ -10,6 +10,8 @@ public enum GenerationJobState: String, Codable, CaseIterable, Sendable {
 public enum GenerationStage: String, Codable, CaseIterable, Sendable {
   case pending
   case summarizing
+  case synthesizing
+  case normalizing
   case publishing
   case completed
 }
@@ -24,12 +26,19 @@ public enum GenerationPauseReason: String, Codable, CaseIterable, Sendable {
   case retryableRequest
   case networkUnavailable
   case invalidResponse
+  case retryExhausted
+  case requestTooLarge
   case sourceChanged
   case publicationFailed
   case unavailable
 }
 
 public enum GenerationStepKind: String, Codable, CaseIterable, Sendable {
+  case chunkSummary
+  case synthesis
+  case normalization
+  case publication
+  // Kept for jobs created by the first MVP generation implementation.
   case summary
 }
 
@@ -43,6 +52,7 @@ public struct GenerationJob: Codable, Equatable, Sendable {
   public let schemaVersion: String
   public let chunkPlanVersion: String
   public let generationNumber: Int
+  public let chunkCount: Int
   public let totalSteps: Int
   public let createdAt: Date
   public var updatedAt: Date
@@ -51,6 +61,9 @@ public struct GenerationJob: Codable, Equatable, Sendable {
   public var stage: GenerationStage
   public var progress: Int
   public var completedStepCount: Int
+  public var completedChunkCount: Int
+  public var retryAttempt: Int
+  public var nextRetryAt: Date?
   public var pauseReason: GenerationPauseReason?
 
   public init(
@@ -63,6 +76,7 @@ public struct GenerationJob: Codable, Equatable, Sendable {
     schemaVersion: String = "v1",
     chunkPlanVersion: String = "v1",
     generationNumber: Int = 1,
+    chunkCount: Int = 1,
     totalSteps: Int = 1,
     createdAt: Date,
     updatedAt: Date,
@@ -71,6 +85,9 @@ public struct GenerationJob: Codable, Equatable, Sendable {
     stage: GenerationStage = .pending,
     progress: Int = 0,
     completedStepCount: Int = 0,
+    completedChunkCount: Int = 0,
+    retryAttempt: Int = 0,
+    nextRetryAt: Date? = nil,
     pauseReason: GenerationPauseReason? = nil
   ) {
     self.id = id
@@ -82,6 +99,7 @@ public struct GenerationJob: Codable, Equatable, Sendable {
     self.schemaVersion = schemaVersion
     self.chunkPlanVersion = chunkPlanVersion
     self.generationNumber = generationNumber
+    self.chunkCount = max(1, chunkCount)
     self.totalSteps = max(1, totalSteps)
     self.createdAt = createdAt
     self.updatedAt = updatedAt
@@ -94,6 +112,12 @@ public struct GenerationJob: Codable, Equatable, Sendable {
       max(completedStepCount, 0),
       max(1, totalSteps)
     )
+    self.completedChunkCount = min(
+      max(completedChunkCount, 0),
+      max(1, chunkCount)
+    )
+    self.retryAttempt = max(0, retryAttempt)
+    self.nextRetryAt = nextRetryAt
     self.pauseReason = pauseReason
   }
 
@@ -153,6 +177,7 @@ public struct GenerationSnapshot: Equatable, Sendable {
 public enum GenerationJobStoreError: Error, Equatable, Sendable {
   case unavailable
   case conflict
+  case queueFull
   case invalidData
   case notFound
 }

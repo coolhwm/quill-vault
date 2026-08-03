@@ -7,6 +7,7 @@ import Foundation
 
 public struct OpenAICompatibleProvider: AIProvider {
   private let session: URLSession
+  private static let maximumRetryAfterSeconds: TimeInterval = 300
 
   public init(session: URLSession = .shared) {
     self.session = session
@@ -73,7 +74,8 @@ public struct OpenAICompatibleProvider: AIProvider {
               MessageDTO(role: "system", content: request.systemPrompt),
               MessageDTO(role: "user", content: request.userPrompt),
             ],
-            streaming: profile.parameters.usesStreaming
+            streaming: profile.parameters.usesStreaming,
+            idempotencyKey: request.idempotencyKey
           )
           if profile.parameters.usesStreaming {
             try await stream(
@@ -133,7 +135,8 @@ public struct OpenAICompatibleProvider: AIProvider {
     profile: ModelProfileSnapshot,
     apiKey: String,
     messages: [MessageDTO],
-    streaming: Bool
+    streaming: Bool,
+    idempotencyKey: String? = nil
   ) throws -> URLRequest {
     guard profile.baseURL.scheme?.lowercased() == "https" else {
       throw AIProviderError.insecureBaseURL
@@ -145,6 +148,9 @@ public struct OpenAICompatibleProvider: AIProvider {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    if let idempotencyKey {
+      request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+    }
     request.httpBody = try JSONEncoder().encode(
       RequestDTO(
         model: profile.model,
@@ -169,11 +175,16 @@ public struct OpenAICompatibleProvider: AIProvider {
     case 404:
       throw AIProviderError.modelUnavailable
     case 429:
+      if let retryAfter = retryAfterSeconds(from: response) {
+        throw AIProviderError.rateLimitedWithRetryAfter(seconds: retryAfter)
+      }
       throw AIProviderError.rateLimited
     case 408:
       throw AIProviderError.retryableRequest(
         statusCode: response.statusCode
       )
+    case 413:
+      throw AIProviderError.requestTooLarge
     case 500..<600:
       throw AIProviderError.serviceUnavailable(
         statusCode: response.statusCode
@@ -183,6 +194,28 @@ public struct OpenAICompatibleProvider: AIProvider {
         statusCode: response.statusCode
       )
     }
+  }
+
+  private func retryAfterSeconds(
+    from response: HTTPURLResponse
+  ) -> TimeInterval? {
+    guard let value = response.value(forHTTPHeaderField: "Retry-After") else {
+      return nil
+    }
+    if let seconds = TimeInterval(value), seconds.isFinite, seconds >= 0 {
+      return min(Self.maximumRetryAfterSeconds, seconds)
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    guard let date = formatter.date(from: value) else {
+      return nil
+    }
+    return min(
+      Self.maximumRetryAfterSeconds,
+      max(0, date.timeIntervalSinceNow)
+    )
   }
 
   private static func content(from data: Data) throws -> String {

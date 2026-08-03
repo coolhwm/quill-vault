@@ -63,6 +63,11 @@ public struct MeetingGenerationSection: View {
           }
           if let snapshot {
             ProgressView(value: Double(snapshot.job.progress), total: 100)
+            Text(
+              "minutes.generation.progress \(snapshot.job.completedChunkCount) \(snapshot.job.chunkCount)"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
           } else {
             ProgressView()
           }
@@ -83,6 +88,11 @@ public struct MeetingGenerationSection: View {
           }
           Button("minutes.generation.resume", action: resume)
             .buttonStyle(.borderedProminent)
+        }
+      } else if snapshot?.job.state == .pending {
+        VStack(alignment: .leading, spacing: 12) {
+          Text("minutes.generation.queued")
+            .foregroundStyle(.secondary)
         }
       } else {
         VStack(alignment: .leading, spacing: 12) {

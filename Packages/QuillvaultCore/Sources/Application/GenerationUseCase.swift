@@ -23,6 +23,7 @@ public protocol GenerationUseCase: Sendable {
 public enum GenerationWorkflowError: Error, Equatable, Sendable {
   case transcriptNotReady
   case activeJobExists
+  case queueFull
   case jobNotFound
   case profileUnavailable
 }

@@ -8,9 +8,15 @@ public actor GenerationWorkflow: GenerationUseCase {
   private let provider: any AIProvider
   private let now: @Sendable () -> Date
   private let makeJobID: @Sendable () -> UUID
+  private let retryDelayScale: TimeInterval
+  private let jitter: @Sendable (Int) -> TimeInterval
   private var cancelledJobs: Set<UUID> = []
   private var executingJobs: Set<UUID> = []
+  private var activeExecutionJobID: UUID?
+  private var executionContexts: [UUID: GenerationExecutionContext] = [:]
+  private var isDrainingQueue = false
   private var providerTasks: [UUID: Task<String, Error>] = [:]
+  private var retrySleepTasks: [UUID: Task<Void, Error>] = [:]
   private var pendingProfileTasks: Set<ModelProfileTaskReference> = []
 
   public init(
@@ -19,7 +25,11 @@ public actor GenerationWorkflow: GenerationUseCase {
     profiles: any ModelProfileExecutionAccess,
     provider: any AIProvider,
     now: @escaping @Sendable () -> Date = Date.init,
-    makeJobID: @escaping @Sendable () -> UUID = UUID.init
+    makeJobID: @escaping @Sendable () -> UUID = UUID.init,
+    retryDelayScale: TimeInterval = 1,
+    jitter: @escaping @Sendable (Int) -> TimeInterval = { attempt in
+      Double.random(in: 0...(0.25 * pow(2, Double(max(0, attempt - 1)))))
+    }
   ) {
     self.jobs = jobs
     self.assets = assets
@@ -27,6 +37,8 @@ public actor GenerationWorkflow: GenerationUseCase {
     self.provider = provider
     self.now = now
     self.makeJobID = makeJobID
+    self.retryDelayScale = max(0, retryDelayScale)
+    self.jitter = jitter
   }
 
   public func start(
@@ -37,11 +49,19 @@ public actor GenerationWorkflow: GenerationUseCase {
     if try await jobs.activeJob(for: meeting.id) != nil {
       throw GenerationWorkflowError.activeJobExists
     }
+    let queuedJobs = try await jobs.resumableJobs()
+    guard queuedJobs.count < 20 else {
+      throw GenerationWorkflowError.queueFull
+    }
     let transcript = try await assets.loadTranscript(
       in: directory,
       meeting: meeting
     )
     guard !transcript.revision.timeline.segments.isEmpty else {
+      throw GenerationWorkflowError.transcriptNotReady
+    }
+    let chunkPlan = GenerationChunkPlan.make(from: transcript.revision)
+    guard !chunkPlan.chunks.isEmpty else {
       throw GenerationWorkflowError.transcriptNotReady
     }
     let execution: ModelExecutionProfile
@@ -62,7 +82,10 @@ public actor GenerationWorkflow: GenerationUseCase {
       transcriptRevisionID: transcript.revision.id,
       transcriptFingerprint: transcript.revision.contentFingerprint,
       modelProfile: execution.snapshot,
+      chunkPlanVersion: chunkPlan.version,
       generationNumber: previousGeneration + 1,
+      chunkCount: chunkPlan.chunks.count,
+      totalSteps: chunkPlan.chunks.count + 3,
       createdAt: createdAt,
       updatedAt: createdAt
     )
@@ -72,13 +95,24 @@ public actor GenerationWorkflow: GenerationUseCase {
         job.taskReference,
         profileID: job.modelProfile.profileID
       )
-      try await jobs.create(job)
+      do {
+        try await jobs.create(job)
+      } catch GenerationJobStoreError.queueFull {
+        throw GenerationWorkflowError.queueFull
+      }
     } catch {
       await finishTaskWithRetry(job.taskReference)
       pendingProfileTasks.remove(job.taskReference)
       throw error
     }
     pendingProfileTasks.remove(job.taskReference)
+    executionContexts[job.id] = GenerationExecutionContext(
+      directory: directory,
+      meeting: meeting
+    )
+    if activeExecutionJobID != nil {
+      return try await jobs.load(job.id) ?? GenerationSnapshot(job: job)
+    }
     return try await execute(
       job,
       transcript: transcript,
@@ -97,6 +131,26 @@ public actor GenerationWorkflow: GenerationUseCase {
       guard let snapshot = try await jobs.load(jobID) else {
         throw GenerationWorkflowError.jobNotFound
       }
+      guard snapshot.job.meetingID == meeting.id else {
+        throw GenerationWorkflowError.jobNotFound
+      }
+      executionContexts[jobID] = GenerationExecutionContext(
+        directory: directory,
+        meeting: meeting
+      )
+      return snapshot
+    }
+    if let activeExecutionJobID, activeExecutionJobID != jobID {
+      guard let snapshot = try await jobs.load(jobID) else {
+        throw GenerationWorkflowError.jobNotFound
+      }
+      guard snapshot.job.meetingID == meeting.id else {
+        throw GenerationWorkflowError.jobNotFound
+      }
+      executionContexts[jobID] = GenerationExecutionContext(
+        directory: directory,
+        meeting: meeting
+      )
       return snapshot
     }
     cancelledJobs.remove(jobID)
@@ -108,6 +162,10 @@ public actor GenerationWorkflow: GenerationUseCase {
     guard snapshot.job.meetingID == meeting.id else {
       throw GenerationWorkflowError.jobNotFound
     }
+    executionContexts[jobID] = GenerationExecutionContext(
+      directory: directory,
+      meeting: meeting
+    )
     if snapshot.job.state == .completed {
       return snapshot
     }
@@ -178,7 +236,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     }
     guard
       !executingJobs.contains(snapshot.job.id),
-      snapshot.job.state == .pending || snapshot.job.state == .running
+      snapshot.job.state == .running
     else {
       return snapshot
     }
@@ -197,6 +255,7 @@ public actor GenerationWorkflow: GenerationUseCase {
   public func cancel(_ jobID: UUID) async {
     cancelledJobs.insert(jobID)
     providerTasks[jobID]?.cancel()
+    retrySleepTasks[jobID]?.cancel()
     guard let snapshot = try? await jobs.load(jobID) else {
       return
     }
@@ -219,102 +278,390 @@ public actor GenerationWorkflow: GenerationUseCase {
     meeting: MeetingIndexEntry,
     existingSteps: [GenerationStep] = []
   ) async throws -> GenerationSnapshot {
-    let ownsExecutionSlot = !executingJobs.contains(originalJob.id)
-    if ownsExecutionSlot {
-      executingJobs.insert(originalJob.id)
+    if let activeExecutionJobID, activeExecutionJobID != originalJob.id {
+      return GenerationSnapshot(job: originalJob, completedSteps: existingSteps)
     }
+    let ownsExecutionSlot = activeExecutionJobID == nil
+    if ownsExecutionSlot {
+      activeExecutionJobID = originalJob.id
+    }
+    executingJobs.insert(originalJob.id)
     defer {
+      executingJobs.remove(originalJob.id)
       if ownsExecutionSlot {
-        executingJobs.remove(originalJob.id)
+        activeExecutionJobID = nil
+        Task { await self.drainQueuedJobs() }
       }
     }
-    var job = originalJob
-    let reusableStep = existingSteps.first(where: {
-      Self.isReusableSummaryStep($0, for: originalJob)
-    })
-    var steps = reusableStep.map { [$0] } ?? []
-    job.state = .running
-    job.stage = steps.isEmpty ? .summarizing : .publishing
-    job.pauseReason = nil
-    job.updatedAt = now()
-    try await persist(job, step: nil)
-    if cancelledJobs.contains(job.id) || Task.isCancelled {
-      return try await pause(
-        job,
-        reason: .cancelled,
-        completedSteps: steps
+
+    let plan = GenerationChunkPlan.make(from: transcript.revision)
+    // Jobs written by #20 used one full-transcript summary step. Keep those
+    // checkpoints resumable while all newly-created jobs use the pipeline below.
+    if originalJob.totalSteps == 1
+      || existingSteps.contains(where: { $0.kind == .summary })
+    {
+      let hasValidLegacyCheckpoint = existingSteps.contains {
+        Self.isReusableLegacySummaryStep($0, for: originalJob)
+      }
+      if plan.chunks.count == 1 || hasValidLegacyCheckpoint {
+        return try await executeLegacySummary(
+          originalJob,
+          transcript: transcript,
+          execution: execution,
+          in: directory,
+          meeting: meeting,
+          existingSteps: existingSteps
+        )
+      }
+
+      // A v1 job did not persist the plan cardinality. Upgrade an incomplete
+      // long job in memory while retaining its identity and generation number.
+      let migratedJob = GenerationJob(
+        id: originalJob.id,
+        meetingID: originalJob.meetingID,
+        transcriptRevisionID: originalJob.transcriptRevisionID,
+        transcriptFingerprint: originalJob.transcriptFingerprint,
+        modelProfile: originalJob.modelProfile,
+        promptVersion: originalJob.promptVersion,
+        schemaVersion: originalJob.schemaVersion,
+        chunkPlanVersion: plan.version,
+        generationNumber: originalJob.generationNumber,
+        chunkCount: plan.chunks.count,
+        totalSteps: plan.chunks.count + 3,
+        createdAt: originalJob.createdAt,
+        updatedAt: now(),
+        state: .paused,
+        progress: originalJob.progress,
+        completedStepCount: originalJob.completedStepCount,
+        completedChunkCount: originalJob.completedChunkCount,
+        retryAttempt: originalJob.retryAttempt,
+        nextRetryAt: originalJob.nextRetryAt,
+        pauseReason: originalJob.pauseReason
+      )
+      try await persist(migratedJob, step: nil)
+      return try await execute(
+        migratedJob,
+        transcript: transcript,
+        execution: execution,
+        in: directory,
+        meeting: meeting,
+        existingSteps: []
       )
     }
 
-    let output: String
-    if let step = steps.first(where: {
-      $0.kind == .summary
-        && $0.inputFingerprint == job.transcriptFingerprint
-    }) {
-      output = step.output
-    } else {
+    guard
+      plan.version == originalJob.chunkPlanVersion,
+      plan.chunks.count == originalJob.chunkCount
+    else {
+      return try await pause(
+        originalJob,
+        reason: .sourceChanged,
+        completedSteps: []
+      )
+    }
+
+    var job = originalJob
+    var steps = existingSteps.filter {
+      Self.isReusablePipelineStep($0, for: originalJob)
+    }
+    job.state = .running
+    job.pauseReason = nil
+    job.retryAttempt = 0
+    job.nextRetryAt = nil
+    job.stage = .summarizing
+    job.completedChunkCount = max(
+      job.completedChunkCount,
+      min(job.chunkCount, steps.filter { $0.kind == .chunkSummary }.count)
+    )
+    job.completedStepCount = max(
+      job.completedStepCount,
+      min(job.totalSteps, steps.count)
+    )
+    job.updatedAt = now()
+    try await persist(job, step: nil)
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
+    }
+
+    var chunkOutputs: [String] = []
+    for chunk in plan.chunks {
+      if let checkpoint = steps.first(where: {
+        Self.isReusableChunkStep($0, for: job, chunk: chunk)
+      }) {
+        chunkOutputs.append(checkpoint.output)
+        continue
+      }
+
       let request = AIRequest(
         systemPrompt: """
-          You create concise, readable meeting minutes. Return only useful Markdown text. Do not include API keys, local paths, or fenced Mermaid blocks. Missing optional details must not prevent a readable summary.
+          Summarize one meeting transcript segment. Return readable Markdown text only. Preserve important decisions, risks, owners, and open questions. Do not invent details or require a rigid schema.
           """,
         userPrompt: """
-          Summarize this meeting transcript in the same language as the transcript. Include a short title, a concise overview, decisions, action items with an explicit or待确认负责人, and open questions when present. Keep the response readable even if the transcript is short.
+          Summarize this anchored transcript segment in the same language as the source. Keep timestamps when they clarify a decision.
 
-          \(transcript.promptText)
-          """
+          \(chunk.promptText)
+          """,
+        idempotencyKey: GenerationStepID.make(
+          job: job,
+          kind: .chunkSummary,
+          index: chunk.index,
+          inputFingerprint: chunk.inputFingerprint
+        )
       )
+      let output: String
       do {
-        let provider = self.provider
-        let providerTask = Task(priority: nil) {
-          try await Self.collect(
-            provider: provider,
-            request: request,
-            execution: execution
-          )
-        }
-        providerTasks[job.id] = providerTask
-        do {
-          output = try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            return try await providerTask.value
-          } onCancel: {
-            providerTask.cancel()
-          }
-        } catch {
-          providerTasks.removeValue(forKey: job.id)
-          throw error
-        }
-        providerTasks.removeValue(forKey: job.id)
+        output = try await collectWithRetry(
+          request: request,
+          execution: execution,
+          job: &job
+        )
       } catch {
         return try await pause(
           job,
-          reason: cancelledJobs.contains(job.id) || Task.isCancelled
-            ? .cancelled
-            : pauseReason(for: error),
-          completedSteps: steps
-        )
-      }
-      if cancelledJobs.contains(job.id) || Task.isCancelled {
-        return try await pause(
-          job,
-          reason: .cancelled,
+          reason: isCancelled(job.id) ? .cancelled : pauseReason(for: error),
           completedSteps: steps
         )
       }
       guard Self.isMeaningful(output) else {
+        return try await pause(job, reason: .invalidResponse, completedSteps: steps)
+      }
+
+      let progress = Self.summaryProgress(
+        completedChunks: chunk.index + 1,
+        totalChunks: plan.chunks.count
+      )
+      let step = GenerationStep(
+        id: GenerationStepID.make(
+          job: job, kind: .chunkSummary, index: chunk.index,
+          inputFingerprint: chunk.inputFingerprint),
+        jobID: job.id,
+        kind: .chunkSummary,
+        index: chunk.index,
+        inputFingerprint: chunk.inputFingerprint,
+        output: output,
+        progress: progress,
+        completedAt: now()
+      )
+      steps.removeAll { $0.kind == step.kind && $0.index == step.index }
+      steps.append(step)
+      steps.sort { ($0.kind.rawValue, $0.index) < ($1.kind.rawValue, $1.index) }
+      chunkOutputs.append(output)
+      job.completedChunkCount = chunk.index + 1
+      job.completedStepCount = min(job.totalSteps, steps.count)
+      job.progress = max(job.progress, progress)
+      job.stage = .summarizing
+      job.updatedAt = now()
+      try await persist(job, step: step)
+      if isCancelled(job.id) {
+        return try await pause(job, reason: .cancelled, completedSteps: steps)
+      }
+    }
+
+    let summariesFingerprint = GenerationInputFingerprint.make(
+      chunkOutputs.joined(separator: "\n---\n")
+    )
+    var synthesisOutput: String
+    if let checkpoint = steps.first(where: {
+      Self.isReusableStageStep(
+        $0,
+        job: job,
+        kind: .synthesis,
+        index: 0,
+        inputFingerprint: summariesFingerprint,
+        minimumProgress: 90
+      )
+    }) {
+      synthesisOutput = checkpoint.output
+    } else if chunkOutputs.count == 1 {
+      // A one-chunk meeting has nothing to merge; this identity stage keeps
+      // the persisted pipeline shape without charging for a duplicate request.
+      synthesisOutput = chunkOutputs[0]
+      let step = GenerationStep(
+        id: GenerationStepID.make(
+          job: job, kind: .synthesis, index: 0, inputFingerprint: summariesFingerprint),
+        jobID: job.id,
+        kind: .synthesis,
+        index: 0,
+        inputFingerprint: summariesFingerprint,
+        output: synthesisOutput,
+        progress: 90,
+        completedAt: now()
+      )
+      steps.removeAll { $0.kind == step.kind && $0.index == step.index }
+      steps.append(step)
+      job.completedStepCount = min(job.totalSteps, steps.count)
+      job.progress = max(job.progress, 90)
+      job.stage = .synthesizing
+      job.updatedAt = now()
+      try await persist(job, step: step)
+    } else {
+      job.stage = .synthesizing
+      job.progress = max(job.progress, 70)
+      job.updatedAt = now()
+      try await persist(job, step: nil)
+      let request = AIRequest(
+        systemPrompt: """
+          Merge chunk summaries into a coherent meeting minutes draft. Return readable Markdown only. Preserve uncertainty instead of inventing missing facts.
+          """,
+        userPrompt: """
+          Merge these ordered segment summaries into one concise meeting minutes draft in the same language as the source. Include a title, overview, decisions, action items and open questions when present.
+
+          \(chunkOutputs.enumerated().map { "## 第\($0.offset + 1)段\n\($0.element)" }.joined(separator: "\n\n"))
+          """,
+        idempotencyKey: GenerationStepID.make(
+          job: job,
+          kind: .synthesis,
+          index: 0,
+          inputFingerprint: summariesFingerprint
+        )
+      )
+      do {
+        synthesisOutput = try await collectWithRetry(
+          request: request,
+          execution: execution,
+          job: &job
+        )
+      } catch {
         return try await pause(
           job,
-          reason: .invalidResponse,
+          reason: isCancelled(job.id) ? .cancelled : pauseReason(for: error),
           completedSteps: steps
         )
       }
+      guard Self.isMeaningful(synthesisOutput) else {
+        return try await pause(job, reason: .invalidResponse, completedSteps: steps)
+      }
       let step = GenerationStep(
-        id: Self.stepID(
+        id: GenerationStepID.make(
+          job: job, kind: .synthesis, index: 0, inputFingerprint: summariesFingerprint),
+        jobID: job.id,
+        kind: .synthesis,
+        index: 0,
+        inputFingerprint: summariesFingerprint,
+        output: synthesisOutput,
+        progress: 90,
+        completedAt: now()
+      )
+      steps.removeAll { $0.kind == step.kind && $0.index == step.index }
+      steps.append(step)
+      job.completedStepCount = min(job.totalSteps, steps.count)
+      job.progress = max(job.progress, 90)
+      job.updatedAt = now()
+      try await persist(job, step: step)
+    }
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
+    }
+
+    let normalizationFingerprint = GenerationInputFingerprint.make(synthesisOutput)
+    let normalizedOutput: String
+    if let checkpoint = steps.first(where: {
+      Self.isReusableStageStep(
+        $0,
+        job: job,
+        kind: .normalization,
+        index: 0,
+        inputFingerprint: normalizationFingerprint,
+        minimumProgress: 95
+      )
+    }) {
+      normalizedOutput = checkpoint.output
+    } else {
+      normalizedOutput = Self.normalize(synthesisOutput)
+      let step = GenerationStep(
+        id: GenerationStepID.make(
+          job: job, kind: .normalization, index: 0, inputFingerprint: normalizationFingerprint),
+        jobID: job.id,
+        kind: .normalization,
+        index: 0,
+        inputFingerprint: normalizationFingerprint,
+        output: normalizedOutput,
+        progress: 95,
+        completedAt: now()
+      )
+      steps.removeAll { $0.kind == step.kind && $0.index == step.index }
+      steps.append(step)
+      job.completedStepCount = min(job.totalSteps, steps.count)
+      job.progress = max(job.progress, 95)
+      job.stage = .normalizing
+      job.updatedAt = now()
+      try await persist(job, step: step)
+    }
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
+    }
+
+    return try await publish(
+      job,
+      output: normalizedOutput,
+      outputFingerprint: GenerationInputFingerprint.make(normalizedOutput),
+      steps: steps,
+      in: directory,
+      meeting: meeting,
+      transcript: transcript.revision,
+      includePublicationCheckpoint: true
+    )
+  }
+
+  private func executeLegacySummary(
+    _ originalJob: GenerationJob,
+    transcript: GenerationTranscriptSource,
+    execution: ModelExecutionProfile,
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    existingSteps: [GenerationStep]
+  ) async throws -> GenerationSnapshot {
+    var job = originalJob
+    var steps = existingSteps.filter { Self.isReusableLegacySummaryStep($0, for: job) }
+    job.state = .running
+    job.stage = steps.isEmpty ? .summarizing : .publishing
+    job.pauseReason = nil
+    job.retryAttempt = 0
+    job.nextRetryAt = nil
+    job.updatedAt = now()
+    try await persist(job, step: nil)
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
+    }
+
+    let output: String
+    if let checkpoint = steps.first {
+      output = checkpoint.output
+    } else {
+      let request = AIRequest(
+        systemPrompt: """
+          You create concise, readable meeting minutes. Return useful Markdown text only. Missing optional details must not prevent a readable summary.
+          """,
+        userPrompt: """
+          Summarize this meeting transcript in the same language as the transcript. Include a short title, overview, decisions, action items and open questions when present.
+
+          \(transcript.promptText)
+          """,
+        idempotencyKey: GenerationStepID.make(
           job: job,
           kind: .summary,
           index: 0,
           inputFingerprint: job.transcriptFingerprint
-        ),
+        )
+      )
+      do {
+        output = try await collectWithRetry(
+          request: request,
+          execution: execution,
+          job: &job
+        )
+      } catch {
+        return try await pause(
+          job,
+          reason: isCancelled(job.id) ? .cancelled : pauseReason(for: error),
+          completedSteps: steps
+        )
+      }
+      guard Self.isMeaningful(output) else {
+        return try await pause(job, reason: .invalidResponse, completedSteps: steps)
+      }
+      let step = GenerationStep(
+        id: Self.legacyStepID(job: job),
         jobID: job.id,
         kind: .summary,
         index: 0,
@@ -324,35 +671,80 @@ public actor GenerationWorkflow: GenerationUseCase {
         completedAt: now()
       )
       steps = [step]
-      job.completedStepCount = 1
+      job.completedStepCount = max(job.completedStepCount, 1)
+      job.completedChunkCount = max(job.completedChunkCount, 1)
       job.progress = max(job.progress, 70)
       job.stage = .publishing
       job.updatedAt = now()
       try await persist(job, step: step)
-      if cancelledJobs.contains(job.id) || Task.isCancelled {
-        return try await pause(
-          job,
-          reason: .cancelled,
-          completedSteps: steps
-        )
-      }
     }
+    return try await publish(
+      job,
+      output: output,
+      outputFingerprint: GenerationInputFingerprint.make(output),
+      steps: steps,
+      in: directory,
+      meeting: meeting,
+      transcript: transcript.revision,
+      includePublicationCheckpoint: false
+    )
+  }
 
+  private func publish(
+    _ originalJob: GenerationJob,
+    output: String,
+    outputFingerprint: String,
+    steps originalSteps: [GenerationStep],
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry,
+    transcript: TranscriptRevision,
+    includePublicationCheckpoint: Bool
+  ) async throws -> GenerationSnapshot {
+    var job = originalJob
+    var steps = originalSteps
     job.stage = .publishing
     job.progress = max(job.progress, 99)
+    job.completedStepCount = min(job.totalSteps, max(job.completedStepCount, steps.count))
     job.updatedAt = now()
-    try await persist(job, step: nil)
-    if cancelledJobs.contains(job.id) || Task.isCancelled {
-      return try await pause(
-        job,
-        reason: .cancelled,
-        completedSteps: steps
+
+    if includePublicationCheckpoint,
+      !steps.contains(where: {
+        Self.isReusableStageStep(
+          $0,
+          job: job,
+          kind: .publication,
+          index: 0,
+          inputFingerprint: outputFingerprint,
+          minimumProgress: 99
+        )
+      })
+    {
+      let step = GenerationStep(
+        id: GenerationStepID.make(
+          job: job, kind: .publication, index: 0, inputFingerprint: outputFingerprint),
+        jobID: job.id,
+        kind: .publication,
+        index: 0,
+        inputFingerprint: outputFingerprint,
+        output: "candidate-ready",
+        progress: 99,
+        completedAt: now()
       )
+      steps.removeAll { $0.kind == step.kind && $0.index == step.index }
+      steps.append(step)
+      job.completedStepCount = min(job.totalSteps, steps.count)
+      try await persist(job, step: step)
+    } else {
+      try await persist(job, step: nil)
     }
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
+    }
+
     let markdown = MinutesDocumentBuilder.build(
       output: output,
       job: job,
-      transcript: transcript.revision
+      transcript: transcript
     )
     do {
       try await assets.publishMinutes(
@@ -365,26 +757,12 @@ public actor GenerationWorkflow: GenerationUseCase {
     } catch {
       return try await pause(
         job,
-        reason: cancelledJobs.contains(job.id) || Task.isCancelled
-          ? .cancelled
-          : pauseReason(for: error),
+        reason: isCancelled(job.id) ? .cancelled : pauseReason(for: error),
         completedSteps: steps
       )
     }
-    if cancelledJobs.contains(job.id) || Task.isCancelled {
-      return try await pause(
-        job,
-        reason: .cancelled,
-        completedSteps: steps
-      )
-    }
-
-    if cancelledJobs.contains(job.id) || Task.isCancelled {
-      return try await pause(
-        job,
-        reason: .cancelled,
-        completedSteps: steps
-      )
+    if isCancelled(job.id) {
+      return try await pause(job, reason: .cancelled, completedSteps: steps)
     }
 
     job.state = .completed
@@ -396,6 +774,85 @@ public actor GenerationWorkflow: GenerationUseCase {
     await finishTaskWithRetry(job.taskReference)
     cancelledJobs.remove(job.id)
     return GenerationSnapshot(job: job, completedSteps: steps)
+  }
+
+  private func collectWithRetry(
+    request: AIRequest,
+    execution: ModelExecutionProfile,
+    job: inout GenerationJob
+  ) async throws -> String {
+    var attempt = 0
+    while true {
+      attempt += 1
+      job.retryAttempt = attempt
+      job.nextRetryAt = nil
+      do {
+        let provider = self.provider
+        let providerTask = Task(priority: nil) {
+          try await Self.collect(
+            provider: provider,
+            request: request,
+            execution: execution
+          )
+        }
+        providerTasks[job.id] = providerTask
+        let output: String
+        do {
+          output = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await providerTask.value
+          } onCancel: {
+            providerTask.cancel()
+          }
+        } catch {
+          providerTasks.removeValue(forKey: job.id)
+          throw error
+        }
+        providerTasks.removeValue(forKey: job.id)
+        job.retryAttempt = 0
+        job.nextRetryAt = nil
+        return output
+      } catch {
+        providerTasks.removeValue(forKey: job.id)
+        guard Self.isRetryable(error), attempt < 3 else {
+          if Self.isRetryable(error), attempt >= 3 {
+            throw GenerationRetryExhausted(underlying: error)
+          }
+          throw error
+        }
+        let delay = Self.retryDelay(for: error, attempt: attempt, jitter: jitter(attempt))
+        job.nextRetryAt = now().addingTimeInterval(delay)
+        job.updatedAt = now()
+        try await persist(job, step: nil)
+        guard !isCancelled(job.id) else {
+          throw CancellationError()
+        }
+        let nanoseconds = Self.retryNanoseconds(
+          delay: delay,
+          scale: retryDelayScale
+        )
+        let sleepTask = Task<Void, Error> {
+          try await Task.sleep(nanoseconds: nanoseconds)
+        }
+        retrySleepTasks[job.id] = sleepTask
+        do {
+          try await withTaskCancellationHandler {
+            try await sleepTask.value
+          } onCancel: {
+            sleepTask.cancel()
+          }
+        } catch {
+          retrySleepTasks.removeValue(forKey: job.id)
+          throw error
+        }
+        retrySleepTasks.removeValue(forKey: job.id)
+        guard !isCancelled(job.id) else {
+          throw CancellationError()
+        }
+        // The checkpoint keeps the step boundary durable while the request is
+        // backing off; completed steps remain unchanged and are never billed twice.
+      }
+    }
   }
 
   private static func collect(
@@ -429,6 +886,41 @@ public actor GenerationWorkflow: GenerationUseCase {
     step: GenerationStep?
   ) async throws {
     try await jobs.saveCheckpoint(job, step: step)
+  }
+
+  private func drainQueuedJobs() async {
+    guard !isDrainingQueue, activeExecutionJobID == nil else {
+      return
+    }
+    isDrainingQueue = true
+    defer { isDrainingQueue = false }
+
+    while activeExecutionJobID == nil {
+      guard
+        let snapshots = try? await jobs.resumableJobs(),
+        let next = snapshots.first(where: {
+          $0.job.state == .pending && executionContexts[$0.job.id] != nil
+        }),
+        let context = executionContexts[next.job.id]
+      else {
+        return
+      }
+
+      do {
+        let result = try await resume(
+          next.job.id,
+          in: context.directory,
+          meeting: context.meeting
+        )
+        if result.job.state == .completed {
+          executionContexts.removeValue(forKey: next.job.id)
+        } else if result.job.state != .pending {
+          return
+        }
+      } catch {
+        executionContexts.removeValue(forKey: next.job.id)
+      }
+    }
   }
 
   private func pause(
@@ -472,6 +964,9 @@ public actor GenerationWorkflow: GenerationUseCase {
     if error is CancellationError {
       return .cancelled
     }
+    if error is GenerationRetryExhausted {
+      return .retryExhausted
+    }
     if let credentialError = error as? ModelCredentialError {
       switch credentialError {
       case .unavailableUntilFirstUnlock:
@@ -498,12 +993,14 @@ public actor GenerationWorkflow: GenerationUseCase {
       return .authenticationRequired
     case .modelUnavailable:
       return .modelUnavailable
-    case .rateLimited:
+    case .rateLimited, .rateLimitedWithRetryAfter:
       return .rateLimited
     case .serviceUnavailable:
       return .serviceUnavailable
     case .retryableRequest:
       return .retryableRequest
+    case .requestTooLarge:
+      return .requestTooLarge
     case .networkUnavailable:
       return .networkUnavailable
     case .invalidResponse, .incompatibleResponse, .insecureBaseURL,
@@ -512,26 +1009,20 @@ public actor GenerationWorkflow: GenerationUseCase {
     }
   }
 
-  private static func stepID(
-    job: GenerationJob,
-    kind: GenerationStepKind,
-    index: Int,
-    inputFingerprint: String
-  ) -> String {
-    "\(job.id.uuidString)/\(job.promptVersion)/\(kind.rawValue)/\(index)/\(inputFingerprint)"
+  private func isCancelled(_ jobID: UUID) -> Bool {
+    cancelledJobs.contains(jobID) || Task.isCancelled
   }
 
-  private static func isReusableSummaryStep(
+  private static func legacyStepID(job: GenerationJob) -> String {
+    "\(job.id.uuidString)/\(job.promptVersion)/summary/0/\(job.transcriptFingerprint)"
+  }
+
+  private static func isReusableLegacySummaryStep(
     _ step: GenerationStep,
     for job: GenerationJob
   ) -> Bool {
     step.id
-      == stepID(
-        job: job,
-        kind: .summary,
-        index: 0,
-        inputFingerprint: job.transcriptFingerprint
-      )
+      == legacyStepID(job: job)
       && step.jobID == job.id
       && step.kind == .summary
       && step.index == 0
@@ -540,12 +1031,173 @@ public actor GenerationWorkflow: GenerationUseCase {
       && isMeaningful(step.output)
   }
 
+  private static func isReusablePipelineStep(
+    _ step: GenerationStep,
+    for job: GenerationJob
+  ) -> Bool {
+    guard step.jobID == job.id, isMeaningful(step.output) else {
+      return false
+    }
+    switch step.kind {
+    case .chunkSummary:
+      return step.index >= 0
+        && step.index < job.chunkCount
+        && step.id
+          == GenerationStepID.make(
+            job: job,
+            kind: step.kind,
+            index: step.index,
+            inputFingerprint: step.inputFingerprint
+          )
+    case .synthesis, .normalization:
+      return step.index == 0
+        && step.id
+          == GenerationStepID.make(
+            job: job,
+            kind: step.kind,
+            index: step.index,
+            inputFingerprint: step.inputFingerprint
+          )
+    case .publication:
+      return step.index == 0
+        && step.output == "candidate-ready"
+        && step.id
+          == GenerationStepID.make(
+            job: job,
+            kind: step.kind,
+            index: step.index,
+            inputFingerprint: step.inputFingerprint
+          )
+    case .summary:
+      return false
+    }
+  }
+
+  private static func isReusableChunkStep(
+    _ step: GenerationStep,
+    for job: GenerationJob,
+    chunk: GenerationChunk
+  ) -> Bool {
+    step.kind == .chunkSummary
+      && step.index == chunk.index
+      && step.inputFingerprint == chunk.inputFingerprint
+      && step.progress
+        >= summaryProgress(
+          completedChunks: chunk.index + 1,
+          totalChunks: job.chunkCount
+        )
+      && step.id
+        == GenerationStepID.make(
+          job: job,
+          kind: .chunkSummary,
+          index: chunk.index,
+          inputFingerprint: chunk.inputFingerprint
+        )
+      && isMeaningful(step.output)
+  }
+
+  private static func isReusableStageStep(
+    _ step: GenerationStep,
+    job: GenerationJob,
+    kind: GenerationStepKind,
+    index: Int,
+    inputFingerprint: String,
+    minimumProgress: Int
+  ) -> Bool {
+    step.jobID == job.id
+      && step.kind == kind
+      && step.index == index
+      && step.inputFingerprint == inputFingerprint
+      && step.progress >= minimumProgress
+      && step.id
+        == GenerationStepID.make(
+          job: job,
+          kind: kind,
+          index: index,
+          inputFingerprint: inputFingerprint
+        )
+      && (kind == .publication ? step.output == "candidate-ready" : isMeaningful(step.output))
+  }
+
+  private static func summaryProgress(
+    completedChunks: Int,
+    totalChunks: Int
+  ) -> Int {
+    guard totalChunks > 0 else { return 0 }
+    return min(
+      70,
+      Int((70.0 * Double(completedChunks) / Double(totalChunks)).rounded(.down))
+    )
+  }
+
+  private static func isRetryable(_ error: Error) -> Bool {
+    guard let error = error as? AIProviderError else { return false }
+    switch error {
+    case .networkUnavailable, .rateLimited, .rateLimitedWithRetryAfter:
+      return true
+    case .retryableRequest(let statusCode):
+      return statusCode == 408
+    case .serviceUnavailable(let statusCode):
+      return [500, 502, 503, 504].contains(statusCode)
+    case .insecureBaseURL, .authentication, .modelUnavailable,
+      .requestRejected, .requestTooLarge, .incompatibleResponse,
+      .invalidResponse:
+      return false
+    }
+  }
+
+  private static func retryDelay(
+    for error: Error,
+    attempt: Int,
+    jitter: TimeInterval
+  ) -> TimeInterval {
+    let exponential = min(30, pow(2, Double(max(0, attempt - 1))))
+    let retryAfter: TimeInterval
+    if let providerError = error as? AIProviderError,
+      case .rateLimitedWithRetryAfter(let seconds) = providerError
+    {
+      retryAfter = max(0, seconds)
+    } else {
+      retryAfter = 0
+    }
+    return min(
+      300,
+      max(exponential, min(300, retryAfter)) + max(0, jitter)
+    )
+  }
+
+  private static func retryNanoseconds(
+    delay: TimeInterval,
+    scale: TimeInterval
+  ) -> UInt64 {
+    let seconds = min(300, max(0, delay) * max(0, scale))
+    let nanoseconds = seconds * 1_000_000_000
+    guard nanoseconds.isFinite else {
+      return UInt64.max
+    }
+    return UInt64(min(Double(UInt64.max), nanoseconds))
+  }
+
+  private static func normalize(_ output: String) -> String {
+    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "# 纪要\n\n暂无可用摘要" : trimmed
+  }
+
   private static func isMeaningful(_ output: String) -> Bool {
     output.unicodeScalars.contains { scalar in
       CharacterSet.alphanumerics.contains(scalar)
         || (scalar.value >= 0x3400 && scalar.value <= 0x9FFF)
     }
   }
+}
+
+private struct GenerationRetryExhausted: Error, Sendable {
+  let underlying: Error
+}
+
+private struct GenerationExecutionContext: Sendable {
+  let directory: AuthoritativeDirectory
+  let meeting: MeetingIndexEntry
 }
 
 private enum MinutesDocumentBuilder {

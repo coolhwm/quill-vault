@@ -130,6 +130,41 @@ struct OpenAICompatibleProviderTests {
     #expect(events == [.textDelta("usable minutes"), .completed])
   }
 
+  @Test("Generation forwards the stable step idempotency key")
+  func generationForwardsIdempotencyKey() async throws {
+    let transport = URLProtocolTransport()
+    transport.respond { request in
+      #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "stable-step-key")
+      return (
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: nil
+        )!,
+        Data(#"{"choices":[{"message":{"content":"usable minutes"}}]}"#.utf8)
+      )
+    }
+    let stream = OpenAICompatibleProvider(
+      session: transport.session
+    ).generate(
+      AIRequest(
+        systemPrompt: "system",
+        userPrompt: "meeting text",
+        idempotencyKey: "stable-step-key"
+      ),
+      profile: profile(streaming: false),
+      apiKey: "secret"
+    )
+
+    var events: [AIEvent] = []
+    for try await event in stream {
+      events.append(event)
+    }
+
+    #expect(events == [.textDelta("usable minutes"), .completed])
+  }
+
   @Test("Insecure provider URLs are rejected before transport")
   func insecureURL() async {
     let provider = OpenAICompatibleProvider()
@@ -185,6 +220,58 @@ struct OpenAICompatibleProviderTests {
       #expect(error == expected)
     } catch {
       Issue.record("Unexpected error: \(error)")
+    }
+  }
+
+  @Test("429 Retry-After is preserved for bounded backoff")
+  func rateLimitRetryAfter() async {
+    let transport = URLProtocolTransport()
+    transport.respond { request in
+      (
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 429,
+          httpVersion: nil,
+          headerFields: ["Retry-After": "3"]
+        )!,
+        Data()
+      )
+    }
+    let provider = OpenAICompatibleProvider(session: transport.session)
+
+    await #expect(
+      throws: AIProviderError.rateLimitedWithRetryAfter(seconds: 3)
+    ) {
+      _ = try await provider.test(
+        profile: profile(streaming: false),
+        apiKey: "secret"
+      )
+    }
+  }
+
+  @Test("An excessive Retry-After is bounded instead of overflowing the scheduler")
+  func excessiveRetryAfterIsBounded() async {
+    let transport = URLProtocolTransport()
+    transport.respond { request in
+      (
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 429,
+          httpVersion: nil,
+          headerFields: ["Retry-After": "100000000000000000000"]
+        )!,
+        Data()
+      )
+    }
+    let provider = OpenAICompatibleProvider(session: transport.session)
+
+    await #expect(
+      throws: AIProviderError.rateLimitedWithRetryAfter(seconds: 300)
+    ) {
+      _ = try await provider.test(
+        profile: profile(streaming: false),
+        apiKey: "secret"
+      )
     }
   }
 

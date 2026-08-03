@@ -14,10 +14,18 @@ public struct ModelCapability: Equatable, Sendable {
 public struct AIRequest: Equatable, Sendable {
   public let systemPrompt: String
   public let userPrompt: String
+  /// Stable per-step key used by compatible providers to deduplicate an
+  /// ambiguous request after a process or network interruption.
+  public let idempotencyKey: String?
 
-  public init(systemPrompt: String, userPrompt: String) {
+  public init(
+    systemPrompt: String,
+    userPrompt: String,
+    idempotencyKey: String? = nil
+  ) {
     self.systemPrompt = systemPrompt
     self.userPrompt = userPrompt
+    self.idempotencyKey = idempotencyKey
   }
 }
 
@@ -31,9 +39,11 @@ public enum AIProviderError: Error, Equatable, Sendable {
   case authentication
   case modelUnavailable
   case rateLimited
+  case rateLimitedWithRetryAfter(seconds: Double)
   case retryableRequest(statusCode: Int)
   case requestRejected(statusCode: Int)
   case serviceUnavailable(statusCode: Int)
+  case requestTooLarge
   case incompatibleResponse
   case invalidResponse
   case networkUnavailable

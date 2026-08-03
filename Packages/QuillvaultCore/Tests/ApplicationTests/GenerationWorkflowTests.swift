@@ -28,7 +28,9 @@ struct GenerationWorkflowTests {
 
     #expect(snapshot.job.state == .completed)
     #expect(snapshot.job.progress == 100)
-    #expect(snapshot.completedSteps.count == 1)
+    #expect(snapshot.completedSteps.count == 4)
+    #expect(snapshot.job.chunkCount == 1)
+    #expect(snapshot.job.completedChunkCount == 1)
     #expect(await assets.publishedMarkdown?.contains("已确认下一步。") == true)
     let requests = provider.recordedRequests()
     #expect(requests.count == 1)
@@ -54,7 +56,9 @@ struct GenerationWorkflowTests {
       jobs: jobs,
       assets: assets,
       profiles: profiles,
-      provider: provider
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
     )
 
     let snapshot = try await workflow.start(
@@ -63,10 +67,365 @@ struct GenerationWorkflowTests {
     )
 
     #expect(snapshot.job.state == .paused)
-    #expect(snapshot.job.pauseReason == .serviceUnavailable)
+    #expect(snapshot.job.pauseReason == .retryExhausted)
     #expect(await assets.publishCount == 0)
     #expect(await assets.existingMinutes == "previous minutes")
     #expect(await profiles.finished.isEmpty)
+  }
+
+  @Test("A long transcript is summarized in chunks and merged once")
+  func longTranscriptUsesChunkPipeline() async throws {
+    let source = try GenerationTestSource()
+    let longTranscript = GenerationTranscriptSource(
+      revision: TranscriptRevision(
+        meetingID: source.meeting.id,
+        localeIdentifier: "zh-CN",
+        timeline: TranscriptTimeline(
+          audioDurationSeconds: 60,
+          segments: (0..<3).map { index in
+            TranscriptSegment(
+              id: "long-\(index)",
+              startSeconds: Double(index * 20),
+              endSeconds: Double((index + 1) * 20),
+              text: String(repeating: "第\(index)段信息", count: 1_000)
+            )
+          }
+        )
+      )
+    )
+    let assets = GenerationAssetsStub(source: longTranscript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let provider = RecordingGenerationProvider(result: .success("模型输出"))
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let snapshot = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(snapshot.job.state == .completed)
+    #expect(snapshot.job.chunkCount == 3)
+    #expect(snapshot.job.completedChunkCount == 3)
+    #expect(snapshot.job.progress == 100)
+    #expect(snapshot.completedSteps.count == 6)
+    #expect(provider.recordedRequests().count == 4)
+    #expect(
+      provider.recordedRequests().dropLast().allSatisfy { request in
+        request.systemPrompt.contains("transcript segment")
+      })
+    #expect(provider.recordedRequests().last?.systemPrompt.contains("Merge chunk") == true)
+  }
+
+  @Test("A validated chunk checkpoint is reused after resume")
+  func resumesFromChunkCheckpointWithoutDuplicateBilling() async throws {
+    let source = try GenerationTestSource()
+    let longTranscript = GenerationTranscriptSource(
+      revision: TranscriptRevision(
+        meetingID: source.meeting.id,
+        localeIdentifier: "zh-CN",
+        timeline: TranscriptTimeline(
+          audioDurationSeconds: 60,
+          segments: (0..<2).map { index in
+            TranscriptSegment(
+              id: "checkpoint-(index)",
+              startSeconds: Double(index * 30),
+              endSeconds: Double((index + 1) * 30),
+              text: String(repeating: "第(index)段已完成信息", count: 900)
+            )
+          }
+        )
+      )
+    )
+    let plan = GenerationChunkPlan.make(from: longTranscript.revision)
+    #expect(plan.chunks.count == 2)
+    let jobs = InMemoryGenerationJobStore()
+    let jobID = UUID(uuidString: "19191919-1919-1919-1919-191919191919")!
+    let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
+    var job = GenerationJob(
+      id: jobID,
+      meetingID: source.meeting.id,
+      transcriptRevisionID: longTranscript.revision.id,
+      transcriptFingerprint: longTranscript.revision.contentFingerprint,
+      modelProfile: source.execution.snapshot,
+      chunkPlanVersion: plan.version,
+      chunkCount: plan.chunks.count,
+      totalSteps: plan.chunks.count + 3,
+      createdAt: createdAt,
+      updatedAt: createdAt,
+      state: .paused,
+      stage: .summarizing,
+      progress: 35,
+      completedStepCount: 1,
+      completedChunkCount: 1
+    )
+    let firstChunk = plan.chunks[0]
+    let checkpoint = GenerationStep(
+      id: GenerationStepID.make(
+        job: job,
+        kind: .chunkSummary,
+        index: firstChunk.index,
+        inputFingerprint: firstChunk.inputFingerprint
+      ),
+      jobID: job.id,
+      kind: .chunkSummary,
+      index: firstChunk.index,
+      inputFingerprint: firstChunk.inputFingerprint,
+      output: "第一段已持久化。",
+      progress: 35,
+      completedAt: createdAt
+    )
+    try await jobs.create(job)
+    job.updatedAt = createdAt.addingTimeInterval(1)
+    try await jobs.saveCheckpoint(job, step: checkpoint)
+
+    let provider = RecordingGenerationProvider(result: .success("恢复后的摘要。"))
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: GenerationAssetsStub(source: longTranscript),
+      profiles: ExecutionProfilesStub(profile: source.execution),
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let snapshot = try await workflow.resume(
+      jobID,
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(snapshot.job.state == .completed)
+    #expect(snapshot.completedSteps.count == 5)
+    #expect(provider.recordedRequests().count == 2)
+    #expect(provider.recordedRequests().first?.userPrompt.contains("第0段已完成信息") == false)
+    #expect(await (jobs.load(jobID)?.completedSteps.contains(checkpoint) ?? false))
+  }
+
+  @Test("A legacy long job migrates before resuming the chunk pipeline")
+  func migratesLegacyLongJob() async throws {
+    let source = try GenerationTestSource()
+    let longTranscript = GenerationTranscriptSource(
+      revision: TranscriptRevision(
+        meetingID: source.meeting.id,
+        localeIdentifier: "zh-CN",
+        timeline: TranscriptTimeline(
+          audioDurationSeconds: 60,
+          segments: (0..<2).map { index in
+            TranscriptSegment(
+              id: "legacy-(index)",
+              startSeconds: Double(index * 30),
+              endSeconds: Double((index + 1) * 30),
+              text: String(repeating: "旧任务第(index)段信息", count: 900)
+            )
+          }
+        )
+      )
+    )
+    let jobs = InMemoryGenerationJobStore()
+    let jobID = UUID(uuidString: "20202020-2020-2020-2020-202020202020")!
+    let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let legacyJob = GenerationJob(
+      id: jobID,
+      meetingID: source.meeting.id,
+      transcriptRevisionID: longTranscript.revision.id,
+      transcriptFingerprint: longTranscript.revision.contentFingerprint,
+      modelProfile: source.execution.snapshot,
+      createdAt: createdAt,
+      updatedAt: createdAt,
+      state: .paused,
+      stage: .pending,
+      pauseReason: .unavailable
+    )
+    try await jobs.create(legacyJob)
+    let provider = RecordingGenerationProvider(result: .success("迁移后的输出。"))
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: GenerationAssetsStub(source: longTranscript),
+      profiles: ExecutionProfilesStub(profile: source.execution),
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let snapshot = try await workflow.resume(
+      jobID,
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(snapshot.job.state == .completed)
+    #expect(snapshot.job.chunkCount == 2)
+    #expect(snapshot.completedSteps.count == 5)
+    #expect(provider.recordedRequests().count == 3)
+  }
+
+  @Test("Authentication failure is surfaced without automatic retries")
+  func authenticationFailureDoesNotRetry() async throws {
+    let source = try GenerationTestSource()
+    let provider = RecordingGenerationProvider(
+      result: .failure(AIProviderError.authentication)
+    )
+    let workflow = GenerationWorkflow(
+      jobs: InMemoryGenerationJobStore(),
+      assets: GenerationAssetsStub(source: source.transcript),
+      profiles: ExecutionProfilesStub(profile: source.execution),
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let snapshot = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(snapshot.job.state == .paused)
+    #expect(snapshot.job.pauseReason == .authenticationRequired)
+    #expect(provider.recordedRequests().count == 1)
+  }
+
+  @Test("A transient provider failure retries once and does not duplicate checkpoints")
+  func transientFailureRetriesAndResumes() async throws {
+    let source = try GenerationTestSource()
+    let assets = GenerationAssetsStub(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let provider = SequencedGenerationProvider(
+      results: [
+        .failure(AIProviderError.serviceUnavailable(statusCode: 503)),
+        .success("重试后摘要"),
+      ]
+    )
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
+    )
+
+    let snapshot = try await workflow.start(
+      in: source.directory,
+      meeting: source.meeting
+    )
+
+    #expect(snapshot.job.state == .completed)
+    #expect(snapshot.job.retryAttempt == 0)
+    #expect(provider.requestCount == 2)
+    #expect(snapshot.completedSteps.filter { $0.kind == .chunkSummary }.count == 1)
+    #expect(await assets.publishedMarkdown?.contains("重试后摘要") == true)
+  }
+
+  @Test("Cancelling during retry backoff releases the generation slot immediately")
+  func cancellationDuringRetryBackoffIsImmediate() async throws {
+    let source = try GenerationTestSource()
+    let jobs = InMemoryGenerationJobStore()
+    let provider = SequencedGenerationProvider(
+      results: [
+        .failure(AIProviderError.serviceUnavailable(statusCode: 503)),
+        .success("不应在取消后再次请求。"),
+      ]
+    )
+    let jobID = UUID(uuidString: "15151515-1515-1515-1515-151515151515")!
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: GenerationAssetsStub(source: source.transcript),
+      profiles: ExecutionProfilesStub(profile: source.execution),
+      provider: provider,
+      makeJobID: { jobID },
+      retryDelayScale: 1,
+      jitter: { _ in 0 }
+    )
+
+    let generationTask = Task {
+      try await workflow.start(in: source.directory, meeting: source.meeting)
+    }
+    while provider.requestCount < 1 {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    var retryWasPersisted = false
+    for _ in 0..<100 {
+      if let snapshot = await jobs.load(jobID), snapshot.job.nextRetryAt != nil {
+        retryWasPersisted = true
+        break
+      }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(retryWasPersisted)
+
+    await workflow.cancel(jobID)
+    let snapshot = try await generationTask.value
+
+    #expect(snapshot.job.state == .paused)
+    #expect(snapshot.job.pauseReason == .cancelled)
+    #expect(provider.requestCount == 1)
+  }
+
+  @Test("A second meeting is queued while one generation is active")
+  func generationQueueIsSingleFlight() async throws {
+    let source = try GenerationTestSource()
+    let assets = GenerationAssetsStub(source: source.transcript)
+    let jobs = InMemoryGenerationJobStore()
+    let profiles = ExecutionProfilesStub(profile: source.execution)
+    let provider = BlockingGenerationProvider()
+    let firstJobID = UUID(uuidString: "16161616-1616-1616-1616-161616161616")!
+    let secondJobID = UUID(uuidString: "18181818-1818-1818-1818-181818181818")!
+    let jobIDs = GenerationIDSequence(ids: [firstJobID, secondJobID])
+    let workflow = GenerationWorkflow(
+      jobs: jobs,
+      assets: assets,
+      profiles: profiles,
+      provider: provider,
+      makeJobID: { jobIDs.next() }
+    )
+    let first = Task {
+      try await workflow.start(in: source.directory, meeting: source.meeting)
+    }
+    await provider.waitUntilStarted()
+
+    let secondMeeting = MeetingIndexEntry(
+      id: MeetingID(
+        rawValue: UUID(uuidString: "17171717-1717-1717-1717-171717171717")!
+      ),
+      createdAt: source.meeting.createdAt.addingTimeInterval(1),
+      relativeDirectory: "meeting-2",
+      assets: [.recording, .transcript],
+      durationSeconds: 20
+    )
+    let queued = try await workflow.start(
+      in: source.directory,
+      meeting: secondMeeting
+    )
+
+    #expect(queued.job.state == .pending)
+    #expect(queued.job.progress == 0)
+    #expect(provider.requestCount == 1)
+    #expect(queued.job.id == secondJobID)
+    #expect((await jobs.resumableJobs()).map(\.job.id) == [firstJobID, secondJobID])
+
+    await workflow.cancel(firstJobID)
+    #expect(await provider.waitUntilTerminated())
+    provider.finish()
+    _ = try await first.value
+
+    await provider.waitUntilRequestCount(2)
+    #expect(provider.requestCount == 2)
+    await workflow.cancel(secondJobID)
+    #expect(await provider.waitUntilTerminated())
+    provider.finish()
+    let secondSnapshot = try await workflow.load(meetingID: secondMeeting.id)
+    #expect(secondSnapshot?.job.state == .paused)
+    #expect(secondSnapshot?.job.pauseReason == .cancelled)
   }
 
   @Test("A publication failure pauses the job and preserves the existing minutes")
@@ -84,7 +443,9 @@ struct GenerationWorkflowTests {
       jobs: jobs,
       assets: assets,
       profiles: profiles,
-      provider: provider
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
     )
 
     let snapshot = try await workflow.start(
@@ -352,7 +713,9 @@ struct GenerationWorkflowTests {
       jobs: jobs,
       assets: assets,
       profiles: profiles,
-      provider: provider
+      provider: provider,
+      retryDelayScale: 0,
+      jitter: { _ in 0 }
     )
     let paused = try await workflow.start(
       in: source.directory,
@@ -577,6 +940,9 @@ private actor InMemoryGenerationJobStore: GenerationJobStore {
   private var jobs: [UUID: GenerationSnapshot] = [:]
 
   func create(_ job: GenerationJob) throws {
+    guard jobs.values.filter({ $0.job.state != .completed }).count < 20 else {
+      throw GenerationJobStoreError.queueFull
+    }
     guard
       jobs.values.allSatisfy({
         $0.job.meetingID != job.meetingID || $0.job.state == .completed
@@ -598,7 +964,14 @@ private actor InMemoryGenerationJobStore: GenerationJobStore {
   }
 
   func resumableJobs() -> [GenerationSnapshot] {
-    jobs.values.filter { $0.job.state != .completed }
+    jobs.values
+      .filter { $0.job.state != .completed }
+      .sorted {
+        if $0.job.createdAt != $1.job.createdAt {
+          return $0.job.createdAt < $1.job.createdAt
+        }
+        return $0.job.id.uuidString < $1.job.id.uuidString
+      }
   }
 
   func saveCheckpoint(_ job: GenerationJob, step: GenerationStep?) throws {
@@ -904,6 +1277,57 @@ private final class RecordingGenerationProvider: AIProvider, @unchecked Sendable
   }
 }
 
+private final class SequencedGenerationProvider: AIProvider, @unchecked Sendable {
+  private let lock = NSLock()
+  private var results: [Result<String, AIProviderError>]
+  private(set) var requestCount = 0
+
+  init(results: [Result<String, AIProviderError>]) {
+    self.results = results
+  }
+
+  func test(
+    profile: ModelProfileSnapshot,
+    apiKey: String
+  ) async throws -> ModelCapability {
+    ModelCapability(providerDomain: profile.baseURL.host ?? "", representativeContent: true)
+  }
+
+  func generate(
+    _ request: AIRequest,
+    profile: ModelProfileSnapshot,
+    apiKey: String
+  ) -> AsyncThrowingStream<AIEvent, Error> {
+    let result = lock.withLock {
+      requestCount += 1
+      return results.isEmpty ? .success("默认输出") : results.removeFirst()
+    }
+    return AsyncThrowingStream { continuation in
+      switch result {
+      case .success(let output):
+        continuation.yield(.textDelta(output))
+        continuation.yield(.completed)
+        continuation.finish()
+      case .failure(let error):
+        continuation.finish(throwing: error)
+      }
+    }
+  }
+}
+
+private final class GenerationIDSequence: @unchecked Sendable {
+  private let lock = NSLock()
+  private var ids: [UUID]
+
+  init(ids: [UUID]) {
+    self.ids = ids
+  }
+
+  func next() -> UUID {
+    lock.withLock { ids.removeFirst() }
+  }
+}
+
 private final class BlockingGenerationProvider: AIProvider, @unchecked Sendable {
   private let lock = NSLock()
   private var continuation: AsyncThrowingStream<AIEvent, Error>.Continuation?
@@ -930,6 +1354,7 @@ private final class BlockingGenerationProvider: AIProvider, @unchecked Sendable 
         }
       }
       lock.withLock {
+        self.terminated = false
         self.continuation = continuation
         self.requests += 1
       }
@@ -938,6 +1363,12 @@ private final class BlockingGenerationProvider: AIProvider, @unchecked Sendable 
 
   func waitUntilStarted() async {
     while lock.withLock({ continuation == nil }) {
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+  }
+
+  func waitUntilRequestCount(_ expected: Int) async {
+    while lock.withLock({ requests < expected }) {
       try? await Task.sleep(for: .milliseconds(10))
     }
   }
