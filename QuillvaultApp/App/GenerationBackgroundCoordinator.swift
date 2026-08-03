@@ -21,8 +21,10 @@ final class GenerationBackgroundCoordinator {
   private var library: (any MeetingLibraryUseCase)?
   private var generation: (any GenerationUseCase)?
   private var recovery: (any GenerationRecoveryUseCase)?
+  private let diagnostics: any DiagnosticRecorder
 
-  init() {
+  init(diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder()) {
+    self.diagnostics = diagnostics
     registerLaunchHandler()
   }
 
@@ -48,7 +50,20 @@ final class GenerationBackgroundCoordinator {
     request.requiredResources = []
     do {
       try BGTaskScheduler.shared.submit(request)
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundScheduled,
+          correlation: DiagnosticCorrelation(jobID: jobID)
+        )
+      )
     } catch {
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(jobID: jobID),
+          errorCode: "submit_failed"
+        )
+      )
       Self.logger.error("Could not submit continued generation task.")
     }
   }
@@ -103,6 +118,12 @@ final class GenerationBackgroundCoordinator {
       task.setTaskCompleted(success: false)
       return
     }
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .backgroundStarted,
+        correlation: DiagnosticCorrelation(jobID: jobID)
+      )
+    )
     await run(jobID: jobID, task: continuedTask)
   }
 
@@ -120,6 +141,13 @@ final class GenerationBackgroundCoordinator {
     }
 
     guard let library, let generation else {
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(jobID: jobID),
+          errorCode: "unavailable"
+        )
+      )
       task.setTaskCompleted(success: false)
       return
     }
@@ -141,6 +169,13 @@ final class GenerationBackgroundCoordinator {
       }
     }
     guard let targetMeeting else {
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(jobID: jobID),
+          errorCode: "job_not_found"
+        )
+      )
       task.setTaskCompleted(success: false)
       return
     }
@@ -174,8 +209,28 @@ final class GenerationBackgroundCoordinator {
       if snapshot.job.state == .pending {
         await schedule(jobID: jobID)
       }
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(
+            meetingID: targetMeeting.id.rawValue,
+            jobID: jobID
+          ),
+          errorCode: snapshot.job.state == .completed ? "success" : "paused"
+        )
+      )
       task.setTaskCompleted(success: snapshot.job.state == .completed)
     } catch {
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(
+            meetingID: targetMeeting.id.rawValue,
+            jobID: jobID
+          ),
+          errorCode: "failed"
+        )
+      )
       task.setTaskCompleted(success: false)
     }
   }

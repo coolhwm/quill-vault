@@ -129,7 +129,12 @@ public actor ModelProfileWorkflow:
       let apiKey = try await credentials.read(profile.credentialReference)
       let capability = try await provider.test(
         profile: profile.snapshot(),
-        apiKey: apiKey
+        apiKey: apiKey,
+        diagnosticContext: DiagnosticProviderContext(
+          correlation: DiagnosticCorrelation(jobID: profile.id.rawValue),
+          host: profile.baseURL.host,
+          model: profile.model
+        )
       )
       var verifiedProfile = profile
       verifiedProfile.isUsable = true

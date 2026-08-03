@@ -23,24 +23,41 @@ public final class SettingsModel {
   private(set) var automaticGeneration = AutomaticGenerationPreferences()
   private(set) var profileTestState: [ModelProfileID: ModelProfileTestState] = [:]
   private(set) var modelProfilesUnavailable = false
+  private(set) var diagnosticPreview = DiagnosticPreview(
+    eventCount: 0,
+    oldestEventAt: nil,
+    newestEventAt: nil
+  )
+  private(set) var diagnosticsUnavailable = false
 
   private let directory: any AuthoritativeDirectoryUseCase
   private let library: any MeetingLibraryUseCase
   private let modelProfileUseCase: (any ModelProfileUseCase)?
+  private let diagnostics: (any DiagnosticsUseCase)?
 
   public init(
     directory: any AuthoritativeDirectoryUseCase,
     library: any MeetingLibraryUseCase,
-    modelProfiles: (any ModelProfileUseCase)? = nil
+    modelProfiles: (any ModelProfileUseCase)? = nil,
+    diagnostics: (any DiagnosticsUseCase)? = nil
   ) {
     self.directory = directory
     self.library = library
     modelProfileUseCase = modelProfiles
+    self.diagnostics = diagnostics
   }
 
   public func load() async {
     await loadDirectory()
     await loadModelProfiles()
+    await loadDiagnostics()
+  }
+
+  public func exportDiagnostics() async throws -> DiagnosticExport {
+    guard let diagnostics else {
+      throw DiagnosticStoreError.unavailable
+    }
+    return try await diagnostics.export()
   }
 
   func saveProfile(_ draft: ModelProfileDraft) async throws {
@@ -146,6 +163,16 @@ public final class SettingsModel {
       modelProfilesUnavailable = false
     } catch {
       modelProfilesUnavailable = true
+    }
+  }
+
+  private func loadDiagnostics() async {
+    guard let diagnostics else { return }
+    do {
+      diagnosticPreview = try await diagnostics.preview()
+      diagnosticsUnavailable = false
+    } catch {
+      diagnosticsUnavailable = true
     }
   }
 

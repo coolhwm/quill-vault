@@ -55,9 +55,41 @@ public protocol AIProvider: Sendable {
     apiKey: String
   ) async throws -> ModelCapability
 
+  func test(
+    profile: ModelProfileSnapshot,
+    apiKey: String,
+    diagnosticContext: DiagnosticProviderContext?
+  ) async throws -> ModelCapability
+
   func generate(
     _ request: AIRequest,
     profile: ModelProfileSnapshot,
     apiKey: String
   ) -> AsyncThrowingStream<AIEvent, Error>
+
+  func generate(
+    _ request: AIRequest,
+    profile: ModelProfileSnapshot,
+    apiKey: String,
+    diagnosticContext: DiagnosticProviderContext?
+  ) -> AsyncThrowingStream<AIEvent, Error>
+}
+
+extension AIProvider {
+  public func test(
+    profile: ModelProfileSnapshot,
+    apiKey: String,
+    diagnosticContext: DiagnosticProviderContext?
+  ) async throws -> ModelCapability {
+    try await test(profile: profile, apiKey: apiKey)
+  }
+
+  public func generate(
+    _ request: AIRequest,
+    profile: ModelProfileSnapshot,
+    apiKey: String,
+    diagnosticContext: DiagnosticProviderContext?
+  ) -> AsyncThrowingStream<AIEvent, Error> {
+    generate(request, profile: profile, apiKey: apiKey)
+  }
 }

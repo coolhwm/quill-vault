@@ -130,6 +130,66 @@ struct OpenAICompatibleProviderTests {
     #expect(events == [.textDelta("usable minutes"), .completed])
   }
 
+  @Test("Generation diagnostics correlate provider stages without request content")
+  func generationDiagnostics() async throws {
+    let transport = URLProtocolTransport()
+    transport.respond { _ in
+      (
+        HTTPURLResponse(
+          url: URL(string: "https://api.example.com/v1/chat/completions")!,
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: nil
+        )!,
+        Data(
+          #"{"choices":[{"message":{"content":"usable minutes"}}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}"#
+            .utf8
+        )
+      )
+    }
+    let recorder = DiagnosticRecorderSpy()
+    let context = DiagnosticProviderContext(
+      correlation: DiagnosticCorrelation(
+        meetingID: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"),
+        jobID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"),
+        stepID: "stable-step",
+        attemptID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")
+      ),
+      host: "api.example.com",
+      model: "minutes-model"
+    )
+    let provider = OpenAICompatibleProvider(
+      session: transport.session,
+      diagnostics: recorder
+    )
+
+    var receivedEvents: [AIEvent] = []
+    for try await event in provider.generate(
+      AIRequest(systemPrompt: "system", userPrompt: "meeting text"),
+      profile: profile(streaming: false),
+      apiKey: "secret",
+      diagnosticContext: context
+    ) {
+      receivedEvents.append(event)
+    }
+
+    let diagnostics = await recorder.events()
+    #expect(receivedEvents == [.textDelta("usable minutes"), .completed])
+    #expect(diagnostics.map(\.kind).contains(.requestQueued))
+    #expect(diagnostics.map(\.kind).contains(.providerFirstByte))
+    #expect(diagnostics.map(\.kind).contains(.providerStreamEnd))
+    #expect(diagnostics.allSatisfy { $0.correlation == context.correlation })
+    #expect(diagnostics.allSatisfy { $0.durationMilliseconds ?? 0 >= 0 })
+    let streamEnd = try #require(
+      diagnostics.first(where: { $0.kind == .providerStreamEnd })
+    )
+    #expect(streamEnd.providerPromptTokens == 11)
+    #expect(streamEnd.providerCompletionTokens == 7)
+    #expect(streamEnd.providerTotalTokens == 18)
+    #expect(!String(describing: diagnostics).contains("secret"))
+    #expect(!String(describing: diagnostics).contains("meeting text"))
+  }
+
   @Test("Generation forwards the stable step idempotency key")
   func generationForwardsIdempotencyKey() async throws {
     let transport = URLProtocolTransport()
@@ -428,6 +488,18 @@ struct OpenAICompatibleProviderTests {
       parameters: ModelGenerationParameters(usesStreaming: streaming),
       credentialReference: ModelCredentialReference(rawValue: UUID())
     )
+  }
+}
+
+private actor DiagnosticRecorderSpy: DiagnosticRecorder {
+  private var values: [DiagnosticEvent] = []
+
+  func record(_ event: DiagnosticEvent) async {
+    values.append(event)
+  }
+
+  func events() -> [DiagnosticEvent] {
+    values
   }
 }
 

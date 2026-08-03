@@ -19,6 +19,7 @@ public actor RecordingWorkflow: RecordingUseCase {
   private let consentStore: any RecordingConsentStore
   private let makeMeetingID: MeetingIDGenerator
   private let now: Clock
+  private let diagnostics: any DiagnosticRecorder
   private var phase = Phase.idle
   private var interruptedCaptureEvents: [RecordingCaptureEvent] = []
 
@@ -27,13 +28,15 @@ public actor RecordingWorkflow: RecordingUseCase {
     store: any RecordingSessionStore,
     consentStore: any RecordingConsentStore,
     makeMeetingID: @escaping MeetingIDGenerator,
-    now: @escaping Clock
+    now: @escaping Clock,
+    diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder()
   ) {
     self.capture = capture
     self.store = store
     self.consentStore = consentStore
     self.makeMeetingID = makeMeetingID
     self.now = now
+    self.diagnostics = diagnostics
   }
 
   public func acknowledgeRecordingNotice() async throws {
@@ -153,6 +156,13 @@ public actor RecordingWorkflow: RecordingUseCase {
 
     phase = .recording(session)
     interruptedCaptureEvents = []
+    await diagnostics.record(
+      DiagnosticEvent(
+        timestamp: session.startedAt,
+        kind: .recordingStarted,
+        correlation: DiagnosticCorrelation(meetingID: session.meetingID.rawValue)
+      )
+    )
     return RecordingSnapshot(session: session, activity: .recording)
   }
 
@@ -199,6 +209,19 @@ public actor RecordingWorkflow: RecordingUseCase {
 
     phase = .idle
     interruptedCaptureEvents = []
+    let finishedAt = now()
+    await diagnostics.record(
+      DiagnosticEvent(
+        timestamp: finishedAt,
+        kind: .recordingFinished,
+        correlation: DiagnosticCorrelation(meetingID: session.meetingID.rawValue),
+        durationMilliseconds: max(
+          0,
+          Int(finishedAt.timeIntervalSince(session.startedAt) * 1_000)
+        ),
+        byteCount: Int(min(Int64(Int.max), audio.byteCount))
+      )
+    )
     return RecordingCompletion(session: session, audio: audio)
   }
 
@@ -229,6 +252,19 @@ public actor RecordingWorkflow: RecordingUseCase {
 
     phase = .idle
     interruptedCaptureEvents = []
+    let finishedAt = now()
+    await diagnostics.record(
+      DiagnosticEvent(
+        timestamp: finishedAt,
+        kind: .recordingFinished,
+        correlation: DiagnosticCorrelation(meetingID: session.meetingID.rawValue),
+        durationMilliseconds: max(
+          0,
+          Int(finishedAt.timeIntervalSince(session.startedAt) * 1_000)
+        ),
+        byteCount: Int(min(Int64(Int.max), audio.byteCount))
+      )
+    )
     return RecordingCompletion(session: session, audio: audio)
   }
 
@@ -246,6 +282,12 @@ public actor RecordingWorkflow: RecordingUseCase {
 
     phase = .recording(session)
     interruptedCaptureEvents = []
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .recordingStarted,
+        correlation: DiagnosticCorrelation(meetingID: session.meetingID.rawValue)
+      )
+    )
     return RecordingSnapshot(session: session, activity: .recording)
   }
 

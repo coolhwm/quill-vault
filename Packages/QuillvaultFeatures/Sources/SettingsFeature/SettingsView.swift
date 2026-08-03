@@ -1,11 +1,15 @@
 import Application
 import DesignSystem
+import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
 public struct SettingsView: View {
   @Bindable private var model: SettingsModel
   @State private var isDirectoryImporterPresented = false
+  @State private var isDiagnosticsExporterPresented = false
+  @State private var isDiagnosticsExportErrorPresented = false
+  @State private var diagnosticDocument = DiagnosticExportDocument()
 
   public init(model: SettingsModel) {
     self.model = model
@@ -27,6 +31,40 @@ public struct SettingsView: View {
         Label("settings.local.first", systemImage: "iphone.and.arrow.forward")
         Label("settings.privacy", systemImage: "hand.raised")
       }
+
+      Section("settings.diagnostics.section") {
+        if model.diagnosticsUnavailable {
+          Label("settings.diagnostics.unavailable", systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.orange)
+        } else {
+          Label {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("settings.diagnostics.count \(model.diagnosticPreview.eventCount)")
+              Text("settings.diagnostics.retention \(model.diagnosticPreview.retentionDays)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+          } icon: {
+            Image(systemName: "waveform.path.ecg")
+          }
+        }
+        Text("settings.diagnostics.description")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Button("settings.diagnostics.export", systemImage: "square.and.arrow.up") {
+          Task {
+            do {
+              let export = try await model.exportDiagnostics()
+              diagnosticDocument = DiagnosticExportDocument(data: export.data)
+              isDiagnosticsExporterPresented = true
+            } catch {
+              isDiagnosticsExportErrorPresented = true
+            }
+          }
+        }
+        .disabled(model.diagnosticsUnavailable)
+        .accessibilityIdentifier("settings.diagnostics.export")
+      }
     }
     .navigationTitle("settings.navigation.title")
     .accessibilityIdentifier("settings.screen")
@@ -41,6 +79,18 @@ public struct SettingsView: View {
       Task {
         await model.selectDirectory(opaqueReference: url.absoluteString)
       }
+    }
+    .fileExporter(
+      isPresented: $isDiagnosticsExporterPresented,
+      document: diagnosticDocument,
+      contentType: .json,
+      defaultFilename: "quillvault-diagnostics"
+    ) { _ in }
+    .alert(
+      "settings.diagnostics.export_failed",
+      isPresented: $isDiagnosticsExportErrorPresented
+    ) {
+      Button("common.ok", role: .cancel) {}
     }
     .task {
       await model.load()

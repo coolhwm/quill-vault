@@ -7,6 +7,8 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
   private let jobs: any TranscriptionJobStore
   private let assetAccess: (any RecordingAssetAccess)?
   private let recoverySource: (any TranscriptionRecoverySource)?
+  private let diagnostics: any DiagnosticRecorder
+  private let now: @Sendable () -> Date
   private var activeMeetings = Set<MeetingID>()
 
   public init(
@@ -14,13 +16,17 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
     publisher: any TranscriptPublisher,
     jobs: any TranscriptionJobStore,
     assetAccess: (any RecordingAssetAccess)? = nil,
-    recoverySource: (any TranscriptionRecoverySource)? = nil
+    recoverySource: (any TranscriptionRecoverySource)? = nil,
+    diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder(),
+    now: @escaping @Sendable () -> Date = Date.init
   ) {
     self.engine = engine
     self.publisher = publisher
     self.jobs = jobs
     self.assetAccess = assetAccess
     self.recoverySource = recoverySource
+    self.diagnostics = diagnostics
+    self.now = now
   }
 
   public func finalize(
@@ -119,6 +125,14 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
     defer {
       activeMeetings.remove(job.meetingID)
     }
+    let startedAt = now()
+    await diagnostics.record(
+      DiagnosticEvent(
+        timestamp: startedAt,
+        kind: .transcriptionStarted,
+        correlation: DiagnosticCorrelation(meetingID: job.meetingID.rawValue)
+      )
+    )
 
     do {
       let accessibleRecordingURL: URL
@@ -172,6 +186,18 @@ public actor TranscriptionWorkflow: TranscriptionUseCase {
       try await jobs.markPublished(
         meetingID: job.meetingID,
         revision: published
+      )
+      let finishedAt = now()
+      await diagnostics.record(
+        DiagnosticEvent(
+          timestamp: finishedAt,
+          kind: .transcriptionFinished,
+          correlation: DiagnosticCorrelation(meetingID: job.meetingID.rawValue),
+          durationMilliseconds: max(
+            0,
+            Int(finishedAt.timeIntervalSince(startedAt) * 1_000)
+          )
+        )
       )
       await assetAccess?.endTranscriptionAccess(meetingID: job.meetingID)
       return published

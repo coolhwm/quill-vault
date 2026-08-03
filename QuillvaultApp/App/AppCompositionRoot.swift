@@ -30,6 +30,7 @@ final class AppCompositionRoot {
   ) {
     self.router = router
     let fileStore = MeetingFileStore()
+    let diagnostics = Self.makeDiagnostics()
     let resolvedMeetingLibrary =
       meetingLibrary ?? Self.makeDefaultMeetingLibrary(fileStore: fileStore)
     let resolvedMeetingDetail: any MeetingDetailUseCase =
@@ -40,12 +41,21 @@ final class AppCompositionRoot {
       fileStore: fileStore
     )
     let resolvedRecording =
-      recording ?? Self.makeDefaultRecording(fileStore: fileStore)
-    let resolvedModelProfiles = Self.makeDefaultModelProfiles()
-    let backgroundCoordinator = GenerationBackgroundCoordinator()
+      recording
+      ?? Self.makeDefaultRecording(
+        fileStore: fileStore,
+        diagnostics: diagnostics.recorder
+      )
+    let resolvedModelProfiles = Self.makeDefaultModelProfiles(
+      diagnostics: diagnostics.recorder
+    )
+    let backgroundCoordinator = GenerationBackgroundCoordinator(
+      diagnostics: diagnostics.recorder
+    )
     let resolvedGeneration = Self.makeDefaultGeneration(
       fileStore: fileStore,
       modelProfiles: resolvedModelProfiles,
+      diagnostics: diagnostics.recorder,
       onJobRegistered: { [weak backgroundCoordinator] job in
         await backgroundCoordinator?.schedule(jobID: job.id)
       }
@@ -94,7 +104,8 @@ final class AppCompositionRoot {
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
       library: resolvedMeetingLibrary,
-      modelProfiles: resolvedModelProfiles
+      modelProfiles: resolvedModelProfiles,
+      diagnostics: diagnostics.useCase
     )
   }
 
@@ -146,7 +157,9 @@ final class AppCompositionRoot {
     )
   }
 
-  private static func makeModelProfiles() -> any ModelProfileUseCase {
+  private static func makeModelProfiles(
+    diagnostics: any DiagnosticRecorder
+  ) -> any ModelProfileUseCase {
     RetryingModelProfileUseCase {
       let stateDirectory =
         try applicationSupportDirectory()
@@ -157,22 +170,25 @@ final class AppCompositionRoot {
       return ModelProfileWorkflow(
         profiles: profileStore,
         credentials: KeychainModelCredentialStore(),
-        provider: OpenAICompatibleProvider(),
+        provider: OpenAICompatibleProvider(diagnostics: diagnostics),
         usage: profileStore
       )
     }
   }
 
-  private static func makeDefaultModelProfiles() -> any ModelProfileUseCase {
+  private static func makeDefaultModelProfiles(
+    diagnostics: any DiagnosticRecorder
+  ) -> any ModelProfileUseCase {
     if isModelProfileUITest {
       return UITestModelProfileUseCase()
     }
-    return makeModelProfiles()
+    return makeModelProfiles(diagnostics: diagnostics)
   }
 
   private static func makeDefaultGeneration(
     fileStore: MeetingFileStore,
     modelProfiles: any ModelProfileUseCase,
+    diagnostics: any DiagnosticRecorder,
     onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     guard
@@ -184,6 +200,7 @@ final class AppCompositionRoot {
     return makeGeneration(
       fileStore: fileStore,
       profiles: executionAccess,
+      diagnostics: diagnostics,
       onJobRegistered: onJobRegistered
     )
   }
@@ -191,6 +208,7 @@ final class AppCompositionRoot {
   nonisolated private static func makeGeneration(
     fileStore: MeetingFileStore,
     profiles: any ModelProfileExecutionAccess,
+    diagnostics: any DiagnosticRecorder,
     onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     do {
@@ -204,7 +222,8 @@ final class AppCompositionRoot {
         jobs: jobs,
         assets: fileStore,
         profiles: profiles,
-        provider: OpenAICompatibleProvider(),
+        provider: OpenAICompatibleProvider(diagnostics: diagnostics),
+        diagnostics: diagnostics,
         onJobRegistered: onJobRegistered
       )
     } catch {
@@ -213,20 +232,22 @@ final class AppCompositionRoot {
   }
 
   private static func makeRecording(
-    fileStore: MeetingFileStore
+    fileStore: MeetingFileStore,
+    diagnostics: any DiagnosticRecorder
   ) -> any RecordingUseCase {
     RetryingRecordingUseCase {
-      try buildRecording(fileStore: fileStore)
+      try buildRecording(fileStore: fileStore, diagnostics: diagnostics)
     }
   }
 
   private static func makeDefaultRecording(
-    fileStore: MeetingFileStore
+    fileStore: MeetingFileStore,
+    diagnostics: any DiagnosticRecorder
   ) -> any RecordingUseCase {
     if isRecordingUITest {
       return UITestRecordingUseCase()
     }
-    return makeRecording(fileStore: fileStore)
+    return makeRecording(fileStore: fileStore, diagnostics: diagnostics)
   }
 
   private static var isRecordingUITest: Bool {
@@ -251,7 +272,8 @@ final class AppCompositionRoot {
   }
 
   nonisolated private static func buildRecording(
-    fileStore: MeetingFileStore
+    fileStore: MeetingFileStore,
+    diagnostics: any DiagnosticRecorder
   ) throws -> any RecordingUseCase {
     let stateDirectory =
       try applicationSupportDirectory()
@@ -267,7 +289,8 @@ final class AppCompositionRoot {
       },
       now: {
         Date()
-      }
+      },
+      diagnostics: diagnostics
     )
     let primaryTranscriptionJobs = try GRDBTranscriptionJobStore.open(
       at: stateDirectory.appending(path: "transcription-state.sqlite")
@@ -282,7 +305,8 @@ final class AppCompositionRoot {
         )
       ),
       assetAccess: fileStore,
-      recoverySource: fileStore
+      recoverySource: fileStore,
+      diagnostics: diagnostics
     )
     return TranscribingRecordingUseCase(
       recording: recording,
@@ -300,6 +324,26 @@ final class AppCompositionRoot {
       appropriateFor: nil,
       create: true
     )
+  }
+
+  private static func makeDiagnostics() -> (
+    recorder: any DiagnosticRecorder,
+    useCase: any DiagnosticsUseCase
+  ) {
+    let store: any DiagnosticStore
+    if let applicationSupport = try? applicationSupportDirectory(),
+      let storeValue = try? GRDBDiagnosticStore.open(
+        at:
+          applicationSupport
+          .appending(path: "Quillvault", directoryHint: .isDirectory)
+          .appending(path: "diagnostics.sqlite")
+      )
+    {
+      store = storeValue
+    } else {
+      store = NoopDiagnosticStore()
+    }
+    return (store, DiagnosticsWorkflow(store: store))
   }
 }
 

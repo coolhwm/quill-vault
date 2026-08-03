@@ -6,8 +6,10 @@ public actor GenerationWorkflow: GenerationUseCase {
   private let assets: any GenerationFileAccess
   private let profiles: any ModelProfileExecutionAccess
   private let provider: any AIProvider
+  private let diagnostics: any DiagnosticRecorder
   private let now: @Sendable () -> Date
   private let makeJobID: @Sendable () -> UUID
+  private let makeAttemptID: @Sendable () -> UUID
   private let retryDelayScale: TimeInterval
   private let jitter: @Sendable (Int) -> TimeInterval
   private let onJobRegistered: (@Sendable (GenerationJob) async -> Void)?
@@ -25,8 +27,10 @@ public actor GenerationWorkflow: GenerationUseCase {
     assets: any GenerationFileAccess,
     profiles: any ModelProfileExecutionAccess,
     provider: any AIProvider,
+    diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder(),
     now: @escaping @Sendable () -> Date = Date.init,
     makeJobID: @escaping @Sendable () -> UUID = UUID.init,
+    makeAttemptID: @escaping @Sendable () -> UUID = UUID.init,
     retryDelayScale: TimeInterval = 1,
     jitter: @escaping @Sendable (Int) -> TimeInterval = { attempt in
       Double.random(in: 0...(0.25 * pow(2, Double(max(0, attempt - 1)))))
@@ -37,8 +41,10 @@ public actor GenerationWorkflow: GenerationUseCase {
     self.assets = assets
     self.profiles = profiles
     self.provider = provider
+    self.diagnostics = diagnostics
     self.now = now
     self.makeJobID = makeJobID
+    self.makeAttemptID = makeAttemptID
     self.retryDelayScale = max(0, retryDelayScale)
     self.jitter = jitter
     self.onJobRegistered = onJobRegistered
@@ -723,6 +729,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     }
 
     let normalizationFingerprint = GenerationInputFingerprint.make(synthesisOutput)
+    let normalizationStartedAt = now()
     let normalizedOutput: String
     if let checkpoint = steps.first(where: {
       Self.isReusableStageStep(
@@ -764,6 +771,19 @@ public actor GenerationWorkflow: GenerationUseCase {
       job.updatedAt = now()
       try await persist(job, step: step)
     }
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .parseCompleted,
+        correlation: DiagnosticCorrelation(
+          meetingID: job.meetingID.rawValue,
+          jobID: job.id
+        ),
+        durationMilliseconds: max(
+          0,
+          Int(now().timeIntervalSince(normalizationStartedAt) * 1_000)
+        )
+      )
+    )
     if isCancelled(job.id) {
       return try await pause(job, reason: .cancelled, completedSteps: steps)
     }
@@ -879,6 +899,7 @@ public actor GenerationWorkflow: GenerationUseCase {
   ) async throws -> GenerationSnapshot {
     var job = originalJob
     var steps = originalSteps
+    let publishStartedAt = now()
     job.stage = .publishing
     job.progress = max(job.progress, 99)
     job.completedStepCount = min(job.totalSteps, max(job.completedStepCount, steps.count))
@@ -918,6 +939,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       return try await pause(job, reason: .cancelled, completedSteps: steps)
     }
 
+    let normalizationStartedAt = now()
     guard
       let normalized = MinutesOutputNormalizer.normalize(
         output,
@@ -930,6 +952,19 @@ public actor GenerationWorkflow: GenerationUseCase {
         completedSteps: steps
       )
     }
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .parseCompleted,
+        correlation: DiagnosticCorrelation(
+          meetingID: job.meetingID.rawValue,
+          jobID: job.id
+        ),
+        durationMilliseconds: max(
+          0,
+          Int(now().timeIntervalSince(normalizationStartedAt) * 1_000)
+        )
+      )
+    )
     let markdown = MinutesDocumentBuilder.build(
       output: normalized.markdown,
       job: job,
@@ -996,6 +1031,19 @@ public actor GenerationWorkflow: GenerationUseCase {
     job.completedAt = now()
     job.updatedAt = job.completedAt ?? now()
     try await persist(job, step: nil)
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .publishCompleted,
+        correlation: DiagnosticCorrelation(
+          meetingID: job.meetingID.rawValue,
+          jobID: job.id
+        ),
+        durationMilliseconds: max(
+          0,
+          Int(now().timeIntervalSince(publishStartedAt) * 1_000)
+        )
+      )
+    )
     await finishTaskWithRetry(job.taskReference)
     cancelledJobs.remove(job.id)
     return GenerationSnapshot(job: job, completedSteps: steps)
@@ -1014,13 +1062,36 @@ public actor GenerationWorkflow: GenerationUseCase {
       attempt += 1
       job.retryAttempt = attempt
       job.nextRetryAt = nil
+      let attemptID = makeAttemptID()
+      let correlation = DiagnosticCorrelation(
+        meetingID: job.meetingID.rawValue,
+        jobID: job.id,
+        stepID: request.idempotencyKey,
+        attemptID: attemptID
+      )
+      let requestStartedAt = now()
       do {
         let provider = self.provider
+        await diagnostics.record(
+          DiagnosticEvent(
+            timestamp: requestStartedAt,
+            kind: .requestSent,
+            correlation: correlation,
+            host: execution.snapshot.baseURL.host,
+            model: execution.snapshot.model,
+            attempt: attempt
+          )
+        )
         let providerTask = Task(priority: nil) {
           try await Self.collect(
             provider: provider,
             request: request,
-            execution: execution
+            execution: execution,
+            diagnosticContext: DiagnosticProviderContext(
+              correlation: correlation,
+              host: execution.snapshot.baseURL.host,
+              model: execution.snapshot.model
+            )
           )
         }
         providerTasks[job.id] = providerTask
@@ -1039,6 +1110,19 @@ public actor GenerationWorkflow: GenerationUseCase {
         providerTasks.removeValue(forKey: job.id)
         job.retryAttempt = 0
         job.nextRetryAt = nil
+        await diagnostics.record(
+          DiagnosticEvent(
+            kind: .responseCompleted,
+            correlation: correlation,
+            durationMilliseconds: max(
+              0,
+              Int(now().timeIntervalSince(requestStartedAt) * 1_000)
+            ),
+            host: execution.snapshot.baseURL.host,
+            model: execution.snapshot.model,
+            attempt: attempt
+          )
+        )
         return output
       } catch {
         providerTasks.removeValue(forKey: job.id)
@@ -1049,6 +1133,15 @@ public actor GenerationWorkflow: GenerationUseCase {
           throw error
         }
         let delay = Self.retryDelay(for: error, attempt: attempt, jitter: jitter(attempt))
+        await diagnostics.record(
+          DiagnosticEvent(
+            kind: .retryScheduled,
+            correlation: correlation,
+            attempt: attempt,
+            retryAfterMilliseconds: max(0, Int(delay * 1_000)),
+            errorCode: Self.diagnosticErrorCode(error)
+          )
+        )
         job.nextRetryAt = now().addingTimeInterval(delay)
         job.updatedAt = now()
         try await persist(job, step: nil)
@@ -1086,14 +1179,16 @@ public actor GenerationWorkflow: GenerationUseCase {
   private static func collect(
     provider: any AIProvider,
     request: AIRequest,
-    execution: ModelExecutionProfile
+    execution: ModelExecutionProfile,
+    diagnosticContext: DiagnosticProviderContext?
   ) async throws -> String {
     var output = ""
     var completed = false
     for try await event in provider.generate(
       request,
       profile: execution.snapshot,
-      apiKey: execution.apiKey
+      apiKey: execution.apiKey,
+      diagnosticContext: diagnosticContext
     ) {
       try Task.checkCancellation()
       switch event {
@@ -1114,6 +1209,17 @@ public actor GenerationWorkflow: GenerationUseCase {
     step: GenerationStep?
   ) async throws {
     try await jobs.saveCheckpoint(job, step: step)
+    await diagnostics.record(
+      DiagnosticEvent(
+        kind: .checkpointSaved,
+        correlation: DiagnosticCorrelation(
+          meetingID: job.meetingID.rawValue,
+          jobID: job.id,
+          stepID: step?.id
+        ),
+        attempt: job.retryAttempt
+      )
+    )
   }
 
   private func drainQueuedJobs() async {
@@ -1241,6 +1347,19 @@ public actor GenerationWorkflow: GenerationUseCase {
 
   private func isCancelled(_ jobID: UUID) -> Bool {
     cancelledJobs.contains(jobID) || Task.isCancelled
+  }
+
+  private static func diagnosticErrorCode(_ error: Error) -> String {
+    switch error {
+    case is CancellationError:
+      return "cancelled"
+    case is AIProviderError:
+      return "provider"
+    case is GenerationRetryExhausted:
+      return "retry_exhausted"
+    default:
+      return "unknown"
+    }
   }
 
   private static func legacyStepID(job: GenerationJob) -> String {

@@ -805,6 +805,54 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } }
       }
     },
+    "settings.diagnostics.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "诊断" } }
+      }
+    },
+    "settings.diagnostics.count" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld local events retained" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已保留 %lld 条本地事件" } }
+      }
+    },
+    "settings.diagnostics.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics stay on this device and contain timings only. Export is manual; nothing is uploaded automatically." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "诊断信息仅保留在本机，只包含耗时等指标。仅在你主动导出时生成，不会自动上传。" } }
+      }
+    },
+    "settings.diagnostics.export" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Export redacted diagnostics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "导出脱敏诊断" } }
+      }
+    },
+    "settings.diagnostics.retention" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Retention window: %lld days" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保留窗口：%lld 天" } }
+      }
+    },
+    "settings.diagnostics.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local diagnostics are unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地诊断暂不可用" } }
+      }
+    },
+    "settings.diagnostics.export_failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not export diagnostics. Try again later." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法导出诊断信息，请稍后重试。" } }
+      }
+    },
+    "common.ok" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OK" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "好" } }
+      }
+    },
     "settings.directory.section" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting Folder" } },
