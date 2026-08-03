@@ -13,6 +13,7 @@ public actor GenerationWorkflow: GenerationUseCase {
   private let retryDelayScale: TimeInterval
   private let jitter: @Sendable (Int) -> TimeInterval
   private let onJobRegistered: (@Sendable (GenerationJob) async -> Void)?
+  private let onJobNoLongerResumable: (@Sendable (UUID) async -> Void)?
   private var cancelledJobs: Set<UUID> = []
   private var executingJobs: Set<UUID> = []
   private var activeExecutionJobID: UUID?
@@ -35,7 +36,8 @@ public actor GenerationWorkflow: GenerationUseCase {
     jitter: @escaping @Sendable (Int) -> TimeInterval = { attempt in
       Double.random(in: 0...(0.25 * pow(2, Double(max(0, attempt - 1)))))
     },
-    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil,
+    onJobNoLongerResumable: (@Sendable (UUID) async -> Void)? = nil
   ) {
     self.jobs = jobs
     self.assets = assets
@@ -48,6 +50,7 @@ public actor GenerationWorkflow: GenerationUseCase {
     self.retryDelayScale = max(0, retryDelayScale)
     self.jitter = jitter
     self.onJobRegistered = onJobRegistered
+    self.onJobNoLongerResumable = onJobNoLongerResumable
   }
 
   public func start(
@@ -171,6 +174,7 @@ public actor GenerationWorkflow: GenerationUseCase {
           // remains a safety net if this cleanup fails.
           if let replacedActiveJob {
             await finishTaskWithRetry(replacedActiveJob.job.taskReference)
+            await onJobNoLongerResumable?(replacedActiveJob.job.id)
             executionContexts.removeValue(forKey: replacedActiveJob.job.id)
             cancelledJobs.remove(replacedActiveJob.job.id)
           }
@@ -1045,6 +1049,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       )
     )
     await finishTaskWithRetry(job.taskReference)
+    await onJobNoLongerResumable?(job.id)
     cancelledJobs.remove(job.id)
     return GenerationSnapshot(job: job, completedSteps: steps)
   }

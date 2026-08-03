@@ -13,6 +13,7 @@ struct GenerationWorkflowTests {
     let profiles = ExecutionProfilesStub(profile: source.execution)
     let provider = RecordingGenerationProvider(result: .success("已确认下一步。"))
     let registrations = GenerationJobRegistrationCollector()
+    let completions = GenerationJobCompletionCollector()
     let workflow = GenerationWorkflow(
       jobs: jobs,
       assets: assets,
@@ -22,6 +23,9 @@ struct GenerationWorkflowTests {
       makeJobID: { UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")! },
       onJobRegistered: { job in
         await registrations.append(job)
+      },
+      onJobNoLongerResumable: { jobID in
+        await completions.append(jobID)
       }
     )
 
@@ -43,6 +47,7 @@ struct GenerationWorkflowTests {
     #expect(await profiles.finished.count == 1)
     #expect(await jobs.load(snapshot.job.id)?.job.progress == 100)
     #expect(await registrations.ids == [snapshot.job.id])
+    #expect(await completions.ids == [snapshot.job.id])
   }
 
   @Test("Regeneration creates a new generation from the current model and latest transcript")
@@ -1376,6 +1381,14 @@ private actor GenerationJobRegistrationCollector {
 
   func append(_ job: GenerationJob) {
     ids.append(job.id)
+  }
+}
+
+private actor GenerationJobCompletionCollector {
+  private(set) var ids: [UUID] = []
+
+  func append(_ jobID: UUID) {
+    ids.append(jobID)
   }
 }
 

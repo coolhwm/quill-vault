@@ -8,7 +8,7 @@
 
 - `recording.m4a`、`transcript.md`、`minutes.md` 仍是内容真相；GRDB 只保存 Job、检查点和可重建索引。
 - `GenerationWorkflow` 在创建 Job 后先调用后台协调器提交 `BGContinuedProcessingTaskRequest`，前台执行不依赖请求提交成功。
-- 系统任务标识为 `com.coolhwm.Quillvault.continued-generation.<job UUID>`，注册使用 `com.coolhwm.Quillvault.continued-generation.*`。系统任务重启后可直接从标识解析 Job，不依赖内存映射。
+- 系统任务标识为 `com.coolhwm.Quillvault.continued-generation.<job UUID>`。`Info.plist` 的通配符只用于允许动态后缀；应用在提交每个请求前，必须为该具体标识注册一次 launch handler，不能把通配符本身注册为 handler。启动时会从持久化 Job 表同步读取未完成 Job 并提前注册具体标识，确保系统因待处理任务拉起进程时已有 handler；任务完成或被替代时会取消对应系统请求，避免遗留任务在下一次启动时找不到 handler。系统任务重启后可直接从标识解析 Job，不依赖内存映射。
 - 系统 `Progress` 的总量固定为 100，百分比和阶段从同一个持久 Job 投影；未完成的流式响应不会作为检查点。
 - 系统 expiration 或取消调用生成用例的取消边界，当前网络请求停止并将 Job 安全暂停；已发布的文件保持可读。
 - 用户在会议详情停止生成时，同时取消对应的系统请求，避免一个已取消的 Job 被后台再次唤起。

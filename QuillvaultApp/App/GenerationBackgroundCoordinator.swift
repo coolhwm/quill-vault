@@ -15,17 +15,36 @@ final class GenerationBackgroundCoordinator {
   )
   private static let taskIdentifierPrefix =
     "com.coolhwm.Quillvault.continued-generation."
-  private static let registrationIdentifier =
-    "com.coolhwm.Quillvault.continued-generation.*"
 
   private var library: (any MeetingLibraryUseCase)?
   private var generation: (any GenerationUseCase)?
   private var recovery: (any GenerationRecoveryUseCase)?
   private let diagnostics: any DiagnosticRecorder
+  private var registeredTaskIdentifiers: Set<String> = []
 
-  init(diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder()) {
+  init(
+    diagnostics: any DiagnosticRecorder = NoopDiagnosticRecorder(),
+    resumableJobIDs: [UUID] = []
+  ) {
     self.diagnostics = diagnostics
-    registerLaunchHandler()
+    guard #available(iOS 26.0, *) else {
+      return
+    }
+    for jobID in resumableJobIDs {
+      guard registerLaunchHandler(for: Self.taskIdentifier(for: jobID)) else {
+        Task {
+          await diagnostics.record(
+            DiagnosticEvent(
+              kind: .backgroundCompleted,
+              correlation: DiagnosticCorrelation(jobID: jobID),
+              errorCode: "registration_failed"
+            )
+          )
+        }
+        Self.logger.error("Could not register a pending continued generation task handler.")
+        continue
+      }
+    }
   }
 
   func configure(
@@ -41,8 +60,20 @@ final class GenerationBackgroundCoordinator {
     guard #available(iOS 26.0, *) else {
       return
     }
+    let identifier = Self.taskIdentifier(for: jobID)
+    guard registerLaunchHandler(for: identifier) else {
+      await diagnostics.record(
+        DiagnosticEvent(
+          kind: .backgroundCompleted,
+          correlation: DiagnosticCorrelation(jobID: jobID),
+          errorCode: "registration_failed"
+        )
+      )
+      Self.logger.error("Could not register continued generation task handler.")
+      return
+    }
     let request = BGContinuedProcessingTaskRequest(
-      identifier: Self.taskIdentifier(for: jobID),
+      identifier: identifier,
       title: String(localized: "minutes.background.title"),
       subtitle: String(localized: "minutes.background.subtitle")
     )
@@ -96,18 +127,23 @@ final class GenerationBackgroundCoordinator {
     }
   }
 
-  private func registerLaunchHandler() {
-    guard #available(iOS 26.0, *) else {
-      return
+  @available(iOS 26.0, *)
+  private func registerLaunchHandler(for identifier: String) -> Bool {
+    guard !registeredTaskIdentifiers.contains(identifier) else {
+      return true
     }
-    BGTaskScheduler.shared.register(
-      forTaskWithIdentifier: Self.registrationIdentifier,
-      using: nil
+    let registered = BGTaskScheduler.shared.register(
+      forTaskWithIdentifier: identifier,
+      using: DispatchQueue.main
     ) { [weak self] task in
       Task { @MainActor [weak self] in
         await self?.handle(task)
       }
     }
+    if registered {
+      registeredTaskIdentifiers.insert(identifier)
+    }
+    return registered
   }
 
   private func handle(_ task: BGTask) async {

@@ -25,6 +25,21 @@ struct GRDBGenerationJobStoreTests {
     removeDatabase(at: databaseURL)
   }
 
+  @Test("Reads unfinished job IDs synchronously for launch-time task registration")
+  func readsResumableJobIDsSynchronously() async throws {
+    let databaseURL = temporaryGenerationDatabaseURL()
+    let store = try GRDBGenerationJobStore.open(at: databaseURL)
+    let source = GenerationStoreFixture()
+    try await store.create(source.job)
+    try await store.close()
+
+    #expect(
+      try GRDBGenerationJobStore.resumableJobIDs(at: databaseURL)
+        == [source.job.id]
+    )
+    removeDatabase(at: databaseURL)
+  }
+
   @Test("Persists generation lineage and returns completed jobs as the latest job")
   func persistsGenerationLineage() async throws {
     let databaseURL = temporaryGenerationDatabaseURL()

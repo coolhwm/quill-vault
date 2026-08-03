@@ -105,6 +105,32 @@ public actor GRDBGenerationJobStore: GenerationJobStore {
     }
   }
 
+  /// Returns unfinished job IDs without crossing the actor boundary.
+  ///
+  /// The app uses this during launch to register concrete continued-processing
+  /// task handlers before iOS delivers a pending task. The normal store remains
+  /// actor-isolated for all reads and writes after launch.
+  public static func resumableJobIDs(at databaseURL: URL) throws -> [UUID] {
+    guard FileManager.default.fileExists(atPath: databaseURL.path) else {
+      return []
+    }
+    var configuration = Configuration()
+    configuration.foreignKeysEnabled = true
+    configuration.busyMode = .timeout(5)
+    let pool = try DatabasePool(path: databaseURL.path, configuration: configuration)
+    defer { try? pool.close() }
+    return try pool.read { database in
+      try String.fetchAll(
+        database,
+        sql: """
+          SELECT job_id FROM generation_job
+          WHERE state IN ('pending', 'running', 'paused')
+          ORDER BY created_at ASC, job_id ASC
+          """
+      ).compactMap(UUID.init(uuidString:))
+    }
+  }
+
   public func create(_ job: GenerationJob) async throws {
     do {
       try await databasePool.write { database in

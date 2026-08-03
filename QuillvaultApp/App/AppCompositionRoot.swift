@@ -49,8 +49,12 @@ final class AppCompositionRoot {
     let resolvedModelProfiles = Self.makeDefaultModelProfiles(
       diagnostics: diagnostics.recorder
     )
-    let backgroundCoordinator = GenerationBackgroundCoordinator(
+    let resumableGenerationJobIDs = Self.loadResumableGenerationJobIDs(
       diagnostics: diagnostics.recorder
+    )
+    let backgroundCoordinator = GenerationBackgroundCoordinator(
+      diagnostics: diagnostics.recorder,
+      resumableJobIDs: resumableGenerationJobIDs
     )
     let resolvedGeneration = Self.makeDefaultGeneration(
       fileStore: fileStore,
@@ -58,6 +62,9 @@ final class AppCompositionRoot {
       diagnostics: diagnostics.recorder,
       onJobRegistered: { [weak backgroundCoordinator] job in
         await backgroundCoordinator?.schedule(jobID: job.id)
+      },
+      onJobNoLongerResumable: { [weak backgroundCoordinator] jobID in
+        await backgroundCoordinator?.cancelScheduledTask(jobID: jobID)
       }
     )
     backgroundCoordinator.configure(
@@ -189,7 +196,8 @@ final class AppCompositionRoot {
     fileStore: MeetingFileStore,
     modelProfiles: any ModelProfileUseCase,
     diagnostics: any DiagnosticRecorder,
-    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil,
+    onJobNoLongerResumable: (@Sendable (UUID) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     guard
       !isMeetingDetailUITest,
@@ -201,7 +209,8 @@ final class AppCompositionRoot {
       fileStore: fileStore,
       profiles: executionAccess,
       diagnostics: diagnostics,
-      onJobRegistered: onJobRegistered
+      onJobRegistered: onJobRegistered,
+      onJobNoLongerResumable: onJobNoLongerResumable
     )
   }
 
@@ -209,7 +218,8 @@ final class AppCompositionRoot {
     fileStore: MeetingFileStore,
     profiles: any ModelProfileExecutionAccess,
     diagnostics: any DiagnosticRecorder,
-    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil
+    onJobRegistered: (@Sendable (GenerationJob) async -> Void)? = nil,
+    onJobNoLongerResumable: (@Sendable (UUID) async -> Void)? = nil
   ) -> (any GenerationUseCase)? {
     do {
       let stateDirectory =
@@ -224,10 +234,33 @@ final class AppCompositionRoot {
         profiles: profiles,
         provider: OpenAICompatibleProvider(diagnostics: diagnostics),
         diagnostics: diagnostics,
-        onJobRegistered: onJobRegistered
+        onJobRegistered: onJobRegistered,
+        onJobNoLongerResumable: onJobNoLongerResumable
       )
     } catch {
       return nil
+    }
+  }
+
+  private static func loadResumableGenerationJobIDs(
+    diagnostics: any DiagnosticRecorder
+  ) -> [UUID] {
+    do {
+      let stateDirectory = try applicationSupportDirectory()
+        .appending(path: "Quillvault", directoryHint: .isDirectory)
+      return try GRDBGenerationJobStore.resumableJobIDs(
+        at: stateDirectory.appending(path: "generation-state.sqlite")
+      )
+    } catch {
+      Task {
+        await diagnostics.record(
+          DiagnosticEvent(
+            kind: .backgroundCompleted,
+            errorCode: "launch_scan_failed"
+          )
+        )
+      }
+      return []
     }
   }
 
