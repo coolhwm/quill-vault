@@ -889,6 +889,60 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成后将在此显示图示。" } }
       }
     },
+    "minutes.generation.cancel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop generation" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "停止生成" } }
+      }
+    },
+    "minutes.generation.pending" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The text record is ready. Generate a first set of minutes when you are ready." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录已就绪，可以开始生成纪要。" } }
+      }
+    },
+    "minutes.generation.paused" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation paused" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成已暂停" } }
+      }
+    },
+    "minutes.generation.paused.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your recording and text record are safe. Continue when the cause is resolved." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "录音和文字记录仍安全保留，问题解决后可以继续。" } }
+      }
+    },
+    "minutes.generation.retryable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This generation can be retried without rerecording." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无需重新录音，可以直接重试生成。" } }
+      }
+    },
+    "minutes.generation.resume" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue generation" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "继续生成" } }
+      }
+    },
+    "minutes.generation.running" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generating minutes…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在生成纪要…" } }
+      }
+    },
+    "minutes.generation.start" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generate minutes" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "生成纪要" } }
+      }
+    },
+    "minutes.generation.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minutes generation" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纪要生成" } }
+      }
+    },
     "minutes.detail.download.required" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Download this file in Files, then try again." } },

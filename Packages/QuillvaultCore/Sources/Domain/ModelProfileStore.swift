@@ -57,6 +57,9 @@ public protocol ModelProfileUsageTracking:
     profileID: ModelProfileID
   ) async throws
   func finishTask(_ task: ModelProfileTaskReference) async throws
+  func reconcileUnfinishedTasks(
+    keeping taskReferences: Set<ModelProfileTaskReference>
+  ) async throws
 }
 
 public enum ModelProfileDeletionImpact: Equatable, Sendable {

@@ -64,7 +64,11 @@ struct GRDBModelProfileStoreTests {
     try await store.save(profile)
     try await store.registerUnfinishedTask(first, profileID: profile.id)
     try await store.registerUnfinishedTask(second, profileID: profile.id)
+    let orphan = ModelProfileTaskReference(rawValue: UUID())
+    try await store.registerUnfinishedTask(orphan, profileID: profile.id)
 
+    #expect(try await store.unfinishedTaskCount(for: profile.id) == 3)
+    try await store.reconcileUnfinishedTasks(keeping: [first, second])
     #expect(try await store.unfinishedTaskCount(for: profile.id) == 2)
     let workflow = ModelProfileWorkflow(
       profiles: store,

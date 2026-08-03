@@ -293,6 +293,31 @@ public actor GRDBModelProfileStore:
     }
   }
 
+  public func reconcileUnfinishedTasks(
+    keeping taskReferences: Set<ModelProfileTaskReference>
+  ) async throws {
+    let keptReferences = Set(
+      taskReferences.map { $0.rawValue.uuidString }
+    )
+    do {
+      try await databasePool.write { database in
+        let existingReferences = try String.fetchAll(
+          database,
+          sql: "SELECT task_reference FROM model_profile_usage"
+        )
+        for reference in existingReferences
+        where !keptReferences.contains(reference) {
+          try database.execute(
+            sql: "DELETE FROM model_profile_usage WHERE task_reference = ?",
+            arguments: [reference]
+          )
+        }
+      }
+    } catch {
+      throw ModelProfileStoreError.unavailable
+    }
+  }
+
   public func delete(_ id: ModelProfileID) async throws {
     do {
       try await databasePool.write { database in

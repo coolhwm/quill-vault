@@ -40,6 +40,11 @@ final class AppCompositionRoot {
     )
     let resolvedRecording =
       recording ?? Self.makeDefaultRecording(fileStore: fileStore)
+    let resolvedModelProfiles = Self.makeDefaultModelProfiles()
+    let resolvedGeneration = Self.makeDefaultGeneration(
+      fileStore: fileStore,
+      modelProfiles: resolvedModelProfiles
+    )
     let recordingQuickStart = RecordingQuickStartWorkflow(
       recording: resolvedRecording,
       directory: directoryAuthorization
@@ -68,12 +73,13 @@ final class AppCompositionRoot {
         return SystemMeetingAudioPlayer(
           access: MeetingAudioFileAccessAdapter(store: fileStore)
         )
-      }
+      },
+      generation: resolvedGeneration
     )
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
       library: resolvedMeetingLibrary,
-      modelProfiles: Self.makeDefaultModelProfiles()
+      modelProfiles: resolvedModelProfiles
     )
   }
 
@@ -147,6 +153,44 @@ final class AppCompositionRoot {
       return UITestModelProfileUseCase()
     }
     return makeModelProfiles()
+  }
+
+  private static func makeDefaultGeneration(
+    fileStore: MeetingFileStore,
+    modelProfiles: any ModelProfileUseCase
+  ) -> (any GenerationUseCase)? {
+    guard
+      !isMeetingDetailUITest,
+      let executionAccess = modelProfiles as? any ModelProfileExecutionAccess
+    else {
+      return nil
+    }
+    return makeGeneration(
+      fileStore: fileStore,
+      profiles: executionAccess
+    )
+  }
+
+  nonisolated private static func makeGeneration(
+    fileStore: MeetingFileStore,
+    profiles: any ModelProfileExecutionAccess
+  ) -> (any GenerationUseCase)? {
+    do {
+      let stateDirectory =
+        try applicationSupportDirectory()
+        .appending(path: "Quillvault", directoryHint: .isDirectory)
+      let jobs = try GRDBGenerationJobStore.open(
+        at: stateDirectory.appending(path: "generation-state.sqlite")
+      )
+      return GenerationWorkflow(
+        jobs: jobs,
+        assets: fileStore,
+        profiles: profiles,
+        provider: OpenAICompatibleProvider()
+      )
+    } catch {
+      return nil
+    }
   }
 
   private static func makeRecording(

@@ -63,6 +63,27 @@ public struct MeetingDetailView: View {
   private func detailContent(_ detail: MeetingDetail) -> some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 24) {
+        MeetingGenerationSection(
+          minutes: detail.minutes,
+          snapshot: model.generationSnapshot,
+          isBusy: model.generationBusy,
+          hasError: model.generationError,
+          start: {
+            Task {
+              await model.startGeneration()
+            }
+          },
+          resume: {
+            Task {
+              await model.resumeGeneration()
+            }
+          },
+          cancel: {
+            Task {
+              await model.cancelGeneration()
+            }
+          }
+        )
         MeetingSummarySection(minutes: detail.minutes)
         MeetingDiagramSection(minutes: detail.minutes)
         MeetingAudioPlayerSection(

@@ -1,7 +1,9 @@
 import Domain
 import Foundation
 
-public actor ModelProfileWorkflow: ModelProfileUseCase {
+public actor ModelProfileWorkflow:
+  ModelProfileUseCase, ModelProfileExecutionAccess
+{
   private let profiles: any ModelProfileStore
   private let credentials: any ModelCredentialStore
   private let provider: any AIProvider
@@ -176,6 +178,63 @@ public actor ModelProfileWorkflow: ModelProfileUseCase {
     }
     preferences.isEnabled = enabled
     try await profiles.setAutomaticGenerationPreferences(preferences)
+  }
+
+  public func currentExecutionProfile() async throws
+    -> ModelExecutionProfile
+  {
+    guard
+      let currentID = try await profiles.currentProfileID(),
+      let profile = try await profiles.loadAll().first(where: {
+        $0.id == currentID && $0.isUsable
+      })
+    else {
+      throw ModelProfileWorkflowError.profileNotUsable
+    }
+    return try await executionProfile(for: profile.snapshot())
+  }
+
+  public func executionProfile(
+    for snapshot: ModelProfileSnapshot
+  ) async throws -> ModelExecutionProfile {
+    do {
+      return ModelExecutionProfile(
+        snapshot: snapshot,
+        apiKey: try await credentials.read(snapshot.credentialReference)
+      )
+    } catch let error as ModelCredentialError {
+      throw error
+    } catch {
+      throw ModelCredentialError.unavailable
+    }
+  }
+
+  public func registerUnfinishedTask(
+    _ task: ModelProfileTaskReference,
+    profileID: ModelProfileID
+  ) async throws {
+    guard let usage = usage as? any ModelProfileUsageTracking else {
+      return
+    }
+    try await usage.registerUnfinishedTask(task, profileID: profileID)
+  }
+
+  public func finishTask(
+    _ task: ModelProfileTaskReference
+  ) async throws {
+    guard let usage = usage as? any ModelProfileUsageTracking else {
+      return
+    }
+    try await usage.finishTask(task)
+  }
+
+  public func reconcileUnfinishedTasks(
+    keeping taskReferences: Set<ModelProfileTaskReference>
+  ) async throws {
+    guard let usage = usage as? any ModelProfileUsageTracking else {
+      return
+    }
+    try await usage.reconcileUnfinishedTasks(keeping: taskReferences)
   }
 
   public func deletionImpact(
