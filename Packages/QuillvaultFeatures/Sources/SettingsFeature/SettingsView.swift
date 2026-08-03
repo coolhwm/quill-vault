@@ -13,6 +13,8 @@ public struct SettingsView: View {
 
   public var body: some View {
     List {
+      ModelProfilesSection(model: model)
+
       Section("settings.directory.section") {
         directoryRow
         Button("settings.directory.choose", systemImage: "folder.badge.plus") {

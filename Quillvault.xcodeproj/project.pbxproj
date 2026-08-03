@@ -18,9 +18,11 @@
 		67E56C45446E335C6CBDA26C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0AB205973E9B6720D1AB0E9F /* Foundation.framework */; };
 		781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */; };
 		781EFF80FC12423C52064ABE /* MeetingDetailUITestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */; };
+		B19000000000000000000001 /* UITestModelProfileUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B19000000000000000000002 /* UITestModelProfileUseCase.swift */; };
 		82ED1AFF9834DD7FE212D0BC /* SettingsFeature in Frameworks */ = {isa = PBXBuildFile; productRef = AB1DFCA2DF85450E6929AFAC /* SettingsFeature */; };
 		8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 4738FE796A919DAD340B4206 /* PersistenceGRDB */; };
 		8E6D850EE05B3AA7989F683F /* SpeechTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = 4738FE796A919DAD340B4207 /* SpeechTranscription */; };
+		A19000000000000000000001 /* ModelServices in Frameworks */ = {isa = PBXBuildFile; productRef = A19000000000000000000002 /* ModelServices */; };
 		9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957B75AE625AD703BD1D6A0D /* AppRootView.swift */; };
 		920F0BC333020C91F21D608C /* Domain in Frameworks */ = {isa = PBXBuildFile; productRef = 8B0862626BC69050D8B0730F /* Domain */; };
 		93A9A6CE3BA00CC5E22A4DBF /* AppNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 9C10B4DEC5CE7CF9AEA64270 /* AppNavigation */; };
@@ -57,6 +59,7 @@
 		957B75AE625AD703BD1D6A0D /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppCompositionRoot.swift; sourceTree = "<group>"; };
 		9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MeetingDetailUITestFixtures.swift; sourceTree = "<group>"; };
+		B19000000000000000000002 /* UITestModelProfileUseCase.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UITestModelProfileUseCase.swift; sourceTree = "<group>"; };
 		9C602D01AD992DEBB6349F14 /* GRDB-LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "GRDB-LICENSE.txt"; sourceTree = "<group>"; };
 		B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLifecycleCoordinator.swift; sourceTree = "<group>"; };
 		C00A1249EEB6394904BCA349 /* QuillvaultApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuillvaultApp.swift; sourceTree = "<group>"; };
@@ -91,6 +94,7 @@
 				670EBEF64E192D225520DC6A /* MeetingFileStore in Frameworks */,
 				8E6D850EE05B3AA7989F683E /* PersistenceGRDB in Frameworks */,
 				8E6D850EE05B3AA7989F683F /* SpeechTranscription in Frameworks */,
+				A19000000000000000000001 /* ModelServices in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,6 +108,7 @@
 				16AC7100B4F843E8A2C9D102 /* ActionButtonShortcut.swift */,
 				9A89C104A01B2C552A538CFC /* AppCompositionRoot.swift */,
 				9A89C104A01B2C552A538CFD /* MeetingDetailUITestFixtures.swift */,
+				B19000000000000000000002 /* UITestModelProfileUseCase.swift */,
 				B2D4F6081A3C5E7F90A2C4E6 /* AppLifecycleCoordinator.swift */,
 				07DD9DE903D6014F01C42586 /* AppRouter.swift */,
 				957B75AE625AD703BD1D6A0D /* AppRootView.swift */,
@@ -212,6 +217,7 @@
 				1B827BDE348FC1F05B0DB6F7 /* MeetingFileStore */,
 				4738FE796A919DAD340B4206 /* PersistenceGRDB */,
 				4738FE796A919DAD340B4207 /* SpeechTranscription */,
+				A19000000000000000000002 /* ModelServices */,
 			);
 			productName = Quillvault;
 			productReference = 02D47DA788E214C5FF1935ED /* Quillvault.app */;
@@ -308,6 +314,7 @@
 				16AC7100B4F843E8A2C9D101 /* ActionButtonShortcut.swift in Sources */,
 				781EFF80FC12423C52064ABD /* AppCompositionRoot.swift in Sources */,
 				781EFF80FC12423C52064ABE /* MeetingDetailUITestFixtures.swift in Sources */,
+				B19000000000000000000001 /* UITestModelProfileUseCase.swift in Sources */,
 				A1C3E5F7092B4D6F8193A5C7 /* AppLifecycleCoordinator.swift in Sources */,
 				C7D4E823E0D136C629D37BE5 /* AppRouter.swift in Sources */,
 				9070346FA67BD4595BE93493 /* AppRootView.swift in Sources */,
@@ -621,6 +628,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "Packages/QuillvaultInfrastructure" */;
 			productName = SpeechTranscription;
+		};
+		A19000000000000000000002 /* ModelServices */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0092A67052151EFD84FC073B /* XCLocalSwiftPackageReference "Packages/QuillvaultInfrastructure" */;
+			productName = ModelServices;
 		};
 		62539A81B0FEAB49BD0EE0FB /* MeetingsFeature */ = {
 			isa = XCSwiftPackageProductDependency;

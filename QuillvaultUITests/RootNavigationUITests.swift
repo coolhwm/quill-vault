@@ -127,6 +127,46 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Clear search and filters"].isHittable)
   }
 
+  func testCapabilityTestDisclosesItsDestinationAndReportsSuccess() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: ["-ui-test-model-profiles"]
+    )
+
+    app.tabBars.buttons["Settings"].tap()
+    XCTAssertTrue(app.staticTexts["Fast"].waitForExistence(timeout: 2))
+    app.buttons["Model actions"].tap()
+    app.buttons["Test Connection"].tap()
+    let disclosure = app.alerts["Send a Real Test Request?"]
+    XCTAssertTrue(disclosure.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      disclosure.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "api.example.com")
+      ).firstMatch.exists
+    )
+    disclosure.buttons["Send Test Request"].tap()
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Capability verified")
+      ).firstMatch.waitForExistence(timeout: 2)
+    )
+    app.switches["Generate minutes automatically"].tap()
+    let automaticDisclosure = app.alerts["Enable Automatic Generation?"]
+    XCTAssertTrue(automaticDisclosure.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      automaticDisclosure.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "api.example.com")
+      ).firstMatch.exists
+    )
+    automaticDisclosure.buttons["Enable"].tap()
+    XCTAssertTrue(
+      app.staticTexts[
+        "New ready transcripts will use the selected model."
+      ].waitForExistence(timeout: 2)
+    )
+  }
+
   func testLongMeetingDetailKeepsTranscriptAndAudioUsableWithoutMinutes() {
     launch(
       language: "zh-Hans",
@@ -232,6 +272,9 @@ final class RootNavigationUITests: XCTestCase {
     }
     if extraArguments.contains("-ui-test-meeting-detail") {
       app.launchEnvironment["QUILLVAULT_MEETING_DETAIL_UI_TEST"] = "1"
+    }
+    if extraArguments.contains("-ui-test-model-profiles") {
+      app.launchEnvironment["QUILLVAULT_MODEL_PROFILE_UI_TEST"] = "1"
     }
     app.launch()
   }

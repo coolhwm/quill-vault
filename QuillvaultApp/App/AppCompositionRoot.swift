@@ -6,6 +6,7 @@ import Foundation
 import HomeFeature
 import MeetingFileStore
 import MeetingsFeature
+import ModelServices
 import Observation
 import PersistenceGRDB
 import SettingsFeature
@@ -71,7 +72,8 @@ final class AppCompositionRoot {
     )
     settingsModel = SettingsModel(
       directory: directoryAuthorization,
-      library: resolvedMeetingLibrary
+      library: resolvedMeetingLibrary,
+      modelProfiles: Self.makeDefaultModelProfiles()
     )
   }
 
@@ -123,6 +125,30 @@ final class AppCompositionRoot {
     )
   }
 
+  private static func makeModelProfiles() -> any ModelProfileUseCase {
+    RetryingModelProfileUseCase {
+      let stateDirectory =
+        try applicationSupportDirectory()
+        .appending(path: "Quillvault", directoryHint: .isDirectory)
+      let profileStore = try GRDBModelProfileStore.open(
+        at: stateDirectory.appending(path: "model-profiles.sqlite")
+      )
+      return ModelProfileWorkflow(
+        profiles: profileStore,
+        credentials: KeychainModelCredentialStore(),
+        provider: OpenAICompatibleProvider(),
+        usage: profileStore
+      )
+    }
+  }
+
+  private static func makeDefaultModelProfiles() -> any ModelProfileUseCase {
+    if isModelProfileUITest {
+      return UITestModelProfileUseCase()
+    }
+    return makeModelProfiles()
+  }
+
   private static func makeRecording(
     fileStore: MeetingFileStore
   ) -> any RecordingUseCase {
@@ -151,6 +177,13 @@ final class AppCompositionRoot {
     ProcessInfo.processInfo.arguments.contains("-ui-test-meeting-detail")
       && ProcessInfo.processInfo.environment[
         "QUILLVAULT_MEETING_DETAIL_UI_TEST"
+      ] == "1"
+  }
+
+  private static var isModelProfileUITest: Bool {
+    ProcessInfo.processInfo.arguments.contains("-ui-test-model-profiles")
+      && ProcessInfo.processInfo.environment[
+        "QUILLVAULT_MODEL_PROFILE_UI_TEST"
       ] == "1"
   }
 

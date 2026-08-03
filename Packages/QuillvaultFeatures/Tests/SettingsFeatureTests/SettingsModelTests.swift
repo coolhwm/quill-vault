@@ -1,5 +1,6 @@
 import Application
 import Domain
+import Foundation
 import Testing
 
 @testable import SettingsFeature
@@ -32,6 +33,49 @@ struct SettingsModelTests {
     await model.selectDirectory(opaqueReference: "file:///vault")
 
     #expect(model.directoryState == .authorized(directory))
+  }
+
+  @Test("Loads multiple model profiles and projects the current selection")
+  func loadsModelProfiles() async {
+    let profiles = ModelProfileUseCaseStub(
+      collection: ModelProfileCollection(
+        profiles: [.fixture(name: "Fast"), .fixture(name: "Careful")],
+        currentProfileID: ModelProfile.fixture(name: "Careful").id
+      )
+    )
+    let model = SettingsModel(
+      directory: AuthoritativeDirectoryStub(restoreResult: .success(.fixture)),
+      library: MeetingLibraryStub(),
+      modelProfiles: profiles
+    )
+
+    await model.load()
+
+    #expect(model.modelProfiles.map(\.name) == ["Fast", "Careful"])
+    #expect(model.currentModelProfileID == ModelProfile.fixture(name: "Careful").id)
+  }
+
+  @Test("A capability test exposes the provider domain without exposing its key")
+  func testsModelCapability() async {
+    let profile = ModelProfile.fixture(name: "Primary")
+    let profiles = ModelProfileUseCaseStub(
+      collection: ModelProfileCollection(
+        profiles: [profile],
+        currentProfileID: profile.id
+      )
+    )
+    let model = SettingsModel(
+      directory: AuthoritativeDirectoryStub(restoreResult: .success(.fixture)),
+      library: MeetingLibraryStub(),
+      modelProfiles: profiles
+    )
+
+    await model.testProfile(profile.id)
+
+    #expect(
+      model.profileTestState[profile.id]
+        == .succeeded(providerDomain: "api.example.com")
+    )
   }
 }
 
@@ -89,4 +133,60 @@ extension AuthoritativeDirectory {
     displayName: "Meeting Vault",
     kind: .userSelected
   )
+}
+
+private actor ModelProfileUseCaseStub: ModelProfileUseCase {
+  let collection: ModelProfileCollection
+
+  init(collection: ModelProfileCollection) {
+    self.collection = collection
+  }
+
+  func load() async throws -> ModelProfileCollection {
+    collection
+  }
+
+  func save(_ draft: ModelProfileDraft) async throws -> ModelProfile {
+    collection.profiles[0]
+  }
+
+  func select(_ id: ModelProfileID) async throws {}
+
+  func test(_ id: ModelProfileID) async throws -> ModelCapability {
+    ModelCapability(
+      providerDomain: "api.example.com",
+      representativeContent: true
+    )
+  }
+
+  func setAutomaticGeneration(
+    enabled: Bool,
+    disclosureAcknowledged: Bool
+  ) async throws {}
+
+  func deletionImpact(
+    _ id: ModelProfileID
+  ) async throws -> ModelProfileDeletionImpact {
+    .safe
+  }
+
+  func delete(_ id: ModelProfileID, confirmed: Bool) async throws {}
+}
+
+extension ModelProfile {
+  fileprivate static func fixture(name: String) -> Self {
+    let suffix = name == "Fast" ? "1" : name == "Careful" ? "2" : "3"
+    return ModelProfile(
+      id: ModelProfileID(
+        rawValue: UUID(
+          uuidString: "00000000-0000-0000-0000-00000000000\(suffix)"
+        )!
+      ),
+      name: name,
+      baseURL: URL(string: "https://api.example.com/v1")!,
+      model: "\(name.lowercased())-model",
+      credentialReference: ModelCredentialReference(rawValue: UUID()),
+      isUsable: true
+    )
+  }
 }

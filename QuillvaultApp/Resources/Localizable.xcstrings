@@ -571,6 +571,234 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试" } }
       }
     },
+    "common.cancel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } }
+      }
+    },
+    "common.save" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Save" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存" } }
+      }
+    },
+    "settings.models.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "AI Models" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "AI 模型" } }
+      }
+    },
+    "settings.models.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model profiles are temporarily unavailable. Try again later." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型配置暂时不可用，请稍后重试。" } }
+      }
+    },
+    "settings.models.unverified" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test this profile before selecting it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "测试通过后才可选择此配置。" } }
+      }
+    },
+    "settings.models.automatic" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Generate minutes automatically" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动生成纪要" } }
+      }
+    },
+    "settings.models.automatic.requires_verified" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Verify and select a model profile to enable automatic generation." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请先验证并选择一个模型配置。" } }
+      }
+    },
+    "settings.models.automatic.enabled" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New ready transcripts will use the selected model." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新的已就绪文字记录将使用当前模型生成纪要。" } }
+      }
+    },
+    "settings.models.automatic.confirm.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Automatic Generation?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开启自动生成？" } }
+      }
+    },
+    "settings.models.automatic.confirm.action" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开启" } }
+      }
+    },
+    "settings.models.automatic.disclosure" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ready meeting text will be sent to this provider automatically and the provider may charge for each request. Audio and local paths are never sent." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字记录就绪后会自动发送到该服务商，且每次请求可能产生费用；不会发送录音或本地路径。" } }
+      }
+    },
+    "settings.models.empty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No model profiles configured" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未配置模型" } }
+      }
+    },
+    "settings.models.add" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add Model Profile" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "添加模型配置" } }
+      }
+    },
+    "settings.models.actions" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model actions" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型操作" } }
+      }
+    },
+    "settings.models.test" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test Connection" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "测试连接" } }
+      }
+    },
+    "settings.models.testing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Testing representative model output…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在验证代表性模型输出…" } }
+      }
+    },
+    "settings.models.test.succeeded" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Capability verified:" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "能力验证通过：" } }
+      }
+    },
+    "settings.models.test.failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Capability test failed. Check the URL, model, key, and provider response." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "能力测试失败，请检查地址、模型、密钥和服务商响应。" } }
+      }
+    },
+    "settings.models.test.confirm.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Send a Real Test Request?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发送真实测试请求？" } }
+      }
+    },
+    "settings.models.test.confirm.action" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Send Test Request" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发送测试请求" } }
+      }
+    },
+    "settings.models.test.disclosure" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A minimal prompt will be sent to this provider. The provider may charge for this request. No recording, meeting text, or local path is included." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将向该服务商发送最小测试提示，服务商可能收取费用；不会包含录音、会议文字或本地路径。" } }
+      }
+    },
+    "settings.models.edit" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "编辑" } }
+      }
+    },
+    "settings.models.delete" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除" } }
+      }
+    },
+    "settings.models.delete.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete Model Profile?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除模型配置？" } }
+      }
+    },
+    "settings.models.delete.action" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete Profile and Key" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "删除配置和密钥" } }
+      }
+    },
+    "settings.models.delete.safe" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The profile metadata and its device-only Keychain credential will be removed." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将删除模型配置及其仅存于本机 Keychain 的密钥。" } }
+      }
+    },
+    "settings.models.delete.unfinished" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unfinished minutes jobs use this profile. Deleting it may pause them. Job count:" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未完成纪要任务正在使用此配置，删除后任务可能暂停。任务数：" } }
+      }
+    },
+    "settings.models.editor.add.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add Model" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "添加模型" } }
+      }
+    },
+    "settings.models.editor.edit.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit Model" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "编辑模型" } }
+      }
+    },
+    "settings.models.editor.profile" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Profile" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "配置" } }
+      }
+    },
+    "settings.models.editor.name" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Profile name" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "配置名称" } }
+      }
+    },
+    "settings.models.editor.base_url" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Base URL" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "服务地址" } }
+      }
+    },
+    "settings.models.editor.model" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model name" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "模型名称" } }
+      }
+    },
+    "settings.models.editor.streaming" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Use streaming responses" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "使用流式响应" } }
+      }
+    },
+    "settings.models.editor.credential" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Credential" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "密钥" } }
+      }
+    },
+    "settings.models.editor.api_key" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "API Key" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "API Key" } }
+      }
+    },
+    "settings.models.editor.key_saved" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A key is saved in Keychain. Leave blank to keep it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "密钥已保存到 Keychain，留空即可保留原密钥。" } }
+      }
+    },
+    "settings.models.editor.save_failed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not save. Use an HTTPS URL and complete all required fields." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "保存失败，请使用 HTTPS 地址并填写所有必填项。" } }
+      }
+    },
     "settings.about.section" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Quillvault" } },
