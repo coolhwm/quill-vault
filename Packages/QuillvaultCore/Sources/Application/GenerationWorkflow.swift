@@ -145,6 +145,9 @@ public actor GenerationWorkflow: GenerationUseCase {
       ?? (previousJob?.job.state == .completed
         ? meeting.minutesContentFingerprint
         : nil)
+    let strategy = MinutesGenerationStrategySelector.select(
+      from: transcript.revision
+    )
     let createdAt = now()
     var job = GenerationJob(
       id: makeJobID(),
@@ -152,6 +155,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       transcriptRevisionID: transcript.revision.id,
       transcriptFingerprint: transcript.revision.contentFingerprint,
       modelProfile: execution.snapshot,
+      promptVersion: strategy.promptVersionToken,
       chunkPlanVersion: chunkPlan.version,
       generationNumber: previousGeneration + 1,
       chunkCount: chunkPlan.chunks.count,
@@ -571,10 +575,11 @@ public actor GenerationWorkflow: GenerationUseCase {
         continue
       }
 
+      let strategy = MinutesGenerationStrategyCatalog.strategy(
+        forPromptVersionToken: job.promptVersion
+      )
       let request = AIRequest(
-        systemPrompt: """
-          Summarize one meeting transcript segment. Return readable Markdown text only. Preserve important decisions, risks, owners, and open questions. Do not invent details or require a rigid schema.
-          """,
+        systemPrompt: strategy.chunkSystemPrompt,
         userPrompt: """
           Summarize this anchored transcript segment in the same language as the source. Keep timestamps when they clarify a decision.
 
@@ -678,15 +683,15 @@ public actor GenerationWorkflow: GenerationUseCase {
       job.progress = max(job.progress, 70)
       job.updatedAt = now()
       try await persist(job, step: nil)
+      let strategy = MinutesGenerationStrategyCatalog.strategy(
+        forPromptVersionToken: job.promptVersion
+      )
+      let summaries = chunkOutputs.enumerated().map {
+        "## 第\($0.offset + 1)段\n\($0.element)"
+      }.joined(separator: "\n\n")
       let request = AIRequest(
-        systemPrompt: """
-          Merge chunk summaries into a coherent meeting minutes draft. Return readable Markdown only. Preserve uncertainty instead of inventing missing facts.
-          """,
-        userPrompt: """
-          Merge these ordered segment summaries into one concise meeting minutes draft in the same language as the source. Include a title, overview, decisions, action items and open questions when present.
-
-          \(chunkOutputs.enumerated().map { "## 第\($0.offset + 1)段\n\($0.element)" }.joined(separator: "\n\n"))
-          """,
+        systemPrompt: strategy.synthesisSystemPrompt,
+        userPrompt: strategy.synthesisUserPrompt(chunkSummaries: summaries),
         idempotencyKey: GenerationStepID.make(
           job: job,
           kind: .synthesis,
@@ -829,15 +834,12 @@ public actor GenerationWorkflow: GenerationUseCase {
     if let checkpoint = steps.first {
       output = checkpoint.output
     } else {
+      let strategy = MinutesGenerationStrategyCatalog.strategy(
+        forPromptVersionToken: job.promptVersion
+      )
       let request = AIRequest(
-        systemPrompt: """
-          You create concise, readable meeting minutes. Return useful Markdown text only. Missing optional details must not prevent a readable summary.
-          """,
-        userPrompt: """
-          Summarize this meeting transcript in the same language as the transcript. Include a short title, overview, decisions, action items and open questions when present.
-
-          \(transcript.promptText)
-          """,
+        systemPrompt: strategy.systemPrompt,
+        userPrompt: strategy.userPrompt(transcriptText: transcript.promptText),
         idempotencyKey: GenerationStepID.make(
           job: job,
           kind: .summary,
@@ -973,6 +975,7 @@ public actor GenerationWorkflow: GenerationUseCase {
       output: normalized.markdown,
       job: job,
       transcript: transcript,
+      meeting: meeting,
       informationMayBeIncomplete: normalized.informationMayBeIncomplete
     )
     do {
@@ -1557,23 +1560,60 @@ private enum MinutesDocumentBuilder {
     output: String,
     job: GenerationJob,
     transcript: TranscriptRevision,
+    meeting: MeetingIndexEntry,
     informationMayBeIncomplete: Bool
   ) -> String {
-    [
+    let body = stripLeadingTitle(
+      from: output.trimmingCharacters(in: .whitespacesAndNewlines)
+    )
+    let title = MinutesTitleResolver.resolve(
+      markdown: output,
+      previousTitle: meeting.title,
+      meetingStartedAt: meeting.createdAt
+    )
+    let escapedTitle = title
+      .replacingOccurrences(of: "\"", with: "\\\"")
+    return [
       "---",
       "schemaVersion: 1",
+      "title: \"\(escapedTitle)\"",
       "generationJobID: \(job.id.uuidString)",
       "generationNumber: \(job.generationNumber)",
+      "promptVersion: \(job.promptVersion)",
       "transcriptRevisionID: \(transcript.id)",
       "transcriptFingerprint: \(transcript.contentFingerprint)",
       "model: \(job.modelProfile.model)",
       "informationMayBeIncomplete: \(informationMayBeIncomplete)",
       "---",
       "",
-      "# 结构化纪要",
+      "# \(title)",
       "",
-      output.trimmingCharacters(in: .whitespacesAndNewlines),
+      body,
       "",
     ].joined(separator: "\n")
+  }
+
+  /// Avoid duplicating the H1 when the model already provided one.
+  private static func stripLeadingTitle(from markdown: String) -> String {
+    var lines = markdown.components(separatedBy: "\n")
+    while let first = lines.first,
+      first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      lines.removeFirst()
+    }
+    guard let first = lines.first else {
+      return markdown
+    }
+    let trimmed = first.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("#") {
+      lines.removeFirst()
+      while let next = lines.first,
+        next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        lines.removeFirst()
+      }
+      return lines.joined(separator: "\n")
+    }
+    return markdown
   }
 }

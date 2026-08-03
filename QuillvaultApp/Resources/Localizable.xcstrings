@@ -1113,8 +1113,8 @@
     },
     "minutes.card.default.title" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Meeting recording" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会议录音" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Untitled meeting" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未命名会议" } }
       }
     },
     "minutes.detail.diagram.pending" : {

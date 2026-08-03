@@ -368,9 +368,13 @@ struct GenerationWorkflowTests {
     #expect(provider.recordedRequests().count == 4)
     #expect(
       provider.recordedRequests().dropLast().allSatisfy { request in
-        request.systemPrompt.contains("transcript segment")
+        request.systemPrompt.localizedCaseInsensitiveContains("segment")
       })
-    #expect(provider.recordedRequests().last?.systemPrompt.contains("Merge chunk") == true)
+    #expect(
+      provider.recordedRequests().last?.systemPrompt
+        .localizedCaseInsensitiveContains("merge") == true
+    )
+    #expect(snapshot.job.promptVersion.contains("@"))
   }
 
   @Test("A validated chunk checkpoint is reused after resume")
