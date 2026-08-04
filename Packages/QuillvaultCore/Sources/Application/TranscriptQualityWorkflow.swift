@@ -9,10 +9,25 @@ public protocol TranscriptQualityUseCase: Sendable {
 
   /// Loads the original transcript, optimizes offline, and publishes
   /// `transcript.optimized.md` without modifying `transcript.md`.
+  /// Persists a durable running/failed job so cold start can resume.
   func optimizeAndPublish(
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry
   ) async throws -> TranscriptVersionMetadata
+
+  func loadOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptOptimizeJob?
+}
+
+extension TranscriptQualityUseCase {
+  public func loadOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptOptimizeJob? {
+    nil
+  }
 }
 
 // Re-export access errors for Application callers.
@@ -109,45 +124,98 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
     guard let access else {
       throw TranscriptQualityAccessError.publicationFailed
     }
-    let original = try await access.loadOriginalTranscript(
+    let runningJob = TranscriptOptimizeJob(
+      meetingID: meeting.id,
+      state: .running,
+      progress: 5,
+      updatedAt: now()
+    )
+    try? await access.saveOptimizeJob(
+      runningJob,
       in: directory,
       meeting: meeting
     )
-    let beforeFingerprint = try await access.originalTranscriptFingerprint(
-      in: directory,
-      meeting: meeting
-    )
-    let result = try await optimize(
-      timeline: original.timeline,
-      localeIdentifier: original.localeIdentifier
-    )
-    let afterFingerprint = try await access.originalTranscriptFingerprint(
-      in: directory,
-      meeting: meeting
-    )
-    // Guard: original asset must remain unchanged after optimization.
-    guard beforeFingerprint == afterFingerprint else {
-      throw TranscriptQualityAccessError.publicationFailed
+    do {
+      let original = try await access.loadOriginalTranscript(
+        in: directory,
+        meeting: meeting
+      )
+      let beforeFingerprint = try await access.originalTranscriptFingerprint(
+        in: directory,
+        meeting: meeting
+      )
+      try? await access.saveOptimizeJob(
+        TranscriptOptimizeJob(
+          meetingID: meeting.id,
+          state: .running,
+          progress: 40,
+          updatedAt: now()
+        ),
+        in: directory,
+        meeting: meeting
+      )
+      let result = try await optimize(
+        timeline: original.timeline,
+        localeIdentifier: original.localeIdentifier
+      )
+      let afterFingerprint = try await access.originalTranscriptFingerprint(
+        in: directory,
+        meeting: meeting
+      )
+      // Guard: original asset must remain unchanged after optimization.
+      guard beforeFingerprint == afterFingerprint else {
+        throw TranscriptQualityAccessError.publicationFailed
+      }
+      let optimizedRevision = TranscriptRevision(
+        meetingID: original.meetingID,
+        localeIdentifier: original.localeIdentifier,
+        timeline: result.timeline
+      )
+      try? await access.saveOptimizeJob(
+        TranscriptOptimizeJob(
+          meetingID: meeting.id,
+          state: .running,
+          progress: 85,
+          updatedAt: now()
+        ),
+        in: directory,
+        meeting: meeting
+      )
+      try await access.publishOptimized(
+        optimizedRevision,
+        in: directory,
+        meeting: meeting,
+        metadata: result.metadata
+      )
+      let stillOriginal = try await access.originalTranscriptFingerprint(
+        in: directory,
+        meeting: meeting
+      )
+      guard stillOriginal == beforeFingerprint else {
+        throw TranscriptQualityAccessError.publicationFailed
+      }
+      try? await access.clearOptimizeJob(in: directory, meeting: meeting)
+      return result.metadata
+    } catch {
+      try? await access.saveOptimizeJob(
+        TranscriptOptimizeJob(
+          meetingID: meeting.id,
+          state: .failed,
+          progress: 0,
+          updatedAt: now()
+        ),
+        in: directory,
+        meeting: meeting
+      )
+      throw error
     }
-    let optimizedRevision = TranscriptRevision(
-      meetingID: original.meetingID,
-      localeIdentifier: original.localeIdentifier,
-      timeline: result.timeline
-    )
-    try await access.publishOptimized(
-      optimizedRevision,
-      in: directory,
-      meeting: meeting,
-      metadata: result.metadata
-    )
-    let stillOriginal = try await access.originalTranscriptFingerprint(
-      in: directory,
-      meeting: meeting
-    )
-    guard stillOriginal == beforeFingerprint else {
-      throw TranscriptQualityAccessError.publicationFailed
-    }
-    return result.metadata
+  }
+
+  public func loadOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptOptimizeJob? {
+    try await access?.loadOptimizeJob(in: directory, meeting: meeting)
   }
 
   private func parseOptimizedTimeline(

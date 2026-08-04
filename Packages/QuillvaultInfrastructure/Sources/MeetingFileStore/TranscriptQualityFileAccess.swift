@@ -100,6 +100,66 @@ extension MeetingFileStore: TranscriptQualityAccess {
     }
   }
 
+  public func saveOptimizeJob(
+    _ job: TranscriptOptimizeJob,
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws {
+    do {
+      try await withGenerationScope(in: directory) { rootURL in
+        let meetingURL = try generationMeetingURL(
+          rootURL: rootURL,
+          meeting: meeting
+        )
+        let url = meetingURL.appending(path: Self.optimizeJobFileName)
+        let data = try JSONEncoder().encode(job)
+        try dependencies.fileMutator.writeSynced(data, to: url)
+      }
+    } catch {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+  }
+
+  public func loadOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptOptimizeJob? {
+    do {
+      return try await withGenerationScope(in: directory) { rootURL in
+        let meetingURL = try generationMeetingURL(
+          rootURL: rootURL,
+          meeting: meeting
+        )
+        let url = meetingURL.appending(path: Self.optimizeJobFileName)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+          return nil
+        }
+        let data = try coordinatedReadData(at: url)
+        return try JSONDecoder().decode(TranscriptOptimizeJob.self, from: data)
+      }
+    } catch {
+      return nil
+    }
+  }
+
+  public func clearOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws {
+    try await withGenerationScope(in: directory) { rootURL in
+      let meetingURL = try generationMeetingURL(
+        rootURL: rootURL,
+        meeting: meeting
+      )
+      let url = meetingURL.appending(path: Self.optimizeJobFileName)
+      if FileManager.default.fileExists(atPath: url.path) {
+        try? dependencies.fileMutator.removeItem(at: url)
+      }
+    }
+  }
+
+  private static let optimizeJobFileName = ".transcript-optimize-job.json"
+
   private func loadTranscriptRevision(
     fileName: String,
     in directory: AuthoritativeDirectory,

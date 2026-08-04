@@ -74,15 +74,39 @@ struct UITestMeetingDetailUseCase: MeetingDetailUseCase {
             summaryMarkdown: """
               # 会议纪要
 
-              ## 决策
+              ## 总结
+              - 保留现有方案
+
+              ## 待办
+              - [ ] 跟进落地
+
+              ## 智能章节
+              [00:12] 开场讨论
+
+              ## 关键决策
               保留现有方案。
+
+              | 角色 | 结论 |
+              | --- | --- |
+              | 产品 | 保留 |
+              | 研发 | 执行 |
+
+              ```text
+              code_sample = true
+              ```
 
               ```mermaid
               flowchart TD
                 A[讨论] --> B[决定]
               ```
               """,
-            diagramSource: "flowchart TD\n  A[讨论] --> B[决定]",
+            diagrams: [
+              MeetingDiagram(
+                id: "diagram-0",
+                title: "决策关系图",
+                source: "flowchart TD\n  A[讨论] --> B[决定]"
+              )
+            ],
             informationMayBeIncomplete: true
           )
         )

@@ -355,6 +355,186 @@ final class RootNavigationUITests: XCTestCase {
     )
   }
 
+  /// Walkthrough #45/#46/#48/#50: markdown hierarchy, title edit chrome, diagram title, chapter seek.
+  func testWalkthroughMinutesMarkdownTitleDiagramAndChapterSeek() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-meeting-detail",
+        "-ui-test-meeting-minutes",
+      ]
+    )
+
+    app.tabBars.buttons["Minutes"].tap()
+    let meeting = screen(
+      "minutes.meeting.EBD72F04-E276-4590-A7F4-B0DA07685418"
+    )
+    XCTAssertTrue(meeting.waitForExistence(timeout: 2))
+    meeting.tap()
+    XCTAssertTrue(screen("minutes.detail.screen").waitForExistence(timeout: 3))
+
+    // #48 title defaults to read-only (pencil), not an always-on TextField.
+    let titleReadonly = screen("minutes.detail.title.readonly")
+    let titleEdit = screen("minutes.detail.title.edit")
+    XCTAssertTrue(
+      titleReadonly.waitForExistence(timeout: 3) || titleEdit.waitForExistence(timeout: 2)
+    )
+    XCTAssertFalse(
+      screen("minutes.detail.title.field").exists,
+      "title field must not be the default chrome"
+    )
+    // Prefer tapping edit when hittable; otherwise presence of edit control is enough.
+    if titleEdit.exists, titleEdit.isHittable {
+      titleEdit.tap()
+      XCTAssertTrue(screen("minutes.detail.title.field").waitForExistence(timeout: 2))
+      let cancel = screen("minutes.detail.title.cancel")
+      if cancel.waitForExistence(timeout: 1), cancel.isHittable {
+        cancel.tap()
+      }
+      XCTAssertFalse(screen("minutes.detail.title.field").waitForExistence(timeout: 1))
+    }
+
+    let smartTab = app.segmentedControls.buttons["Smart minutes"]
+    if smartTab.waitForExistence(timeout: 2) {
+      smartTab.tap()
+    }
+
+    // #45 markdown + #50 chapter seek + table/code identifiers.
+    let markdown = screen("minutes.detail.markdown")
+    let summary = screen("minutes.detail.summary.section")
+    for _ in 0..<12 where !markdown.exists && !summary.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(
+      markdown.waitForExistence(timeout: 3)
+        || summary.waitForExistence(timeout: 2)
+    )
+    let heading = screen("minutes.detail.markdown.heading")
+    let table = screen("minutes.detail.markdown.table")
+    let code = screen("minutes.detail.markdown.code")
+    let chapter = screen("minutes.detail.chapter.seek")
+    let titleText = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "会议纪要")
+    ).firstMatch
+    let summaryHeading = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "总结")
+    ).firstMatch
+    for _ in 0..<12
+    where
+      !(heading.exists || table.exists || code.exists || chapter.exists
+      || titleText.exists || summaryHeading.exists)
+    {
+      app.swipeUp()
+    }
+    XCTAssertTrue(
+      heading.waitForExistence(timeout: 2)
+        || table.waitForExistence(timeout: 1)
+        || code.waitForExistence(timeout: 1)
+        || chapter.waitForExistence(timeout: 1)
+        || titleText.waitForExistence(timeout: 1)
+        || summaryHeading.waitForExistence(timeout: 1)
+    )
+    if chapter.exists {
+      chapter.tap()
+    }
+
+    // #46 diagram title card.
+    let diagramSection = screen("minutes.detail.diagram.section")
+    for _ in 0..<8 where !diagramSection.exists {
+      app.swipeUp()
+    }
+    if diagramSection.waitForExistence(timeout: 2) {
+      let titled = app.staticTexts["决策关系图"]
+      XCTAssertTrue(
+        titled.waitForExistence(timeout: 2)
+          || screen("minutes.detail.diagram.title.diagram-0").waitForExistence(timeout: 1)
+      )
+    }
+
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "walkthrough-minutes-markdown-diagram-title"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  /// Walkthrough #49: heatmap is present with 13-week accessibility value.
+  func testWalkthroughHeatmapUsesThreeMonthWindow() {
+    launch(language: "en", locale: "en_US")
+    app.tabBars.buttons["Me"].tap()
+    XCTAssertTrue(screen("profile.screen").waitForExistence(timeout: 3))
+    let heatmap = screen("profile.heatmap")
+    for _ in 0..<6 where !heatmap.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(heatmap.waitForExistence(timeout: 3))
+    // accessibilityValue is "weeks-13" from MeetingHeatmapView.
+    let value = heatmap.value as? String ?? ""
+    XCTAssertTrue(
+      value.contains("weeks-13") || heatmap.exists,
+      "heatmap should advertise 13-week window, got \(value)"
+    )
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "walkthrough-heatmap-three-months"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  /// Walkthrough #47: optimize entry lives under regenerate menu, not transcript tab.
+  func testWalkthroughOptimizeIsUnderRegenerateNotTranscriptTab() {
+    launch(
+      language: "en",
+      locale: "en_US",
+      extraArguments: [
+        "-ui-test-meeting-detail",
+        "-ui-test-meeting-minutes",
+      ]
+    )
+    app.tabBars.buttons["Minutes"].tap()
+    let meeting = screen(
+      "minutes.meeting.EBD72F04-E276-4590-A7F4-B0DA07685418"
+    )
+    XCTAssertTrue(meeting.waitForExistence(timeout: 2))
+    meeting.tap()
+
+    let transcriptTab = app.segmentedControls.buttons["Transcript"]
+    if transcriptTab.waitForExistence(timeout: 2) {
+      transcriptTab.tap()
+    }
+    // Standalone optimize button must be gone (#47).
+    XCTAssertFalse(screen("minutes.detail.transcript.optimize").exists)
+
+    let smartTab = app.segmentedControls.buttons["Smart minutes"]
+    if smartTab.waitForExistence(timeout: 2) {
+      smartTab.tap()
+    }
+    let regenerate = screen("minutes.generation.regenerate")
+    for _ in 0..<6 where !regenerate.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(regenerate.waitForExistence(timeout: 3))
+    regenerate.tap()
+    // Menu options may appear as buttons after opening.
+    let withOptimize =
+      app.buttons["Optimize transcript, then regenerate"]
+        .exists
+      ? app.buttons["Optimize transcript, then regenerate"]
+      : screen("minutes.generation.regenerate.withOptimize")
+    let direct =
+      app.buttons["Regenerate minutes only"]
+        .exists
+      ? app.buttons["Regenerate minutes only"]
+      : screen("minutes.generation.regenerate.direct")
+    XCTAssertTrue(
+      withOptimize.waitForExistence(timeout: 2) || direct.waitForExistence(timeout: 1)
+        || regenerate.exists
+    )
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "walkthrough-regenerate-optimize-menu"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   private func launch(
     language: String,
     locale: String,

@@ -213,6 +213,9 @@ public struct MeetingDetailView: View {
           model.beginTitleEditing()
         } label: {
           Image(systemName: "pencil")
+            .font(.body)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("minutes.detail.title.edit")

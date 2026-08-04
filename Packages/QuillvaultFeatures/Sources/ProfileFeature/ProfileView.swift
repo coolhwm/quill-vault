@@ -80,55 +80,69 @@ public struct ProfileView<SettingsDestination: View>: View {
   }
 }
 
-/// Near-12-month contribution-style grid sized to available width.
+/// ~3-month contribution-style grid sized to available width.
 struct MeetingHeatmapView: View {
   let stats: MeetingStats
   private let calendar = Calendar.current
   /// ~13 weeks covers about 3 months (walkthrough #49).
-  private let weeks = 13
-  private let daysInWeek = 7
-  /// Readable day cell floor so heat squares are not ~3pt dots.
-  private let minimumCellSize: CGFloat = 10
+  private let weeks = MeetingHeatmapLayout.defaultWeeks
+  private let daysInWeek = MeetingHeatmapLayout.daysInWeek
+  private let minimumCellSize = CGFloat(MeetingHeatmapLayout.minimumCellSize)
+  private let spacing = CGFloat(MeetingHeatmapLayout.defaultSpacing)
+  @State private var availableWidth: CGFloat = 320
 
   var body: some View {
+    let cell = CGFloat(
+      MeetingHeatmapLayout.cellSize(
+        availableWidth: Double(availableWidth),
+        weeks: weeks,
+        spacing: Double(spacing),
+        minimum: Double(minimumCellSize)
+      )
+    )
+    let gridHeight = CGFloat(
+      MeetingHeatmapLayout.totalHeight(
+        cellSize: Double(cell),
+        spacing: Double(spacing)
+      )
+    )
     VStack(alignment: .leading, spacing: 8) {
       Text("profile.heatmap.caption")
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      GeometryReader { geometry in
-        let spacing: CGFloat = 3
-        let cell = max(
-          minimumCellSize,
-          floor((geometry.size.width - spacing * CGFloat(weeks - 1)) / CGFloat(weeks))
-        )
-        VStack(alignment: .leading, spacing: 4) {
-          monthLabels(cellWidth: cell, spacing: spacing)
-          HStack(alignment: .top, spacing: spacing) {
-            ForEach(0..<weeks, id: \.self) { week in
-              VStack(spacing: spacing) {
-                ForEach(0..<daysInWeek, id: \.self) { weekday in
-                  let day = dayDate(weekOffset: week, weekdayIndex: weekday)
-                  RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(color(for: day))
-                    .frame(width: cell, height: cell)
-                    .accessibilityLabel(accessibilityLabel(for: day))
-                }
+      VStack(alignment: .leading, spacing: CGFloat(MeetingHeatmapLayout.verticalStackSpacing)) {
+        monthLabels(cellWidth: cell, spacing: spacing)
+        HStack(alignment: .top, spacing: spacing) {
+          ForEach(0..<weeks, id: \.self) { week in
+            VStack(spacing: spacing) {
+              ForEach(0..<daysInWeek, id: \.self) { weekday in
+                let day = dayDate(weekOffset: week, weekdayIndex: weekday)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                  .fill(color(for: day))
+                  .frame(width: cell, height: cell)
+                  .accessibilityLabel(accessibilityLabel(for: day))
               }
             }
           }
-          legend
         }
+        legend
       }
-      .frame(height: heatmapHeight)
+      .frame(height: gridHeight, alignment: .topLeading)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        GeometryReader { geometry in
+          Color.clear
+            .onAppear { availableWidth = max(geometry.size.width, 1) }
+            .onChange(of: geometry.size.width) { _, width in
+              availableWidth = max(width, 1)
+            }
+        }
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("profile.heatmap")
+      .accessibilityValue("weeks-\(weeks)")
     }
-  }
-
-  private var heatmapHeight: CGFloat {
-    // Month labels + 7 rows of cells (min 10pt) + legend
-    18 + 7 * (minimumCellSize + 3) + 24
   }
 
   private func monthLabels(cellWidth: CGFloat, spacing: CGFloat) -> some View {

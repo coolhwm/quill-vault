@@ -81,7 +81,8 @@ public final class HomeRecordingModel {
   private var captureEvents: [RecordingCaptureEvent] = []
   private var isFinalizingTranscript = false
   private var isStartingMinutes = false
-  /// Local-only phases (transcript finalize / optimize) not yet durable as jobs.
+  /// Ephemeral UI phases (transcript finalize). Optimize uses durable
+  /// `.transcript-optimize-job.json` and is rehydrated on cold start.
   private var localPhaseByMeeting: [MeetingID: MeetingProcessingPhase] = [:]
   private var meetingMetaByID: [MeetingID: (title: String?, createdAt: Date, duration: Double?)] =
     [:]
@@ -953,7 +954,88 @@ public final class HomeRecordingModel {
       return
     }
 
+    if await restoreOptimizeJobsIfNeeded() {
+      return
+    }
     await restoreAwaitingMinutesIfNeeded()
+  }
+
+  /// Rehydrate durable optimize jobs after kill / cold start and resume work.
+  @discardableResult
+  private func restoreOptimizeJobsIfNeeded() async -> Bool {
+    guard
+      let transcriptQuality,
+      let library,
+      case .authorized(let directory) = directoryState,
+      let snapshot = try? await library.restore()
+    else {
+      return false
+    }
+    var resumed = false
+    for meeting in snapshot.meetings {
+      guard
+        let job = try? await transcriptQuality.loadOptimizeJob(
+          in: directory,
+          meeting: meeting
+        )
+      else {
+        continue
+      }
+      meetingMetaByID[meeting.id] = (
+        meeting.title,
+        meeting.createdAt,
+        meeting.durationSeconds
+      )
+      switch job.state {
+      case .running:
+        focusedMeetingID = meeting.id
+        presentRestoredMeeting(meeting, revisionHint: nil)
+        processingPhase = .optimizingTranscript
+        noteLocalPhaseChange(for: meeting.id)
+        resumed = true
+        Task { [weak self] in
+          guard let self else { return }
+          let outcome = await self.runTranscriptOptimization(for: meeting.id)
+          switch outcome {
+          case .succeeded, .disabled, .unavailable:
+            await self.advanceAfterTranscriptReady(
+              for: RecordingCompletion(
+                session: RecordingSession(
+                  meetingID: meeting.id,
+                  startedAt: meeting.createdAt
+                ),
+                audio: RecordedAudio(
+                  durationSeconds: max(meeting.durationSeconds ?? 0.001, 0.001),
+                  packetCount: 0,
+                  byteCount: 0
+                ),
+                transcriptRevision: TranscriptRevision(
+                  meetingID: meeting.id,
+                  localeIdentifier: "und",
+                  timeline: TranscriptTimeline(
+                    audioDurationSeconds: max(meeting.durationSeconds ?? 0.001, 0.001),
+                    segments: []
+                  )
+                )
+              )
+            )
+          case .failed:
+            self.processingPhase = .optimizeFailed
+            self.noteLocalPhaseChange(for: meeting.id)
+          }
+        }
+      case .failed:
+        focusedMeetingID = meeting.id
+        presentRestoredMeeting(meeting, revisionHint: nil)
+        processingPhase = .optimizeFailed
+        noteLocalPhaseChange(for: meeting.id)
+        resumed = true
+      }
+    }
+    if resumed {
+      await refreshHomeProcessingItems()
+    }
+    return resumed
   }
 
   private func restoreAwaitingMinutesIfNeeded() async {

@@ -42,14 +42,14 @@ struct MeetingSummarySection: View {
 }
 
 /// Renders minutes Markdown with fenced mermaid isolated for offline diagrams.
-/// Uses block-level styling so headings/lists are visually hierarchical (walkthrough #45).
+/// Block parser covers headings, lists, quotes, tasks, code fences, GFM tables (#45).
 struct MinutesMarkdownView: View {
   let markdown: String
   var onChapterSeek: ((Double) -> Void)?
 
   var body: some View {
     let blocks = MinutesMarkdownDocument.blocks(from: markdown)
-    LazyVStack(alignment: .leading, spacing: 16) {
+    VStack(alignment: .leading, spacing: 16) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
         switch block {
         case .markdown(let text):
@@ -65,42 +65,35 @@ struct MinutesMarkdownView: View {
         }
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("minutes.detail.markdown")
   }
 
   @ViewBuilder
   private func styledMarkdownBlock(_ text: String) -> some View {
-    let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    let lines = MinutesMarkdownLineParser.lines(from: text)
     VStack(alignment: .leading, spacing: 8) {
       ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-        markdownLine(line)
+        render(line)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   @ViewBuilder
-  private func markdownLine(_ line: String) -> some View {
-    let trimmed = line.trimmingCharacters(in: .whitespaces)
-    if trimmed.isEmpty {
+  private func render(_ line: MinutesMarkdownLine) -> some View {
+    switch line {
+    case .blank:
       Spacer().frame(height: 4)
-    } else if trimmed.hasPrefix("### ") {
-      Text(inlineMarkdown(String(trimmed.dropFirst(4))))
-        .font(.title3.bold())
-        .padding(.top, 8)
+    case .heading(let level, let text):
+      Text(inlineMarkdown(text))
+        .font(headingFont(level))
+        .padding(.top, level == 1 ? 12 : 8)
         .textSelection(.enabled)
-    } else if trimmed.hasPrefix("## ") {
-      Text(inlineMarkdown(String(trimmed.dropFirst(3))))
-        .font(.title2.bold())
-        .padding(.top, 10)
-        .textSelection(.enabled)
-    } else if trimmed.hasPrefix("# ") {
-      Text(inlineMarkdown(String(trimmed.dropFirst(2))))
-        .font(.title.bold())
-        .padding(.top, 12)
-        .textSelection(.enabled)
-    } else if trimmed.hasPrefix("> ") {
-      Text(inlineMarkdown(String(trimmed.dropFirst(2))))
+        .accessibilityIdentifier("minutes.detail.markdown.heading")
+    case .quote(let text):
+      Text(inlineMarkdown(text))
         .font(.body)
         .foregroundStyle(.secondary)
         .padding(.leading, 12)
@@ -110,39 +103,39 @@ struct MinutesMarkdownView: View {
             .frame(width: 3)
         }
         .textSelection(.enabled)
-    } else if let checkbox = checkboxLine(trimmed) {
+    case .task(let done, let text):
       HStack(alignment: .top, spacing: 8) {
-        Image(systemName: checkbox.done ? "checkmark.square" : "square")
-        Text(inlineMarkdown(checkbox.text))
+        Image(systemName: done ? "checkmark.square" : "square")
+        Text(inlineMarkdown(text))
           .font(.body)
           .textSelection(.enabled)
       }
-    } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+    case .bullet(let text):
       HStack(alignment: .top, spacing: 8) {
         Text("•")
-        Text(inlineMarkdown(String(trimmed.dropFirst(2))))
+        Text(inlineMarkdown(text))
           .font(.body)
           .textSelection(.enabled)
       }
       .padding(.leading, 4)
-    } else if let ordered = orderedListLine(trimmed) {
+    case .ordered(let index, let text):
       HStack(alignment: .top, spacing: 8) {
-        Text("\(ordered.index).")
+        Text("\(index).")
           .monospacedDigit()
-        Text(inlineMarkdown(ordered.text))
+        Text(inlineMarkdown(text))
           .font(.body)
           .textSelection(.enabled)
       }
       .padding(.leading, 4)
-    } else if let seek = MinutesMarkdownDocument.chapterSeek(from: trimmed) {
+    case .chapterSeek(let seconds, let timestamp, let title):
       Button {
-        onChapterSeek?(seek.seconds)
+        onChapterSeek?(seconds)
       } label: {
         HStack(alignment: .top, spacing: 8) {
-          Text(seek.timestamp)
+          Text(timestamp)
             .font(.subheadline.monospacedDigit())
             .foregroundStyle(.tint)
-          Text(inlineMarkdown(seek.title))
+          Text(inlineMarkdown(title))
             .font(.body.weight(.semibold))
             .foregroundStyle(.primary)
             .multilineTextAlignment(.leading)
@@ -151,32 +144,51 @@ struct MinutesMarkdownView: View {
       }
       .buttonStyle(.plain)
       .accessibilityIdentifier("minutes.detail.chapter.seek")
-    } else if trimmed.hasPrefix("```") {
-      EmptyView()
-    } else {
-      Text(inlineMarkdown(line))
+    case .code(let source):
+      Text(source)
+        .font(.system(.footnote, design: .monospaced))
+        .textSelection(.enabled)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("minutes.detail.markdown.code")
+    case .table(let rows):
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, cells in
+          HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+              Text(inlineMarkdown(cell))
+                .font(rowIndex == 0 ? .subheadline.bold() : .subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+            }
+          }
+          .background(
+            rowIndex == 0
+              ? Color.secondary.opacity(0.16)
+              : Color.secondary.opacity(rowIndex.isMultiple(of: 2) ? 0.06 : 0.0)
+          )
+        }
+      }
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+      .overlay(
+        RoundedRectangle(cornerRadius: 8)
+          .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+      )
+      .accessibilityIdentifier("minutes.detail.markdown.table")
+    case .paragraph(let text):
+      Text(inlineMarkdown(text))
         .font(.body)
         .textSelection(.enabled)
     }
   }
 
-  private func checkboxLine(_ trimmed: String) -> (done: Bool, text: String)? {
-    if trimmed.hasPrefix("- [ ] ") {
-      return (false, String(trimmed.dropFirst(6)))
+  private func headingFont(_ level: Int) -> Font {
+    switch level {
+    case 1: return .title.bold()
+    case 2: return .title2.bold()
+    default: return .title3.bold()
     }
-    if trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
-      return (true, String(trimmed.dropFirst(6)))
-    }
-    return nil
-  }
-
-  private func orderedListLine(_ trimmed: String) -> (index: Int, text: String)? {
-    guard let dot = trimmed.firstIndex(of: ".") else { return nil }
-    let number = trimmed[..<dot]
-    guard let value = Int(number), value > 0 else { return nil }
-    let rest = trimmed[trimmed.index(after: dot)...].trimmingCharacters(in: .whitespaces)
-    guard !rest.isEmpty else { return nil }
-    return (value, rest)
   }
 
   private func inlineMarkdown(_ text: String) -> AttributedString {
