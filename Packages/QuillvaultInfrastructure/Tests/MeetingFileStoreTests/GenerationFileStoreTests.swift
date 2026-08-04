@@ -234,10 +234,11 @@ struct GenerationFileStoreTests {
       meeting: fixture.entry
     )
     // Preferred source must be optimized text, not original.
-    #expect(source.revision.timeline.segments.map(\.text) == [
-      "优化后的第一段",
-      "优化后的第二段",
-    ])
+    #expect(
+      source.revision.timeline.segments.map(\.text) == [
+        "优化后的第一段",
+        "优化后的第二段",
+      ])
 
     let originalTimeline = try MeetingTranscriptMarkdownParser().parse(
       originalMarkdown

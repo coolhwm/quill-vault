@@ -214,7 +214,8 @@ public enum MinutesGenerationStrategySelector {
       || metrics.durationSeconds < 8 * 60
       || metrics.segmentCount < 12
     {
-      return isSparse ? MinutesGenerationStrategyCatalog.brief
+      return isSparse
+        ? MinutesGenerationStrategyCatalog.brief
         : MinutesGenerationStrategyCatalog.brief
     }
 
@@ -278,7 +279,8 @@ public enum MinutesTitleResolver {
   }
 
   public static func extractTitle(from markdown: String) -> String? {
-    let lines = markdown
+    let lines =
+      markdown
       .replacingOccurrences(of: "\r\n", with: "\n")
       .components(separatedBy: "\n")
     for raw in lines {
@@ -293,7 +295,8 @@ public enum MinutesTitleResolver {
         }
         continue
       }
-      let stripped = line
+      let stripped =
+        line
         .replacingOccurrences(
           of: #"^#{1,6}\s*"#,
           with: "",
@@ -337,7 +340,8 @@ public enum MinutesTitleResolver {
   }
 
   public static func sanitize(_ title: String) -> String {
-    var value = title
+    var value =
+      title
       .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
       .trimmingCharacters(in: .whitespacesAndNewlines)
     // Prefer short topic titles for list/detail chrome.

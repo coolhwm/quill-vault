@@ -1,16 +1,20 @@
 import Application
 import DesignSystem
 import Domain
-import SettingsFeature
 import SwiftUI
 
-public struct ProfileView: View {
+/// Profile / Me tab. Settings is injected by the app shell so Profile does not
+/// depend on the Settings feature module (architecture boundary).
+public struct ProfileView<SettingsDestination: View>: View {
   @Bindable private var model: ProfileModel
-  private let settingsModel: SettingsModel
+  private let settingsDestination: SettingsDestination
 
-  public init(model: ProfileModel, settingsModel: SettingsModel) {
+  public init(
+    model: ProfileModel,
+    @ViewBuilder settingsDestination: () -> SettingsDestination
+  ) {
     self.model = model
-    self.settingsModel = settingsModel
+    self.settingsDestination = settingsDestination()
   }
 
   public var body: some View {
@@ -48,7 +52,7 @@ public struct ProfileView: View {
 
       Section {
         NavigationLink {
-          SettingsView(model: settingsModel)
+          settingsDestination
         } label: {
           Label("profile.settings", systemImage: "gearshape")
         }

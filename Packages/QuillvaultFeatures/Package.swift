@@ -50,7 +50,6 @@ let package = Package(
     .target(
       name: "ProfileFeature",
       dependencies: [
-        "SettingsFeature",
         .product(name: "DesignSystem", package: "QuillvaultDesignSystem"),
         .product(name: "Application", package: "QuillvaultCore"),
         .product(name: "Domain", package: "QuillvaultCore"),

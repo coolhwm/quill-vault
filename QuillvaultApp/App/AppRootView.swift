@@ -35,7 +35,9 @@ struct AppRootView: View {
       .tag(AppTab.minutes)
 
       NavigationStack {
-        ProfileView(model: profileModel, settingsModel: settingsModel)
+        ProfileView(model: profileModel) {
+          SettingsView(model: settingsModel)
+        }
       }
       .tabItem {
         Label("tab.profile", systemImage: AppTab.profile.systemImage)

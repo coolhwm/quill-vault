@@ -1,7 +1,8 @@
-@testable import Application
 import Domain
 import Foundation
 import Testing
+
+@testable import Application
 
 @Suite("Hand-edited minutes title preservation")
 struct MinutesTitlePreserveIntegrationTests {

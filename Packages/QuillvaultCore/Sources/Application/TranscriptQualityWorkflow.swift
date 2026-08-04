@@ -64,7 +64,8 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
 
         \(sourceText)
         """,
-      idempotencyKey: "transcript-quality-\(strategy.id)-\(strategy.version)-\(timeline.audioDurationSeconds)"
+      idempotencyKey:
+        "transcript-quality-\(strategy.id)-\(strategy.version)-\(timeline.audioDurationSeconds)"
     )
     var output = ""
     var completed = false
@@ -155,14 +156,16 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
   ) throws -> TranscriptTimeline {
     // Prefer line-aligned replacements when the model keeps segment structure.
     // Accept common wrappers (fences, bullet prefixes) without inventing text.
-    var body = output
+    var body =
+      output
       .replacingOccurrences(of: "\r\n", with: "\n")
       .trimmingCharacters(in: .whitespacesAndNewlines)
     if body.hasPrefix("```") {
       let lines = body.components(separatedBy: "\n")
       body = lines.dropFirst().filter { !$0.hasPrefix("```") }.joined(separator: "\n")
     }
-    let lines = body
+    let lines =
+      body
       .components(separatedBy: "\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { line in

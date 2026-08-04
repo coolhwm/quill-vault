@@ -1582,7 +1582,8 @@ enum MinutesDocumentBuilder {
       meetingStartedAt: meeting.createdAt,
       preserveUserTitle: preserveUserTitle
     )
-    let escapedTitle = title
+    let escapedTitle =
+      title
       .replacingOccurrences(of: "\"", with: "\\\"")
     let userEditedFlag = preserveUserTitle ? "true" : "false"
     return [

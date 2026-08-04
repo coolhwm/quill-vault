@@ -137,7 +137,10 @@ struct MinutesOutputNormalizerTests {
       {"summary":"## 决策\\n推进。","diagrams":["flowchart TD\\n  A-->B","flowchart LR\\n  C-->D"]}
       """
     let normalized = MinutesOutputNormalizer.normalize(response)
-    #expect(normalized?.markdown.contains("A-->B") == true || normalized?.markdown.contains("A --> B") == true || normalized?.markdown.contains("flowchart") == true)
+    #expect(
+      normalized?.markdown.contains("A-->B") == true
+        || normalized?.markdown.contains("A --> B") == true
+        || normalized?.markdown.contains("flowchart") == true)
     let fences =
       normalized?.markdown.components(separatedBy: "```mermaid").count ?? 0
     #expect(fences >= 2)
