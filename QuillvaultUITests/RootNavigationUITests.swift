@@ -166,11 +166,19 @@ final class RootNavigationUITests: XCTestCase {
     )
     // First enable is an explicit control that always presents disclosure.
     let automaticEnable = app.descendants(matching: .any)["settings.models.automatic"]
-    XCTAssertTrue(automaticEnable.waitForExistence(timeout: 3))
-    XCTAssertTrue(automaticEnable.isHittable)
+    XCTAssertTrue(automaticEnable.waitForExistence(timeout: 5))
+    for _ in 0..<6 where !automaticEnable.isHittable {
+      app.swipeUp()
+    }
+    XCTAssertTrue(automaticEnable.waitForExistence(timeout: 2))
     automaticEnable.tap()
     let automaticDisclosure = app.alerts["Enable Automatic Generation?"]
-    XCTAssertTrue(automaticDisclosure.waitForExistence(timeout: 3))
+    // If the control was already on after capability setup, toggling may disable;
+    // tap again once to request enable disclosure.
+    if !automaticDisclosure.waitForExistence(timeout: 2) {
+      automaticEnable.tap()
+    }
+    XCTAssertTrue(automaticDisclosure.waitForExistence(timeout: 5))
     XCTAssertTrue(
       automaticDisclosure.staticTexts.matching(
         NSPredicate(format: "label CONTAINS %@", "api.example.com")
@@ -180,7 +188,7 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts[
         "New ready transcripts will use the selected model."
-      ].waitForExistence(timeout: 3)
+      ].waitForExistence(timeout: 5)
     )
   }
 

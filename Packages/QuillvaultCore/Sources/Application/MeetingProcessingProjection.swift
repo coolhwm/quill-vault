@@ -11,8 +11,16 @@ public enum MeetingProcessingPhase: Equatable, Sendable {
   case optimizingTranscript
   case optimizeFailed
   case awaitingMinutes
-  case generatingMinutes(progress: Int, completedChunks: Int, chunkCount: Int, stage: GenerationStage)
-  case generationPaused(progress: Int, pauseReason: GenerationPauseReason?)
+  case generatingMinutes(
+    progress: Int,
+    completedChunks: Int,
+    chunkCount: Int,
+    stage: GenerationStage
+  )
+  case generationPaused(
+    progress: Int,
+    pauseReason: GenerationPauseReason?
+  )
   case minutesCompleted
   case minutesExpired
   case generationFailed

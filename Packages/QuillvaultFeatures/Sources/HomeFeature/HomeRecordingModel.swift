@@ -846,8 +846,8 @@ public final class HomeRecordingModel {
       }
     }
     // Ensure meetings that only exist as local overrides are still projected.
-    for meetingID in localPhaseByMeeting.keys where !meetings.contains(where: { $0.id == meetingID })
-    {
+    for meetingID in localPhaseByMeeting.keys
+    where !meetings.contains(where: { $0.id == meetingID }) {
       let meta = meetingMetaByID[meetingID]
       meetings.append(
         MeetingIndexEntry(
