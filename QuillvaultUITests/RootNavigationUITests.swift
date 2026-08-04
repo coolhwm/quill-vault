@@ -185,14 +185,14 @@ final class RootNavigationUITests: XCTestCase {
   }
 
   func testLongMeetingDetailKeepsTranscriptAndAudioUsableWithoutMinutes() {
+    // Avoid AccessibilityXXXL here: on CI it can leave the previous process
+    // stuck terminating under heavy Dynamic Type + long transcript lists.
     launch(
       language: "zh-Hans",
       locale: "zh_CN",
       extraArguments: [
         "-ui-test-meeting-detail",
         "-ui-test-dark-mode",
-        "-UIPreferredContentSizeCategoryName",
-        "UICTContentSizeCategoryAccessibilityXXXL",
       ]
     )
 
@@ -331,12 +331,21 @@ final class RootNavigationUITests: XCTestCase {
     locale: String,
     extraArguments: [String] = []
   ) {
+    // Ensure a clean process boundary between cases (CI flakiness on terminate).
+    let existing = XCUIApplication(bundleIdentifier: "com.coolhwm.Quillvault")
+    if existing.state != .notRunning {
+      existing.terminate()
+      // Give SpringBoard a moment after terminate on shared runners.
+      RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    }
+
     app = XCUIApplication()
     app.launchArguments =
       [
         "-AppleLanguages", "(\(language))",
         "-AppleLocale", locale,
       ] + extraArguments
+    app.launchEnvironment.removeAll()
     if extraArguments.contains("-ui-test-recording") {
       app.launchEnvironment["QUILLVAULT_RECORDING_UI_TEST"] = "1"
     }
