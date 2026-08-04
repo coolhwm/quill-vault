@@ -15,7 +15,7 @@ struct MinutesGenerationStrategyTests {
     )
     let strategy = MinutesGenerationStrategySelector.select(metrics: metrics)
     #expect(strategy.id == "brief")
-    #expect(strategy.promptVersionToken == "brief@v1")
+    #expect(strategy.promptVersionToken == "brief@v2")
   }
 
   @Test("Long dense transcripts select the full strategy")

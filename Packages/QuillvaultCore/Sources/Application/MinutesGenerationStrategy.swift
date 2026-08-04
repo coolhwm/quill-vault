@@ -53,94 +53,102 @@ public struct MinutesGenerationStrategy: Equatable, Sendable {
 public enum MinutesGenerationStrategyCatalog {
   public static let brief = MinutesGenerationStrategy(
     id: "brief",
-    version: "v1",
+    version: "v2",
     systemPrompt: """
-      You write concise meeting minutes. Return readable Markdown only. \
-      Start with a single H1 title that names the meeting topic (never "会议录音" or "Meeting recording"). \
-      Prefer a few short paragraphs and only the most important decisions or action items. \
+      You write concise meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
+      Start with a single short H1 topic title (never "会议录音", "Meeting recording", or "Meeting" + timestamp). \
+      Use headings, lists, bold, and blockquotes when helpful. Prefer tables or task lists only when they clarify content. \
+      Prefer a few short sections and only the most important decisions or action items. \
       Do not invent missing facts.
       """,
     userPromptTemplate: """
-      Produce a brief minutes summary in the same language as the transcript. \
-      Include: title, 2–4 sentence overview, and key decisions/action items only if clearly present.
+      Produce a brief minutes document in the same language as the transcript. \
+      Include: short H1 title, 2–4 sentence overview, and key decisions/action items only if clearly present.
 
       {{transcript}}
       """,
     synthesisSystemPrompt: """
-      Merge brief segment notes into one short meeting summary. Readable Markdown only. \
-      Start with one H1 topic title. Do not invent facts.
+      Merge brief segment notes into one short meeting summary as Markdown only. \
+      Start with one short H1 topic title. Do not invent facts.
       """,
     synthesisUserPromptTemplate: """
       Merge these segment notes into a brief minutes draft in the same language as the source. \
-      Keep title, short overview, and only critical decisions/actions.
+      Keep short title, short overview, and only critical decisions/actions.
 
       {{summaries}}
       """,
     chunkSystemPrompt: """
-      Summarize one transcript segment briefly. Markdown only. Preserve decisions, owners, and open questions. Do not invent details.
+      Summarize one transcript segment briefly as Markdown. Preserve decisions, owners, and open questions. Do not invent details.
       """
   )
 
   public static let standard = MinutesGenerationStrategy(
     id: "standard",
-    version: "v1",
+    version: "v2",
     systemPrompt: """
-      You write structured meeting minutes. Return readable Markdown only. \
-      Start with a single H1 title that names the meeting topic (never "会议录音" or "Meeting recording"). \
+      You write structured meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
+      Start with a single short H1 topic title (never "会议录音", "Meeting recording", or "Meeting" + timestamp). \
       Include overview, decisions, action items, and open questions when present. \
-      Optional mermaid is welcome when relationships are clear. Do not invent missing facts.
+      Use lists, tables, and task lists when they improve clarity. \
+      When relationships or process are clearer as a graph, include at least one fenced ```mermaid block. \
+      Do not invent missing facts.
       """,
     userPromptTemplate: """
-      Produce meeting minutes in the same language as the transcript. \
-      Include: title, overview, decisions, action items (owner/due if stated), and open questions when present.
+      Produce meeting minutes as Markdown in the same language as the transcript. \
+      Include: short H1 title, overview, decisions, action items (owner/due if stated), open questions when present, \
+      and a mermaid diagram when relationships are clear.
 
       {{transcript}}
       """,
     synthesisSystemPrompt: """
-      Merge segment summaries into coherent meeting minutes. Readable Markdown only. \
-      Start with one H1 topic title. Preserve uncertainty instead of inventing facts.
+      Merge segment summaries into coherent meeting minutes as Markdown only. \
+      Start with one short H1 topic title. Preserve uncertainty instead of inventing facts. \
+      Prefer including a mermaid diagram when the merged content has clear relationships.
       """,
     synthesisUserPromptTemplate: """
-      Merge these ordered segment summaries into one minutes draft in the same language as the source. \
-      Include title, overview, decisions, action items and open questions when present.
+      Merge these ordered segment summaries into one Markdown minutes draft in the same language as the source. \
+      Include short title, overview, decisions, action items, open questions when present, and mermaid when suitable.
 
       {{summaries}}
       """,
     chunkSystemPrompt: """
-      Summarize one meeting transcript segment. Return readable Markdown. \
+      Summarize one meeting transcript segment as Markdown. \
       Preserve important decisions, risks, owners, and open questions. Do not invent details.
       """
   )
 
   public static let full = MinutesGenerationStrategy(
     id: "full",
-    version: "v1",
+    version: "v2",
     systemPrompt: """
-      You write complete structured meeting minutes. Return readable Markdown only. \
-      Start with a single H1 title that names the meeting topic (never "会议录音" or "Meeting recording"). \
+      You write complete structured meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
+      Start with a single short H1 topic title (never "会议录音", "Meeting recording", or "Meeting" + timestamp). \
       Prefer: overview, timed sections when useful, key decisions with rationale, action items \
-      (owner/due/source quote when stated), risks/open questions, and mermaid diagrams when relationships \
-      or process are clearer as graphs. Missing optional structure must not block a readable body.
+      (owner/due/source quote when stated), risks/open questions. \
+      Strongly prefer at least one core ```mermaid relationship/process diagram when content supports it; \
+      add more diagrams only when they clarify distinct parts. Missing diagrams must not block a readable body. \
+      Use tables and task lists when they improve scannability. Do not invent missing facts.
       """,
     userPromptTemplate: """
-      Produce full structured minutes in the same language as the transcript. \
-      Include title, overview, section notes with time anchors when helpful, decisions, \
-      action items, risks/open questions, and suitable diagrams when content supports them.
+      Produce full structured Markdown minutes in the same language as the transcript. \
+      Include short H1 title, overview, section notes with time anchors when helpful, decisions, \
+      action items, risks/open questions, and at least one mermaid diagram when content supports it.
 
       {{transcript}}
       """,
     synthesisSystemPrompt: """
-      Merge detailed segment summaries into one complete structured minutes draft. Readable Markdown only. \
-      Start with one H1 topic title. Prefer overview, sections, decisions, actions, risks, and diagrams when justified.
+      Merge detailed segment summaries into one complete structured Markdown minutes draft. \
+      Start with one short H1 topic title. Prefer overview, sections, decisions, actions, risks, \
+      and at least one mermaid diagram when justified.
       """,
     synthesisUserPromptTemplate: """
-      Merge these ordered segment summaries into a full minutes draft in the same language as the source. \
-      Include title, overview, sections, decisions, action items, risks/open questions, and diagrams when suitable.
+      Merge these ordered segment summaries into a full Markdown minutes draft in the same language as the source. \
+      Include short title, overview, sections, decisions, action items, risks/open questions, and mermaid diagrams when suitable.
 
       {{summaries}}
       """,
     chunkSystemPrompt: """
-      Summarize one meeting transcript segment in detail. Readable Markdown. \
+      Summarize one meeting transcript segment in detail as Markdown. \
       Preserve decisions, risks, owners, open questions, and notable quotes. Do not invent details.
       """
   )

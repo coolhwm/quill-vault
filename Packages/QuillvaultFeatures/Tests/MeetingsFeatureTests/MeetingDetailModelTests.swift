@@ -61,6 +61,22 @@ struct MeetingDetailModelTests {
     #expect(player.unloadCount == 1)
   }
 
+  @Test("Detail tab defaults to smart minutes and can switch")
+  func selectsDetailTabs() async {
+    let model = MeetingDetailModel(
+      directory: .fixture,
+      meeting: .fixture,
+      detail: MeetingDetailUseCaseStub(detail: .fixture),
+      player: MeetingAudioPlayerSpy()
+    )
+    await model.load()
+    #expect(model.selectedDetailTab == .smartMinutes)
+    model.selectDetailTab(.transcript)
+    #expect(model.selectedDetailTab == .transcript)
+    model.selectDetailTab(.smartMinutes)
+    #expect(model.selectedDetailTab == .smartMinutes)
+  }
+
   @Test("Loads optimized transcript version when available")
   func selectsOptimizedWhenPresent() async {
     let player = MeetingAudioPlayerSpy()

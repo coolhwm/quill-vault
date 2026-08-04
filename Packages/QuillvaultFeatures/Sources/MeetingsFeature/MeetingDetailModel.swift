@@ -30,6 +30,14 @@ public final class MeetingDetailModel {
   public private(set) var isComparingTranscripts = false
   public private(set) var transcriptOptimizeBusy = false
   public private(set) var transcriptOptimizeError = false
+  public private(set) var selectedDetailTab: MeetingDetailTab = .smartMinutes
+
+  public enum MeetingDetailTab: String, CaseIterable, Identifiable, Sendable {
+    case smartMinutes
+    case transcript
+
+    public var id: String { rawValue }
+  }
 
   private let directory: AuthoritativeDirectory
   private let meeting: MeetingIndexEntry
@@ -59,6 +67,10 @@ public final class MeetingDetailModel {
     self.modelProfiles = modelProfiles
     self.transcriptQuality = transcriptQuality
     self.cancelScheduledGeneration = cancelScheduledGeneration
+  }
+
+  public func selectDetailTab(_ tab: MeetingDetailTab) {
+    selectedDetailTab = tab
   }
 
   public func selectTranscriptVersion(_ version: TranscriptVersionKind) {

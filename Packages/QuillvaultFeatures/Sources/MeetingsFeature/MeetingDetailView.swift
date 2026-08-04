@@ -57,110 +57,124 @@ public struct MeetingDetailView: View {
   }
 
   private var loadingShell: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 24) {
-        ForEach(
-          [
-            ("minutes.detail.summary", "text.alignleft"),
-            (
-              "minutes.detail.diagram",
-              "point.3.connected.trianglepath.dotted"
-            ),
-            ("minutes.detail.transcript", "text.quote"),
-            ("minutes.detail.recording", "waveform"),
-          ],
-          id: \.0
-        ) { title, image in
-          Label(LocalizedStringKey(title), systemImage: image)
-            .font(.title2.bold())
-          ProgressView()
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding()
+    VStack(alignment: .leading, spacing: 16) {
+      ProgressView()
+      Text("minutes.loading")
+        .foregroundStyle(.secondary)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityIdentifier("minutes.detail.loading")
   }
 
   private func detailContent(_ detail: MeetingDetail) -> some View {
-    ScrollView {
-      // Use a regular VStack so large Dynamic Type / VoiceOver still keeps
-      // summary and diagram sections in the accessibility hierarchy without
-      // requiring a scroll to materialize them.
-      VStack(alignment: .leading, spacing: 24) {
-        MeetingGenerationSection(
-          minutes: detail.minutes,
-          snapshot: model.generationSnapshot,
-          isBusy: model.generationBusy,
-          hasError: model.generationError,
-          isMinutesExpired: detail.meeting.status == .minutesExpired,
-          modelProfiles: model.generationProfiles,
-          selectedModelProfileID: model.selectedGenerationProfileID,
-          start: {
-            Task {
-              await model.startGeneration()
-            }
-          },
-          resume: {
-            Task {
-              await model.resumeGeneration()
-            }
-          },
-          cancel: {
-            Task {
-              await model.cancelGeneration()
-            }
-          },
-          regenerate: {
-            Task {
-              await model.regenerateGeneration()
-            }
-          },
-          selectModelProfile: { profileID in
-            Task {
-              await model.selectGenerationProfile(profileID)
-            }
-          }
+    VStack(spacing: 0) {
+      Picker(
+        "minutes.detail.tab",
+        selection: Binding(
+          get: { model.selectedDetailTab },
+          set: { model.selectDetailTab($0) }
         )
-        MeetingSummarySection(minutes: detail.minutes)
-        MeetingDiagramSection(minutes: detail.minutes)
-        MeetingAudioPlayerSection(
-          recording: detail.recording,
-          playback: model.playback,
-          playbackFailed: model.playbackFailed,
-          toggle: model.togglePlayback,
-          seek: { seconds in
-            model.seek(to: seconds, beginsPlayback: false)
-          }
-        )
-        MeetingTranscriptSection(
-          original: detail.transcript,
-          optimized: detail.optimizedTranscript,
-          selectedVersion: model.selectedTranscriptVersion,
-          isComparing: model.isComparingTranscripts,
-          canOptimize: {
-            if case .available = detail.transcript {
-              return true
-            }
-            return false
-          }(),
-          optimizeBusy: model.transcriptOptimizeBusy,
-          optimizeError: model.transcriptOptimizeError,
-          selectVersion: { model.selectTranscriptVersion($0) },
-          setComparing: { model.setTranscriptCompare($0) },
-          optimize: {
-            Task {
-              await model.optimizeTranscript()
-            }
-          },
-          seekAndPlay: { seconds in
-            model.seek(to: seconds, beginsPlayback: true)
-          }
-        )
+      ) {
+        Text("minutes.detail.tab.smartMinutes")
+          .tag(MeetingDetailModel.MeetingDetailTab.smartMinutes)
+        Text("minutes.detail.tab.transcript")
+          .tag(MeetingDetailModel.MeetingDetailTab.transcript)
       }
-      .padding()
-      .safeAreaPadding(.bottom, 120)
+      .pickerStyle(.segmented)
+      .padding(.horizontal)
+      .padding(.top, 8)
+      .accessibilityIdentifier("minutes.detail.tab")
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 24) {
+          switch model.selectedDetailTab {
+          case .smartMinutes:
+            smartMinutesContent(detail)
+          case .transcript:
+            transcriptContent(detail)
+          }
+        }
+        .padding()
+        .safeAreaPadding(.bottom, 120)
+      }
     }
+  }
+
+  @ViewBuilder
+  private func smartMinutesContent(_ detail: MeetingDetail) -> some View {
+    MeetingGenerationSection(
+      minutes: detail.minutes,
+      snapshot: model.generationSnapshot,
+      isBusy: model.generationBusy,
+      hasError: model.generationError,
+      isMinutesExpired: detail.meeting.status == .minutesExpired,
+      modelProfiles: model.generationProfiles,
+      selectedModelProfileID: model.selectedGenerationProfileID,
+      start: {
+        Task {
+          await model.startGeneration()
+        }
+      },
+      resume: {
+        Task {
+          await model.resumeGeneration()
+        }
+      },
+      cancel: {
+        Task {
+          await model.cancelGeneration()
+        }
+      },
+      regenerate: {
+        Task {
+          await model.regenerateGeneration()
+        }
+      },
+      selectModelProfile: { profileID in
+        Task {
+          await model.selectGenerationProfile(profileID)
+        }
+      }
+    )
+    // Markdown view renders fenced mermaid inline; avoid a second diagram stack.
+    MeetingSummarySection(minutes: detail.minutes)
+  }
+
+  @ViewBuilder
+  private func transcriptContent(_ detail: MeetingDetail) -> some View {
+    MeetingAudioPlayerSection(
+      recording: detail.recording,
+      playback: model.playback,
+      playbackFailed: model.playbackFailed,
+      toggle: model.togglePlayback,
+      seek: { seconds in
+        model.seek(to: seconds, beginsPlayback: false)
+      }
+    )
+    MeetingTranscriptSection(
+      original: detail.transcript,
+      optimized: detail.optimizedTranscript,
+      selectedVersion: model.selectedTranscriptVersion,
+      isComparing: model.isComparingTranscripts,
+      canOptimize: {
+        if case .available = detail.transcript {
+          return true
+        }
+        return false
+      }(),
+      optimizeBusy: model.transcriptOptimizeBusy,
+      optimizeError: model.transcriptOptimizeError,
+      selectVersion: { model.selectTranscriptVersion($0) },
+      setComparing: { model.setTranscriptCompare($0) },
+      optimize: {
+        Task {
+          await model.optimizeTranscript()
+        }
+      },
+      seekAndPlay: { seconds in
+        model.seek(to: seconds, beginsPlayback: true)
+      }
+    )
   }
 }
 

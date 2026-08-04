@@ -1,3 +1,4 @@
+import Application
 import Domain
 import SwiftUI
 
@@ -19,7 +20,7 @@ struct MeetingSummarySection: View {
           .accessibilityElement(children: .combine)
           .accessibilityIdentifier("minutes.detail.incomplete")
         }
-        MeetingMarkdownText(markdown: content.summaryMarkdown)
+        MinutesMarkdownView(markdown: content.summaryMarkdown)
       case .missing:
         Text("minutes.detail.summary.pending")
           .foregroundStyle(.secondary)
@@ -33,32 +34,49 @@ struct MeetingSummarySection: View {
     }
     .accessibilityIdentifier("minutes.detail.summary.section")
   }
-
 }
 
-private struct MeetingMarkdownText: View {
+/// Renders minutes Markdown with fenced mermaid isolated for offline diagrams.
+struct MinutesMarkdownView: View {
   let markdown: String
 
-  private var blocks: [String] {
-    markdown
-      .components(separatedBy: "\n\n")
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
-  }
-
   var body: some View {
-    LazyVStack(alignment: .leading, spacing: 14) {
+    let blocks = MinutesMarkdownDocument.blocks(from: markdown)
+    LazyVStack(alignment: .leading, spacing: 16) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-        if let attributed = try? AttributedString(markdown: block) {
-          Text(attributed)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-          Text(block)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        switch block {
+        case .markdown(let text):
+          markdownBlock(text)
+        case .mermaid(let source):
+          #if canImport(WebKit)
+            MermaidDiagramView(source: source)
+          #else
+            Text(source)
+              .font(.system(.footnote, design: .monospaced))
+              .textSelection(.enabled)
+          #endif
         }
       }
+    }
+    .accessibilityIdentifier("minutes.detail.markdown")
+  }
+
+  @ViewBuilder
+  private func markdownBlock(_ text: String) -> some View {
+    if let attributed = try? AttributedString(
+      markdown: text,
+      options: AttributedString.MarkdownParsingOptions(
+        interpretedSyntax: .full,
+        failurePolicy: .returnPartiallyParsedIfPossible
+      )
+    ) {
+      Text(attributed)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    } else {
+      Text(text)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }
