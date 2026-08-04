@@ -29,7 +29,12 @@ jobs:
       - name: Check patch whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: git diff --check "$BASE_SHA" HEAD
+        # Limit to code/config — Markdown hard-breaks (trailing double spaces)
+        # and prose docs should not fail the build.
+        run: >
+          git diff --check "$BASE_SHA" HEAD --
+          '*.swift' '*.sh' '*.yml' '*.yaml' '*.json' '*.plist'
+          '*.pbxproj' '*.xcconfig' Package.swift
 
       - name: Test local packages
         run: |
