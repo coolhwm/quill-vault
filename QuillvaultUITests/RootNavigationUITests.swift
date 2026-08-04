@@ -204,10 +204,10 @@ final class RootNavigationUITests: XCTestCase {
     meeting.tap()
 
     XCTAssertTrue(app.navigationBars["会议详情"].waitForExistence(timeout: 2))
-    XCTAssertTrue(
-      app.staticTexts["纪要尚未生成，文字记录和录音仍可使用。"]
-        .waitForExistence(timeout: 2)
-    )
+    // Dual-tab IA: generation/minutes vs recording/transcript.
+    let transcriptTab = app.segmentedControls.buttons["文字记录"]
+    XCTAssertTrue(transcriptTab.waitForExistence(timeout: 2))
+    transcriptTab.tap()
     let detailSnapshot = XCTAttachment(
       screenshot: app.screenshot()
     )
@@ -256,6 +256,9 @@ final class RootNavigationUITests: XCTestCase {
     meeting.tap()
 
     XCTAssertTrue(app.navigationBars["Meeting"].waitForExistence(timeout: 2))
+    let transcriptTab = app.segmentedControls.buttons["Transcript"]
+    XCTAssertTrue(transcriptTab.waitForExistence(timeout: 2))
+    transcriptTab.tap()
     let emptyTranscript =
       app.staticTexts["No speech was recognized in this recording."]
     for _ in 0..<10 where !emptyTranscript.exists {
@@ -293,6 +296,10 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(meeting.waitForExistence(timeout: 2))
     meeting.tap()
 
+    let smartTab = app.segmentedControls.buttons["Smart minutes"]
+    if smartTab.waitForExistence(timeout: 2) {
+      smartTab.tap()
+    }
     let incomplete = screen("minutes.detail.incomplete")
     let incompleteText = app.staticTexts.matching(
       NSPredicate(
@@ -307,11 +314,12 @@ final class RootNavigationUITests: XCTestCase {
       incomplete.waitForExistence(timeout: 3)
         || incompleteText.waitForExistence(timeout: 1)
     )
-    let diagram = screen("minutes.detail.diagram.section")
-    for _ in 0..<8 where !diagram.exists {
+    // Mermaid is rendered inline inside the Markdown body on the smart-minutes tab.
+    let markdown = screen("minutes.detail.markdown")
+    for _ in 0..<8 where !markdown.exists {
       app.swipeUp()
     }
-    XCTAssertTrue(diagram.waitForExistence(timeout: 3))
+    XCTAssertTrue(markdown.waitForExistence(timeout: 3))
   }
 
   private func launch(
