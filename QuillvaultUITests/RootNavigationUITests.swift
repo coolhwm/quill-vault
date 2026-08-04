@@ -314,12 +314,15 @@ final class RootNavigationUITests: XCTestCase {
       incomplete.waitForExistence(timeout: 3)
         || incompleteText.waitForExistence(timeout: 1)
     )
-    // Mermaid is rendered inline inside the Markdown body on the smart-minutes tab.
+    // Diagrams may appear as a dedicated section and/or inline mermaid in markdown.
+    let diagram = screen("minutes.detail.diagram.section")
     let markdown = screen("minutes.detail.markdown")
-    for _ in 0..<8 where !markdown.exists {
+    for _ in 0..<8 where !diagram.exists && !markdown.exists {
       app.swipeUp()
     }
-    XCTAssertTrue(markdown.waitForExistence(timeout: 3))
+    XCTAssertTrue(
+      diagram.waitForExistence(timeout: 3) || markdown.waitForExistence(timeout: 1)
+    )
   }
 
   private func launch(

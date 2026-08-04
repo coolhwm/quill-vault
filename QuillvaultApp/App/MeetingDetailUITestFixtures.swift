@@ -71,7 +71,17 @@ struct UITestMeetingDetailUseCase: MeetingDetailUseCase {
         ),
         minutes: .available(
           MeetingMinutesContent(
-            summaryMarkdown: "# 会议纪要\n\n## 决策\n保留现有方案。",
+            summaryMarkdown: """
+              # 会议纪要
+
+              ## 决策
+              保留现有方案。
+
+              ```mermaid
+              flowchart TD
+                A[讨论] --> B[决定]
+              ```
+              """,
             diagramSource: "flowchart TD\n  A[讨论] --> B[决定]",
             informationMayBeIncomplete: true
           )

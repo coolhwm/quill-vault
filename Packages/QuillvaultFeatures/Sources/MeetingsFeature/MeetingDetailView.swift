@@ -169,8 +169,11 @@ public struct MeetingDetailView: View {
         }
       }
     )
-    // Markdown view renders fenced mermaid inline; avoid a second diagram stack.
+    // Body markdown renders fenced mermaid; dedicated section covers diagramSource metadata.
     MeetingSummarySection(minutes: detail.minutes)
+    if case .available(let content) = detail.minutes, !content.diagrams.isEmpty {
+      MeetingDiagramSection(minutes: detail.minutes)
+    }
   }
 
   @ViewBuilder
