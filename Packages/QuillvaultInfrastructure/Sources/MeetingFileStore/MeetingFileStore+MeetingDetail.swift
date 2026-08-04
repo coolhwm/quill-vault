@@ -37,11 +37,14 @@ extension MeetingFileStore: MeetingDetailAccess {
       directoryID: directory.id,
       relativeDirectory: meeting.relativeDirectory
     )
-    async let minutes = markdownAsset(
-      at: meetingURL.appending(path: "minutes.md")
-    )
+    let minutesURL = meetingURL.appending(path: "minutes.md")
+    async let minutes = markdownAsset(at: minutesURL)
+    // Prefer durable title from minutes.md over a possibly stale catalog index.
+    let minutesTitle = titleFromMinutesFile(at: minutesURL)
+    let resolvedMeeting =
+      minutesTitle.map { meeting.withTitle($0) } ?? meeting
     let detail = await MeetingDetail(
-      meeting: meeting,
+      meeting: resolvedMeeting,
       transcript: transcript,
       optimizedTranscript: optimizedTranscript,
       recording: recording,
@@ -49,6 +52,23 @@ extension MeetingFileStore: MeetingDetailAccess {
     )
     await dependencies.scopeAccess.stopAccessing(root.url)
     return detail
+  }
+
+  private func titleFromMinutesFile(at url: URL) -> String? {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      return nil
+    }
+    guard let markdown = try? coordinatedText(at: url) else {
+      return nil
+    }
+    guard
+      let raw = frontMatterValue(named: "title", in: markdown)?
+        .trimmingCharacters(in: CharacterSet(charactersIn: "\"'")),
+      !raw.isEmpty
+    else {
+      return nil
+    }
+    return raw
   }
 
   private func transcriptAsset(at url: URL) async -> MeetingTranscriptAsset {

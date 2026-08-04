@@ -44,7 +44,8 @@ public final class MeetingDetailModel {
   }
 
   private let directory: AuthoritativeDirectory
-  private let meeting: MeetingIndexEntry
+  /// Mutable so hand-edited titles stay available for regenerate before rescan.
+  private var meeting: MeetingIndexEntry
   private let detail: any MeetingDetailUseCase
   private let player: any MeetingAudioPlayer
   private let generation: (any GenerationUseCase)?
@@ -100,9 +101,16 @@ public final class MeetingDetailModel {
         in: directory,
         meeting: meeting
       )
+      // Keep local index entry and chrome in sync before catalog rescan.
+      meeting = meeting.withTitle(title)
       displayedTitle = title
+      draftTitle = title
       state = .idle
       await load()
+      // loadMeetingDetail prefers minutes.md title; still re-assert hand-edit.
+      meeting = meeting.withTitle(title)
+      displayedTitle = title
+      draftTitle = title
     } catch {
       titleSaveError = true
     }
@@ -165,9 +173,21 @@ public final class MeetingDetailModel {
         directory: directory,
         meeting: meeting
       )
-      state = .loaded(loaded)
-      displayedTitle = loaded.meeting.title ?? draftTitle
-      if draftTitle.isEmpty {
+      // Prefer durable title from minutes (via detail load) over stale catalog entry.
+      if let loadedTitle = loaded.meeting.title, !loadedTitle.isEmpty {
+        meeting = meeting.withTitle(loadedTitle)
+      }
+      state = .loaded(
+        MeetingDetail(
+          meeting: meeting.withTitle(loaded.meeting.title ?? meeting.title),
+          transcript: loaded.transcript,
+          optimizedTranscript: loaded.optimizedTranscript,
+          recording: loaded.recording,
+          minutes: loaded.minutes
+        )
+      )
+      displayedTitle = meeting.title ?? draftTitle
+      if draftTitle.isEmpty || draftTitle == meeting.title {
         draftTitle = displayedTitle
       }
       if loaded.hasOptimizedTranscript {

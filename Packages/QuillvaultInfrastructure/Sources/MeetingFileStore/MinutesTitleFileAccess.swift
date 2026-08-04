@@ -23,7 +23,7 @@ extension MeetingFileStore: MinutesTitleAccess {
           throw MinutesTitleAccessError.minutesUnavailable
         }
         let original = try coordinatedReadString(at: minutesURL)
-        let updated = Self.replacingTitle(
+        let updated = MinutesTitleRewriter.replacingTitle(
           in: original,
           title: sanitized,
           userEdited: userEdited
@@ -54,72 +54,4 @@ extension MeetingFileStore: MinutesTitleAccess {
     }
   }
 
-  static func replacingTitle(
-    in markdown: String,
-    title: String,
-    userEdited: Bool
-  ) -> String {
-    var text = markdown.replacingOccurrences(of: "\r\n", with: "\n")
-    // Front matter title field
-    if text.hasPrefix("---") {
-      var lines = text.components(separatedBy: "\n")
-      var endIndex: Int?
-      var titleLine: Int?
-      var userEditedLine: Int?
-      for (index, line) in lines.enumerated() {
-        if index == 0 { continue }
-        if line.trimmingCharacters(in: .whitespaces) == "---" {
-          endIndex = index
-          break
-        }
-        if line.trimmingCharacters(in: .whitespaces).hasPrefix("title:") {
-          titleLine = index
-        }
-        if line.trimmingCharacters(in: .whitespaces).hasPrefix("titleUserEdited:") {
-          userEditedLine = index
-        }
-      }
-      if let endIndex {
-        if let titleLine {
-          lines[titleLine] = "title: \(title)"
-        } else {
-          lines.insert("title: \(title)", at: endIndex)
-        }
-        let editedValue = userEdited ? "true" : "false"
-        if let userEditedLine {
-          lines[userEditedLine] = "titleUserEdited: \(editedValue)"
-        } else {
-          let insertAt = (titleLine ?? endIndex) + 1
-          lines.insert("titleUserEdited: \(editedValue)", at: min(insertAt, endIndex + 1))
-        }
-        text = lines.joined(separator: "\n")
-      }
-    }
-    // First H1 in body
-    var bodyLines = text.components(separatedBy: "\n")
-    var replacedH1 = false
-    for (index, line) in bodyLines.enumerated() {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      if trimmed.hasPrefix("# ") || trimmed == "#" {
-        bodyLines[index] = "# \(title)"
-        replacedH1 = true
-        break
-      }
-      if trimmed.hasPrefix("##") {
-        break
-      }
-    }
-    if !replacedH1 {
-      // Insert after front matter
-      if bodyLines.first == "---" {
-        if let close = bodyLines.dropFirst().firstIndex(of: "---") {
-          let insertAt = bodyLines.index(after: close)
-          bodyLines.insert(contentsOf: ["", "# \(title)", ""], at: insertAt)
-        }
-      } else {
-        bodyLines.insert(contentsOf: ["# \(title)", ""], at: 0)
-      }
-    }
-    return bodyLines.joined(separator: "\n")
-  }
 }

@@ -54,6 +54,8 @@ extension MeetingFileStore: GenerationFileAccess {
           in: markdown
         )?
         .lowercased()
+        let rawTitle = frontMatterValue(named: "title", in: markdown)?
+          .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
         return GenerationMinutesSnapshot(
           contentFingerprint: GenerationInputFingerprint.make(markdown),
           generationJobID: frontMatterValue(named: "generationJobID", in: markdown)
@@ -66,6 +68,7 @@ extension MeetingFileStore: GenerationFileAccess {
             named: "transcriptFingerprint",
             in: markdown
           ),
+          title: rawTitle.flatMap { $0.isEmpty ? nil : $0 },
           titleUserEdited: userEditedRaw == "true" || userEditedRaw == "1"
         )
       }

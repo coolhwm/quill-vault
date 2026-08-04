@@ -975,12 +975,15 @@ public actor GenerationWorkflow: GenerationUseCase {
       in: directory,
       meeting: meeting
     )
+    // Prefer the durable title in minutes.md over a possibly stale catalog entry.
+    let previousTitle = existingMinutesForTitle?.title ?? meeting.title
     let markdown = MinutesDocumentBuilder.build(
       output: normalized.markdown,
       job: job,
       transcript: transcript,
       meeting: meeting,
       informationMayBeIncomplete: normalized.informationMayBeIncomplete,
+      previousTitle: previousTitle,
       preserveUserTitle: existingMinutesForTitle?.titleUserEdited == true
     )
     do {
@@ -1560,13 +1563,14 @@ private struct GenerationExecutionContext: Sendable {
   let meeting: MeetingIndexEntry
 }
 
-private enum MinutesDocumentBuilder {
+enum MinutesDocumentBuilder {
   static func build(
     output: String,
     job: GenerationJob,
     transcript: TranscriptRevision,
     meeting: MeetingIndexEntry,
     informationMayBeIncomplete: Bool,
+    previousTitle: String? = nil,
     preserveUserTitle: Bool = false
   ) -> String {
     let body = stripLeadingTitle(
@@ -1574,7 +1578,7 @@ private enum MinutesDocumentBuilder {
     )
     let title = MinutesTitleResolver.resolve(
       markdown: output,
-      previousTitle: meeting.title,
+      previousTitle: previousTitle ?? meeting.title,
       meetingStartedAt: meeting.createdAt,
       preserveUserTitle: preserveUserTitle
     )

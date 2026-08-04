@@ -70,4 +70,23 @@ public struct MeetingIndexEntry: Equatable, Sendable {
     }
     return .awaitingTranscript
   }
+
+  /// Returns a copy with an updated list/detail title (e.g. after hand edit).
+  public func withTitle(_ title: String?) -> MeetingIndexEntry {
+    MeetingIndexEntry(
+      id: id,
+      createdAt: createdAt,
+      relativeDirectory: relativeDirectory,
+      assets: assets,
+      title: title,
+      durationSeconds: durationSeconds,
+      modelName: modelName,
+      transcriptRevisionID: transcriptRevisionID,
+      transcriptFingerprint: transcriptFingerprint,
+      minutesTranscriptRevisionID: minutesTranscriptRevisionID,
+      minutesTranscriptFingerprint: minutesTranscriptFingerprint,
+      minutesContentFingerprint: minutesContentFingerprint,
+      minutesGenerationJobID: minutesGenerationJobID
+    )
+  }
 }
