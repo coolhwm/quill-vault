@@ -57,13 +57,16 @@ public final class SystemMeetingAudioPlayer: MeetingAudioPlayer {
     guard let player else {
       throw MeetingAudioPlaybackError.unavailable
     }
-    // Ensure a playable session category before starting (recovers after interruptions).
-    let session = AVAudioSession.sharedInstance()
-    try? session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
-    try? session.setActive(true)
+    #if os(iOS)
+      // Ensure a playable session category before starting (recovers after interruptions).
+      let session = AVAudioSession.sharedInstance()
+      try? session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
+      try? session.setActive(true)
+    #endif
     guard player.play() else {
-      // One immediate retry after reactivating the session.
-      try? session.setActive(true, options: [])
+      #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(true)
+      #endif
       guard player.play() else {
         throw MeetingAudioPlaybackError.playbackFailed
       }
