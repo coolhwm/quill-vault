@@ -259,8 +259,15 @@ public enum MinutesTitleResolver {
   public static func resolve(
     markdown: String,
     previousTitle: String?,
-    meetingStartedAt: Date
+    meetingStartedAt: Date,
+    preserveUserTitle: Bool = false
   ) -> String {
+    if preserveUserTitle,
+      let previousTitle,
+      isUsable(previousTitle)
+    {
+      return sanitize(previousTitle)
+    }
     if let extracted = extractTitle(from: markdown), isUsable(extracted) {
       return extracted
     }
@@ -302,12 +309,19 @@ public enum MinutesTitleResolver {
 
   public static func isUsable(_ title: String) -> Bool {
     let trimmed = sanitize(title)
-    guard !trimmed.isEmpty, trimmed.count <= 80 else {
+    guard !trimmed.isEmpty, trimmed.count <= 40 else {
       return false
     }
     if bannedTitles.contains(trimmed.lowercased())
       || bannedTitles.contains(trimmed)
     {
+      return false
+    }
+    // Reject deterministic "Meeting yyyy-MM-dd..." style placeholders as final titles.
+    if trimmed.range(
+      of: #"^Meeting\s+\d{4}-\d{2}-\d{2}"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil {
       return false
     }
     // Reject pure punctuation / numbers with no letters.
@@ -318,13 +332,19 @@ public enum MinutesTitleResolver {
   public static func fallbackTitle(meetingStartedAt: Date) -> String {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd HH:mm"
+    formatter.dateFormat = "yyyy-MM-dd"
     return "Meeting \(formatter.string(from: meetingStartedAt))"
   }
 
   public static func sanitize(_ title: String) -> String {
-    title
+    var value = title
       .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    // Prefer short topic titles for list/detail chrome.
+    if value.count > 40 {
+      let end = value.index(value.startIndex, offsetBy: 40)
+      value = String(value[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return value
   }
 }

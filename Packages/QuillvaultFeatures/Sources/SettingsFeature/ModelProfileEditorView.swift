@@ -12,6 +12,9 @@ struct ModelProfileEditorView: View {
   @State private var usesStreaming: Bool
   @State private var isSaving = false
   @State private var saveErrorMessage: String?
+  @State private var recommendedModels: [String] = []
+  @State private var isRefreshingModels = false
+  @State private var refreshModelsMessage: String?
 
   private let profile: ModelProfile?
   private let onSave: (ModelProfileDraft) async throws -> Void
@@ -42,6 +45,9 @@ struct ModelProfileEditorView: View {
       initialValue: profile?.parameters.usesStreaming
         ?? matched?.supportsStreaming
         ?? true
+    )
+    _recommendedModels = State(
+      initialValue: matched?.recommendedModels ?? []
     )
   }
 
@@ -78,14 +84,12 @@ struct ModelProfileEditorView: View {
             Text("settings.models.editor.base_url_hint")
               .font(.footnote)
               .foregroundStyle(.secondary)
-            if let models = ModelProviderCatalog.preset(id: selectedPresetID)?
-              .recommendedModels, !models.isEmpty
-            {
+            if !recommendedModels.isEmpty {
               Picker("settings.models.editor.model", selection: $modelName) {
-                ForEach(models, id: \.self) { model in
+                ForEach(recommendedModels, id: \.self) { model in
                   Text(model).tag(model)
                 }
-                if !models.contains(modelName), !modelName.isEmpty {
+                if !recommendedModels.contains(modelName), !modelName.isEmpty {
                   Text(modelName).tag(modelName)
                 }
               }
@@ -95,6 +99,27 @@ struct ModelProfileEditorView: View {
               .textInputAutocapitalization(.never)
               .autocorrectionDisabled(true)
               .accessibilityIdentifier("settings.models.editor.model")
+            Button {
+              Task {
+                await refreshRecommendedModels()
+              }
+            } label: {
+              if isRefreshingModels {
+                ProgressView()
+              } else {
+                Label(
+                  "settings.models.editor.refresh_models",
+                  systemImage: "arrow.clockwise"
+                )
+              }
+            }
+            .disabled(isRefreshingModels || apiKey.trimmingCharacters(in: .whitespaces).isEmpty)
+            .accessibilityIdentifier("settings.models.editor.refresh_models")
+            if let refreshModelsMessage {
+              Text(refreshModelsMessage)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
           #else
             TextField("settings.models.editor.base_url", text: $baseURL)
               .autocorrectionDisabled(true)
@@ -159,6 +184,7 @@ struct ModelProfileEditorView: View {
 
   private func applyPreset(id: String) {
     guard let preset = ModelProviderCatalog.preset(id: id) else {
+      recommendedModels = []
       return
     }
     if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -167,10 +193,59 @@ struct ModelProfileEditorView: View {
       name = preset.displayName
     }
     baseURL = preset.defaultBaseURL.absoluteString
+    recommendedModels = preset.recommendedModels
     if let first = preset.recommendedModels.first {
       modelName = first
     }
     usesStreaming = preset.supportsStreaming
+    refreshModelsMessage = nil
+  }
+
+  @MainActor
+  private func refreshRecommendedModels() async {
+    guard !isRefreshingModels else {
+      return
+    }
+    isRefreshingModels = true
+    refreshModelsMessage = nil
+    defer { isRefreshingModels = false }
+
+    let builtIn = ModelProviderCatalog.builtInModels(for: selectedPresetID)
+    guard
+      let chatURL = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+      let modelsURL = ModelProviderCatalog.modelsListURL(fromChatCompletionsURL: chatURL)
+    else {
+      recommendedModels = builtIn
+      refreshModelsMessage = String(localized: "settings.models.editor.refresh_models.failed")
+      return
+    }
+
+    var request = URLRequest(url: modelsURL)
+    request.httpMethod = "GET"
+    request.setValue(
+      "Bearer \(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))",
+      forHTTPHeaderField: "Authorization"
+    )
+    request.timeoutInterval = 20
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+      guard (200..<300).contains(status) else {
+        recommendedModels = builtIn
+        refreshModelsMessage = String(localized: "settings.models.editor.refresh_models.failed")
+        return
+      }
+      let remote = ModelProviderCatalog.parseModelsListJSON(data)
+      let merged = ModelProviderCatalog.mergeRecommended(builtIn: builtIn, remote: remote)
+      recommendedModels = merged
+      if modelName.isEmpty, let first = merged.first {
+        modelName = first
+      }
+      refreshModelsMessage = String(localized: "settings.models.editor.refresh_models.success")
+    } catch {
+      recommendedModels = builtIn
+      refreshModelsMessage = String(localized: "settings.models.editor.refresh_models.failed")
+    }
   }
 
   private func save() {

@@ -22,6 +22,7 @@ public final class MeetingsModel {
   private let generation: (any GenerationUseCase)?
   private let modelProfiles: (any ModelProfileUseCase)?
   private let transcriptQuality: (any TranscriptQualityUseCase)?
+  private let titleAccess: (any MinutesTitleAccess)?
   private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private let makePlayer: @MainActor () -> any MeetingAudioPlayer
   private let now: @Sendable () -> Date
@@ -38,6 +39,7 @@ public final class MeetingsModel {
     generation: (any GenerationUseCase)? = nil,
     modelProfiles: (any ModelProfileUseCase)? = nil,
     transcriptQuality: (any TranscriptQualityUseCase)? = nil,
+    titleAccess: (any MinutesTitleAccess)? = nil,
     cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil,
     now: @escaping @Sendable () -> Date = Date.init,
     calendar: Calendar = .current,
@@ -51,6 +53,7 @@ public final class MeetingsModel {
     self.generation = generation
     self.modelProfiles = modelProfiles
     self.transcriptQuality = transcriptQuality
+    self.titleAccess = titleAccess
     self.cancelScheduledGeneration = cancelScheduledGeneration
     self.makePlayer = makePlayer
     self.now = now
@@ -70,6 +73,7 @@ public final class MeetingsModel {
       generation: generation,
       modelProfiles: modelProfiles,
       transcriptQuality: transcriptQuality,
+      titleAccess: titleAccess,
       cancelScheduledGeneration: cancelScheduledGeneration
     )
   }

@@ -102,6 +102,39 @@ public struct MeetingDetailView: View {
 
   @ViewBuilder
   private func smartMinutesContent(_ detail: MeetingDetail) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      TextField(
+        "minutes.detail.title.placeholder",
+        text: Binding(
+          get: { model.draftTitle },
+          set: { model.draftTitle = $0 }
+        )
+      )
+      .textFieldStyle(.roundedBorder)
+      .accessibilityIdentifier("minutes.detail.title.field")
+      HStack {
+        Button {
+          Task {
+            await model.saveTitle()
+          }
+        } label: {
+          if model.titleSaveBusy {
+            ProgressView()
+          } else {
+            Label("minutes.detail.title.save", systemImage: "checkmark.circle")
+          }
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.titleSaveBusy)
+        .accessibilityIdentifier("minutes.detail.title.save")
+        if model.titleSaveError {
+          Text("minutes.detail.title.save.failed")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        }
+      }
+    }
+
     MeetingGenerationSection(
       minutes: detail.minutes,
       snapshot: model.generationSnapshot,
@@ -149,6 +182,11 @@ public struct MeetingDetailView: View {
       toggle: model.togglePlayback,
       seek: { seconds in
         model.seek(to: seconds, beginsPlayback: false)
+      },
+      retry: {
+        Task {
+          await model.retryPlayback()
+        }
       }
     )
     MeetingTranscriptSection(

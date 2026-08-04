@@ -49,6 +49,11 @@ extension MeetingFileStore: GenerationFileAccess {
           return nil
         }
         let markdown = try coordinatedReadString(at: minutesURL)
+        let userEditedRaw = frontMatterValue(
+          named: "titleUserEdited",
+          in: markdown
+        )?
+        .lowercased()
         return GenerationMinutesSnapshot(
           contentFingerprint: GenerationInputFingerprint.make(markdown),
           generationJobID: frontMatterValue(named: "generationJobID", in: markdown)
@@ -60,7 +65,8 @@ extension MeetingFileStore: GenerationFileAccess {
           transcriptFingerprint: frontMatterValue(
             named: "transcriptFingerprint",
             in: markdown
-          )
+          ),
+          titleUserEdited: userEditedRaw == "true" || userEditedRaw == "1"
         )
       }
     } catch let error as GenerationFileError {

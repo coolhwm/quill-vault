@@ -31,6 +31,10 @@ public final class MeetingDetailModel {
   public private(set) var transcriptOptimizeBusy = false
   public private(set) var transcriptOptimizeError = false
   public private(set) var selectedDetailTab: MeetingDetailTab = .smartMinutes
+  public var draftTitle: String = ""
+  public private(set) var titleSaveBusy = false
+  public private(set) var titleSaveError = false
+  public private(set) var displayedTitle: String = ""
 
   public enum MeetingDetailTab: String, CaseIterable, Identifiable, Sendable {
     case smartMinutes
@@ -46,8 +50,10 @@ public final class MeetingDetailModel {
   private let generation: (any GenerationUseCase)?
   private let modelProfiles: (any ModelProfileUseCase)?
   private let transcriptQuality: (any TranscriptQualityUseCase)?
+  private let titleAccess: (any MinutesTitleAccess)?
   private let cancelScheduledGeneration: (@Sendable (UUID) async -> Void)?
   private var progressTask: Task<Void, Never>?
+  private var loadedAudioAsset: MeetingAudioAsset?
 
   public init(
     directory: AuthoritativeDirectory,
@@ -57,6 +63,7 @@ public final class MeetingDetailModel {
     generation: (any GenerationUseCase)? = nil,
     modelProfiles: (any ModelProfileUseCase)? = nil,
     transcriptQuality: (any TranscriptQualityUseCase)? = nil,
+    titleAccess: (any MinutesTitleAccess)? = nil,
     cancelScheduledGeneration: (@Sendable (UUID) async -> Void)? = nil
   ) {
     self.directory = directory
@@ -66,11 +73,51 @@ public final class MeetingDetailModel {
     self.generation = generation
     self.modelProfiles = modelProfiles
     self.transcriptQuality = transcriptQuality
+    self.titleAccess = titleAccess
     self.cancelScheduledGeneration = cancelScheduledGeneration
   }
 
   public func selectDetailTab(_ tab: MeetingDetailTab) {
     selectedDetailTab = tab
+  }
+
+  public func saveTitle() async {
+    guard let titleAccess, !titleSaveBusy else {
+      return
+    }
+    let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else {
+      titleSaveError = true
+      return
+    }
+    titleSaveBusy = true
+    titleSaveError = false
+    defer { titleSaveBusy = false }
+    do {
+      try await titleAccess.updateTitle(
+        title,
+        userEdited: true,
+        in: directory,
+        meeting: meeting
+      )
+      displayedTitle = title
+      state = .idle
+      await load()
+    } catch {
+      titleSaveError = true
+    }
+  }
+
+  public func retryPlayback() async {
+    guard let loadedAudioAsset else {
+      return
+    }
+    playbackFailed = false
+    do {
+      playback = try await player.load(loadedAudioAsset)
+    } catch {
+      playbackFailed = true
+    }
   }
 
   public func selectTranscriptVersion(_ version: TranscriptVersionKind) {
@@ -119,6 +166,10 @@ public final class MeetingDetailModel {
         meeting: meeting
       )
       state = .loaded(loaded)
+      displayedTitle = loaded.meeting.title ?? draftTitle
+      if draftTitle.isEmpty {
+        draftTitle = displayedTitle
+      }
       if loaded.hasOptimizedTranscript {
         selectedTranscriptVersion = .optimized
       } else {
@@ -128,14 +179,23 @@ public final class MeetingDetailModel {
       await loadGeneration()
       await loadGenerationProfiles()
       if case .available(let asset) = loaded.recording {
+        loadedAudioAsset = asset
         do {
           playback = try await player.load(asset)
+          playbackFailed = false
         } catch is CancellationError {
           await player.unload()
           state = .idle
           return
         } catch {
-          playbackFailed = true
+          // Retry once after a short delay — common after cold security-scope attach.
+          try? await Task.sleep(for: .milliseconds(200))
+          do {
+            playback = try await player.load(asset)
+            playbackFailed = false
+          } catch {
+            playbackFailed = true
+          }
         }
       }
     } catch is CancellationError {

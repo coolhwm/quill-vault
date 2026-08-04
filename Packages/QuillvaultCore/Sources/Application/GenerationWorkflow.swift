@@ -971,12 +971,17 @@ public actor GenerationWorkflow: GenerationUseCase {
         )
       )
     )
+    let existingMinutesForTitle = try? await assets.loadMinutesSnapshot(
+      in: directory,
+      meeting: meeting
+    )
     let markdown = MinutesDocumentBuilder.build(
       output: normalized.markdown,
       job: job,
       transcript: transcript,
       meeting: meeting,
-      informationMayBeIncomplete: normalized.informationMayBeIncomplete
+      informationMayBeIncomplete: normalized.informationMayBeIncomplete,
+      preserveUserTitle: existingMinutesForTitle?.titleUserEdited == true
     )
     do {
       let existingMinutes = try await assets.loadMinutesSnapshot(
@@ -1561,7 +1566,8 @@ private enum MinutesDocumentBuilder {
     job: GenerationJob,
     transcript: TranscriptRevision,
     meeting: MeetingIndexEntry,
-    informationMayBeIncomplete: Bool
+    informationMayBeIncomplete: Bool,
+    preserveUserTitle: Bool = false
   ) -> String {
     let body = stripLeadingTitle(
       from: output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1569,14 +1575,17 @@ private enum MinutesDocumentBuilder {
     let title = MinutesTitleResolver.resolve(
       markdown: output,
       previousTitle: meeting.title,
-      meetingStartedAt: meeting.createdAt
+      meetingStartedAt: meeting.createdAt,
+      preserveUserTitle: preserveUserTitle
     )
     let escapedTitle = title
       .replacingOccurrences(of: "\"", with: "\\\"")
+    let userEditedFlag = preserveUserTitle ? "true" : "false"
     return [
       "---",
       "schemaVersion: 1",
       "title: \"\(escapedTitle)\"",
+      "titleUserEdited: \(userEditedFlag)",
       "generationJobID: \(job.id.uuidString)",
       "generationNumber: \(job.generationNumber)",
       "promptVersion: \(job.promptVersion)",

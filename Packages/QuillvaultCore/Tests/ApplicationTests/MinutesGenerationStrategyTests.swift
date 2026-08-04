@@ -95,6 +95,18 @@ struct MinutesGenerationStrategyTests {
     )
     #expect(fallback.hasPrefix("Meeting "))
     #expect(!fallback.contains("会议录音"))
+    #expect(!fallback.contains(":"))  // date-only fallback, not full timestamp
+  }
+
+  @Test("User-edited titles are preserved on regenerate")
+  func preservesUserTitle() {
+    let title = MinutesTitleResolver.resolve(
+      markdown: "# 模型新标题\n\n正文",
+      previousTitle: "用户手改标题",
+      meetingStartedAt: Date(timeIntervalSince1970: 1_800_000_000),
+      preserveUserTitle: true
+    )
+    #expect(title == "用户手改标题")
   }
 
   @Test("Metrics derive from transcript revisions")

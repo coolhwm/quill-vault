@@ -29,17 +29,20 @@ public struct GenerationMinutesSnapshot: Equatable, Sendable {
   public let generationJobID: UUID?
   public let transcriptRevisionID: String?
   public let transcriptFingerprint: String?
+  public let titleUserEdited: Bool
 
   public init(
     contentFingerprint: String,
     generationJobID: UUID? = nil,
     transcriptRevisionID: String? = nil,
-    transcriptFingerprint: String? = nil
+    transcriptFingerprint: String? = nil,
+    titleUserEdited: Bool = false
   ) {
     self.contentFingerprint = contentFingerprint
     self.generationJobID = generationJobID
     self.transcriptRevisionID = transcriptRevisionID
     self.transcriptFingerprint = transcriptFingerprint
+    self.titleUserEdited = titleUserEdited
   }
 }
 

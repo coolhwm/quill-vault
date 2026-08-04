@@ -28,7 +28,7 @@ public struct ModelProviderPreset: Equatable, Identifiable, Sendable {
 }
 
 public enum ModelProviderCatalog {
-  public static let version = "v1"
+  public static let version = "v2"
 
   public static let customID = "custom"
 
@@ -53,15 +53,19 @@ public enum ModelProviderCatalog {
       id: "siliconflow",
       displayName: "SiliconFlow",
       defaultBaseURL: URL(string: "https://api.siliconflow.cn/v1/chat/completions")!,
-      recommendedModels: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"],
+      recommendedModels: [
+        "deepseek-ai/DeepSeek-V3",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-7B-Instruct",
+      ],
       supportsStreaming: true,
       configurationHint: "SiliconFlow OpenAI-compatible gateway."
     ),
     ModelProviderPreset(
       id: "moonshot",
-      displayName: "Moonshot",
+      displayName: "Moonshot / Kimi",
       defaultBaseURL: URL(string: "https://api.moonshot.cn/v1/chat/completions")!,
-      recommendedModels: ["moonshot-v1-8k", "moonshot-v1-32k"],
+      recommendedModels: ["moonshot-v1-8k", "moonshot-v1-32k", "kimi-latest"],
       supportsStreaming: true,
       configurationHint: "Moonshot OpenAI-compatible endpoint."
     ),
@@ -75,5 +79,63 @@ public enum ModelProviderCatalog {
   public static func matchingPreset(baseURL: URL) -> ModelProviderPreset? {
     let host = baseURL.host?.lowercased()
     return all.first { $0.defaultBaseURL.host?.lowercased() == host }
+  }
+
+  /// Built-in recommended models for a preset (always available offline).
+  public static func builtInModels(for presetID: String) -> [String] {
+    preset(id: presetID)?.recommendedModels ?? []
+  }
+
+  /// Derives an OpenAI-compatible `/models` URL from a chat completions base URL.
+  public static func modelsListURL(fromChatCompletionsURL baseURL: URL) -> URL? {
+    var path = baseURL.path
+    if path.hasSuffix("/chat/completions") {
+      path = String(path.dropLast("/chat/completions".count)) + "/models"
+    } else if path.hasSuffix("/v1") {
+      path = path + "/models"
+    } else if path.isEmpty || path == "/" {
+      path = "/v1/models"
+    } else {
+      path = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      path = "/\(path)/models"
+    }
+    var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+    components?.path = path
+    components?.query = nil
+    components?.fragment = nil
+    return components?.url
+  }
+
+  /// Parses an OpenAI-compatible models list JSON payload into model ids.
+  public static func parseModelsListJSON(_ data: Data) -> [String] {
+    guard
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let items = object["data"] as? [[String: Any]]
+    else {
+      return []
+    }
+    var ids: [String] = []
+    var seen = Set<String>()
+    for item in items {
+      guard let id = item["id"] as? String, !id.isEmpty, seen.insert(id).inserted else {
+        continue
+      }
+      ids.append(id)
+    }
+    return ids.sorted()
+  }
+
+  /// Merges remote model ids with built-in recommendations (built-ins first).
+  public static func mergeRecommended(
+    builtIn: [String],
+    remote: [String]
+  ) -> [String] {
+    var result: [String] = []
+    var seen = Set<String>()
+    for id in builtIn + remote {
+      guard !id.isEmpty, seen.insert(id).inserted else { continue }
+      result.append(id)
+    }
+    return result
   }
 }

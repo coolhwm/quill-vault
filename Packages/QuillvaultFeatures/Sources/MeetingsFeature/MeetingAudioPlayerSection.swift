@@ -9,6 +9,7 @@ struct MeetingAudioPlayerSection: View {
   let playbackFailed: Bool
   let toggle: () -> Void
   let seek: (Double) -> Void
+  var retry: (() -> Void)? = nil
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -39,6 +40,18 @@ struct MeetingAudioPlayerSection: View {
             systemImage: "exclamationmark.triangle"
           )
           .foregroundStyle(.orange)
+          if let retry {
+            Button {
+              retry()
+            } label: {
+              Label(
+                "minutes.detail.recording.playback.retry",
+                systemImage: "arrow.clockwise"
+              )
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("minutes.detail.recording.playback.retry")
+          }
         }
       case .missing:
         Label("minutes.detail.recording.missing", systemImage: "waveform.slash")
