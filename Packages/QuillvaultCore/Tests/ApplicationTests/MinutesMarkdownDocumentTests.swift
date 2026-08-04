@@ -39,6 +39,18 @@ struct MinutesMarkdownDocumentTests {
     #expect(tail.contains("待办"))
   }
 
+  @Test("Parses chapter seek timestamps for 妙记-style lines")
+  func chapterSeekParsing() {
+    let parsed = MinutesMarkdownDocument.chapterSeek(
+      from: "[04:40] 原料类商品库存规则"
+    )
+    #expect(parsed != nil)
+    #expect(abs((parsed?.seconds ?? -1) - 280) < 0.001)
+    #expect(parsed?.timestamp == "[04:40]")
+    #expect(parsed?.title == "原料类商品库存规则")
+    #expect(MinutesMarkdownDocument.chapterSeek(from: "普通段落") == nil)
+  }
+
   @Test("Invalid mermaid isolation leaves body markdown intact")
   func keepsBodyWhenOnlyMarkdown() {
     let input = "# Title\n\nBody only."

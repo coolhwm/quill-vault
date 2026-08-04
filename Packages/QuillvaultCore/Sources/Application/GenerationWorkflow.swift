@@ -448,6 +448,12 @@ public actor GenerationWorkflow: GenerationUseCase {
     )
   }
 
+  public func activeJobs() async throws -> [GenerationSnapshot] {
+    await reconcileProfileUsage()
+    let snapshots = try await jobs.resumableJobs()
+    return snapshots.filter { $0.job.isActive }
+  }
+
   func resumableSnapshots() async throws -> [GenerationSnapshot] {
     try await jobs.resumableJobs()
   }

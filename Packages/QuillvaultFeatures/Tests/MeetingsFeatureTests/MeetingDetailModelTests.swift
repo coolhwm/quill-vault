@@ -77,6 +77,24 @@ struct MeetingDetailModelTests {
     #expect(model.selectedDetailTab == .smartMinutes)
   }
 
+  @Test("Title editing is opt-in and cancel restores draft")
+  func titleEditingIsOptIn() async {
+    let model = MeetingDetailModel(
+      directory: .fixture,
+      meeting: .fixture,
+      detail: MeetingDetailUseCaseStub(detail: .fixture),
+      player: MeetingAudioPlayerSpy()
+    )
+    await model.load()
+    #expect(model.isEditingTitle == false)
+    model.beginTitleEditing()
+    #expect(model.isEditingTitle == true)
+    model.draftTitle = "temporary"
+    model.cancelTitleEditing()
+    #expect(model.isEditingTitle == false)
+    #expect(model.draftTitle == model.displayedTitle)
+  }
+
   @Test("Loads optimized transcript version when available")
   func selectsOptimizedWhenPresent() async {
     let player = MeetingAudioPlayerSpy()

@@ -61,4 +61,28 @@ public enum MinutesMarkdownDocument {
     flushMarkdown()
     return result
   }
+
+  /// Parses a 妙记-style chapter line `[mm:ss] Title` for seek-to-play.
+  public static func chapterSeek(
+    from line: String
+  ) -> (seconds: Double, timestamp: String, title: String)? {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    let pattern = #"^\[(\d{1,2}):(\d{2})\]\s+(.+)$"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else {
+      return nil
+    }
+    let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+    guard let match = regex.firstMatch(in: trimmed, range: range),
+      match.numberOfRanges == 4,
+      let mRange = Range(match.range(at: 1), in: trimmed),
+      let sRange = Range(match.range(at: 2), in: trimmed),
+      let tRange = Range(match.range(at: 3), in: trimmed),
+      let minutes = Double(trimmed[mRange]),
+      let secondsPart = Double(trimmed[sRange])
+    else {
+      return nil
+    }
+    let stamp = "[\(trimmed[mRange]):\(trimmed[sRange])]"
+    return (minutes * 60 + secondsPart, stamp, String(trimmed[tRange]))
+  }
 }

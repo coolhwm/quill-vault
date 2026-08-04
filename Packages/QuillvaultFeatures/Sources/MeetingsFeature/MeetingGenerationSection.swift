@@ -13,6 +13,8 @@ public struct MeetingGenerationSection: View {
   let resume: () -> Void
   let cancel: () -> Void
   let regenerate: () -> Void
+  /// Optimize transcript then regenerate minutes (#47).
+  let regenerateWithOptimize: (() -> Void)?
   let selectModelProfile: (ModelProfileID) -> Void
 
   public init(
@@ -27,6 +29,7 @@ public struct MeetingGenerationSection: View {
     resume: @escaping () -> Void,
     cancel: @escaping () -> Void,
     regenerate: @escaping () -> Void,
+    regenerateWithOptimize: (() -> Void)? = nil,
     selectModelProfile: @escaping (ModelProfileID) -> Void = { _ in }
   ) {
     self.minutes = minutes
@@ -40,7 +43,28 @@ public struct MeetingGenerationSection: View {
     self.resume = resume
     self.cancel = cancel
     self.regenerate = regenerate
+    self.regenerateWithOptimize = regenerateWithOptimize
     self.selectModelProfile = selectModelProfile
+  }
+
+  @ViewBuilder
+  private var regenerateControl: some View {
+    if let regenerateWithOptimize {
+      Menu {
+        Button("minutes.generation.regenerate.withOptimize", action: regenerateWithOptimize)
+          .accessibilityIdentifier("minutes.generation.regenerate.withOptimize")
+        Button("minutes.generation.regenerate.direct", action: regenerate)
+          .accessibilityIdentifier("minutes.generation.regenerate.direct")
+      } label: {
+        Label("minutes.generation.regenerate", systemImage: "arrow.triangle.2.circlepath")
+      }
+      .buttonStyle(.borderedProminent)
+      .accessibilityIdentifier("minutes.generation.regenerate")
+    } else {
+      Button("minutes.generation.regenerate", action: regenerate)
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("minutes.generation.regenerate")
+    }
   }
 
   @ViewBuilder
@@ -107,8 +131,7 @@ public struct MeetingGenerationSection: View {
           .font(.headline)
           Text("minutes.generation.replace.description")
             .foregroundStyle(.secondary)
-          Button("minutes.generation.regenerate", action: regenerate)
-            .buttonStyle(.borderedProminent)
+          regenerateControl
         } else {
           Label(
             "minutes.generation.paused",
@@ -123,16 +146,14 @@ public struct MeetingGenerationSection: View {
           }
           Button("minutes.generation.resume", action: resume)
             .buttonStyle(.borderedProminent)
-          Button("minutes.generation.regenerate", action: regenerate)
-            .buttonStyle(.bordered)
+          regenerateControl
         }
       }
     } else if snapshot?.job.state == .pending {
       VStack(alignment: .leading, spacing: 12) {
         Text("minutes.generation.queued")
           .foregroundStyle(.secondary)
-        Button("minutes.generation.regenerate", action: regenerate)
-          .buttonStyle(.bordered)
+        regenerateControl
       }
     } else {
       switch minutes {
@@ -150,8 +171,7 @@ public struct MeetingGenerationSection: View {
             Text("minutes.generation.regenerate.description")
               .foregroundStyle(.secondary)
           }
-          Button("minutes.generation.regenerate", action: regenerate)
-            .buttonStyle(.borderedProminent)
+          regenerateControl
         }
       case .missing, .downloadRequired, .unreadable:
         VStack(alignment: .leading, spacing: 12) {

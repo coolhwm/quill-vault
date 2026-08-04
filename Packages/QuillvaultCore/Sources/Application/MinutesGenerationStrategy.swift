@@ -84,19 +84,19 @@ public enum MinutesGenerationStrategyCatalog {
 
   public static let standard = MinutesGenerationStrategy(
     id: "standard",
-    version: "v2",
+    version: "v3",
     systemPrompt: """
       You write structured meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
       Start with a single short H1 topic title (never "会议录音", "Meeting recording", or "Meeting" + timestamp). \
-      Include overview, decisions, action items, and open questions when present. \
-      Use lists, tables, and task lists when they improve clarity. \
-      When relationships or process are clearer as a graph, include at least one fenced ```mermaid block. \
+      Prefer sections: ## 总结, ## 待办 (task list), ## 关键决策 when present; add ## 智能章节 with `[mm:ss]` when times help. \
+      Use lists, tables, and task lists for scannability. \
+      When relationships or process are clearer as a graph, include at least one fenced ```mermaid block under its own `###` title. \
       Do not invent missing facts.
       """,
     userPromptTemplate: """
       Produce meeting minutes as Markdown in the same language as the transcript. \
-      Include: short H1 title, overview, decisions, action items (owner/due if stated), open questions when present, \
-      and a mermaid diagram when relationships are clear.
+      Include short H1 title, 总结, 待办, decisions/open questions when present, \
+      and a titled mermaid diagram when relationships are clear.
 
       {{transcript}}
       """,
@@ -119,37 +119,42 @@ public enum MinutesGenerationStrategyCatalog {
 
   public static let full = MinutesGenerationStrategy(
     id: "full",
-    version: "v2",
+    version: "v3",
     systemPrompt: """
-      You write complete structured meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
+      You write scannable meeting minutes as GitHub-flavored Markdown only (no JSON wrapper). \
       Start with a single short H1 topic title (never "会议录音", "Meeting recording", or "Meeting" + timestamp). \
-      Prefer: overview, timed sections when useful, key decisions with rationale, action items \
-      (owner/due/source quote when stated), risks/open questions. \
-      Strongly prefer at least one core ```mermaid relationship/process diagram when content supports it; \
-      add more diagrams only when they clarify distinct parts. Missing diagrams must not block a readable body. \
-      Use tables and task lists when they improve scannability. Do not invent missing facts.
+      Use this section skeleton when content supports each part (omit empty sections; never invent facts):
+      ## 总结 (or Summary) — hierarchical bullets, brief then detail
+      ## 待办 (or Action items) — GitHub task list `- [ ]` with owner/due when stated
+      ## 智能章节 (or Chapters) — lines like `[mm:ss] Section title` plus a one-sentence summary under each
+      ## 关键决策 (or Key decisions) — decision, problem, options, rationale when present
+      ## 金句时刻 (or Highlights) — notable quotes only when valuable
+      Prefer at least one fenced ```mermaid diagram with a short title comment when relationships/process exist; \
+      use one diagram per canvas (separate mermaid fences), each preceded by a `###` diagram title. \
+      Use tables when helpful. Missing diagrams must not block a readable body.
       """,
     userPromptTemplate: """
       Produce full structured Markdown minutes in the same language as the transcript. \
-      Include short H1 title, overview, section notes with time anchors when helpful, decisions, \
-      action items, risks/open questions, and at least one mermaid diagram when content supports it.
+      Follow the 总结 / 待办 / 智能章节 / 关键决策 / 金句 skeleton when applicable. \
+      Chapters must use `[mm:ss]` anchors from the transcript timeline when times exist. \
+      Include mermaid diagrams as separate fenced blocks with a title heading above each.
 
       {{transcript}}
       """,
     synthesisSystemPrompt: """
       Merge detailed segment summaries into one complete structured Markdown minutes draft. \
-      Start with one short H1 topic title. Prefer overview, sections, decisions, actions, risks, \
-      and at least one mermaid diagram when justified.
+      Start with one short H1 topic title. Prefer 总结, 待办, 智能章节 with [mm:ss], 关键决策, 金句, \
+      and separate titled mermaid diagrams when justified.
       """,
     synthesisUserPromptTemplate: """
       Merge these ordered segment summaries into a full Markdown minutes draft in the same language as the source. \
-      Include short title, overview, sections, decisions, action items, risks/open questions, and mermaid diagrams when suitable.
+      Follow 总结 / 待办 / 智能章节 / 关键决策 / 金句 when content supports them.
 
       {{summaries}}
       """,
     chunkSystemPrompt: """
       Summarize one meeting transcript segment in detail as Markdown. \
-      Preserve decisions, risks, owners, open questions, and notable quotes. Do not invent details.
+      Preserve decisions, risks, owners, open questions, times, and notable quotes. Do not invent details.
       """
   )
 

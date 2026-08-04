@@ -22,6 +22,7 @@ public struct HomeView: View {
       VStack(alignment: .leading, spacing: QuillvaultSpacing.spacious) {
         header
         recordingAction
+        multiMeetingProcessingList
         resultCard
       }
       .padding(QuillvaultSpacing.standard)
@@ -171,7 +172,97 @@ public struct HomeView: View {
   }
 
   @ViewBuilder
+  private var multiMeetingProcessingList: some View {
+    let items = model.homeProcessingItems
+    if items.count > 1
+      || (items.count == 1 && model.focusedMeetingID != items.first?.meetingID)
+      || (items.count >= 1 && model.state == .idle)
+    {
+      VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
+        ForEach(items) { item in
+          multiProcessingCard(item)
+        }
+      }
+      .accessibilityIdentifier("home.processing.list")
+    }
+  }
+
+  @ViewBuilder
+  private func multiProcessingCard(_ item: MeetingProcessingItem) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: QuillvaultSpacing.compact) {
+        Text(item.title ?? String(localized: "minutes.card.default.title"))
+          .font(.headline)
+        Text(item.createdAt, format: .dateTime.month().day().hour().minute())
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text(multiPhaseTitle(item.phase))
+          .font(.subheadline)
+        if let progress = item.phase.progressPercent {
+          ProgressView(value: Double(progress), total: 100)
+          Text("\(progress)%")
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+        }
+        if let onOpenMeeting {
+          Button {
+            onOpenMeeting(item.meetingID)
+          } label: {
+            Label("home.processing.openDetail", systemImage: "doc.text")
+          }
+          .buttonStyle(.bordered)
+        }
+      }
+    } icon: {
+      Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+        .foregroundStyle(Color.accentColor)
+    }
+    .padding()
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.regularMaterial, in: .rect(cornerRadius: 20))
+    .accessibilityIdentifier("home.processing.item.\(item.meetingID.rawValue.uuidString)")
+  }
+
+  private func multiPhaseTitle(_ phase: MeetingProcessingPhase) -> LocalizedStringKey {
+    switch phase {
+    case .awaitingTranscript, .finalizingTranscript:
+      "home.processing.transcript.running"
+    case .transcriptFailed:
+      "home.processing.transcript.failed"
+    case .optimizingTranscript:
+      "home.processing.optimize.running"
+    case .optimizeFailed:
+      "home.processing.optimize.failed"
+    case .awaitingMinutes:
+      "home.processing.minutes.pending"
+    case .generatingMinutes:
+      "home.processing.minutes.running"
+    case .generationPaused:
+      "home.processing.minutes.paused"
+    case .minutesCompleted:
+      "home.processing.minutes.completed"
+    case .minutesExpired:
+      "minutes.status.expired"
+    case .generationFailed:
+      "home.processing.minutes.failed"
+    case .idle:
+      "recording.completed"
+    }
+  }
+
+  @ViewBuilder
   private var resultCard: some View {
+    // When multi-list already covers processing, skip duplicate primary card.
+    if model.homeProcessingItems.count > 1 {
+      EmptyView()
+    } else {
+      resultCardContent
+    }
+  }
+
+  @ViewBuilder
+  private var resultCardContent: some View {
     switch model.state {
     case .interrupted(_, let audio):
       Label {

@@ -84,9 +84,11 @@ public struct ProfileView<SettingsDestination: View>: View {
 struct MeetingHeatmapView: View {
   let stats: MeetingStats
   private let calendar = Calendar.current
-  /// ~52 weeks covers about 12 months.
-  private let weeks = 53
+  /// ~13 weeks covers about 3 months (walkthrough #49).
+  private let weeks = 13
   private let daysInWeek = 7
+  /// Readable day cell floor so heat squares are not ~3pt dots.
+  private let minimumCellSize: CGFloat = 10
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -95,9 +97,9 @@ struct MeetingHeatmapView: View {
         .foregroundStyle(.secondary)
 
       GeometryReader { geometry in
-        let spacing: CGFloat = 2
+        let spacing: CGFloat = 3
         let cell = max(
-          3,
+          minimumCellSize,
           floor((geometry.size.width - spacing * CGFloat(weeks - 1)) / CGFloat(weeks))
         )
         VStack(alignment: .leading, spacing: 4) {
@@ -125,8 +127,8 @@ struct MeetingHeatmapView: View {
   }
 
   private var heatmapHeight: CGFloat {
-    // Month labels + 7 rows of cells (approx) + legend
-    18 + 7 * 12 + 20
+    // Month labels + 7 rows of cells (min 10pt) + legend
+    18 + 7 * (minimumCellSize + 3) + 24
   }
 
   private func monthLabels(cellWidth: CGFloat, spacing: CGFloat) -> some View {

@@ -59,6 +59,7 @@ enum MermaidHTMLDocument {
 
   struct MermaidDiagramView: View {
     let source: String
+    var preferredHeight: CGFloat = 220
     @State private var renderFailed = false
 
     var body: some View {
@@ -69,7 +70,8 @@ enum MermaidHTMLDocument {
           MermaidWebView(source: source) {
             renderFailed = true
           }
-          .frame(minHeight: 140)
+          .frame(minHeight: preferredHeight)
+          .frame(maxHeight: max(preferredHeight, 320))
         }
       }
       .onAppear {

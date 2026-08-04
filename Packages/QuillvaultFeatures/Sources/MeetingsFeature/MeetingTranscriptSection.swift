@@ -55,27 +55,20 @@ struct MeetingTranscriptSection: View {
         .accessibilityIdentifier("minutes.detail.transcript.compare")
       }
 
-      if canOptimize {
-        Button {
-          optimize()
-        } label: {
-          if optimizeBusy {
-            ProgressView()
-          } else {
-            Label(
-              "minutes.detail.transcript.optimize",
-              systemImage: "text.badge.checkmark"
-            )
-          }
-        }
-        .disabled(optimizeBusy)
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("minutes.detail.transcript.optimize")
-        if optimizeError {
-          Text("minutes.detail.transcript.optimize.failed")
+      // Optimize entry lives under smart-minutes "Regenerate" menu (#47).
+      if optimizeBusy {
+        HStack(spacing: 8) {
+          ProgressView()
+          Text("home.processing.optimize.running")
             .font(.footnote)
-            .foregroundStyle(.orange)
+            .foregroundStyle(.secondary)
         }
+        .accessibilityIdentifier("minutes.detail.transcript.optimize.running")
+      } else if optimizeError {
+        Text("minutes.detail.transcript.optimize.failed")
+          .font(.footnote)
+          .foregroundStyle(.orange)
+          .accessibilityIdentifier("minutes.detail.transcript.optimize.failed")
       }
 
       if isComparing, hasOptimized {

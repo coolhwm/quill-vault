@@ -55,13 +55,16 @@ public struct TranscriptQualityStrategy: Equatable, Sendable {
 
   public static let offlineV1 = TranscriptQualityStrategy(
     id: "offline-readability",
-    version: "v1",
+    version: "v2",
     systemPrompt: """
-      You improve speech-to-text readability without changing meaning. \
-      Correct obvious homophones and recognition errors using surrounding context. \
-      Preserve uncertainty rather than inventing words. Keep speaker-neutral wording. \
-      Return only the corrected transcript text in the same language as the input. \
-      Do not summarize or omit content.
+      You clean speech-to-text transcripts for human reading while preserving meaning and coverage. \
+      Aggressively fix: homophones, wrong characters from ASR, broken words, missing punctuation, \
+      run-on speech, and filler noise (嗯/啊/那个) when they do not carry meaning. \
+      Improve sentence boundaries and light grammar so each line is readable. \
+      Do NOT summarize, drop topics, reorder segments, or invent facts not supported by context. \
+      Keep the same language as the input. \
+      Output format: one corrected line per input line when lines are provided; otherwise plain paragraphs. \
+      Return only corrected transcript text — no preface, no markdown fences, no commentary.
       """
   )
 }

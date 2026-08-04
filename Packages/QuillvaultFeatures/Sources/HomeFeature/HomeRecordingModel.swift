@@ -58,8 +58,11 @@ public final class HomeRecordingModel {
   /// When true, the recording transcript view should keep the latest line visible.
   public private(set) var isLiveTranscriptPinnedToBottom = true
   public private(set) var transcriptRecoveryState: TranscriptRecoveryState = .idle
+  /// Primary card phase (most recently focused meeting) for backward-compatible UI.
   public private(set) var processingPhase: HomeProcessingPhase = .idle
   public private(set) var focusedMeetingID: MeetingID?
+  /// Multi-meeting processing projection for home list (does not collapse to one job).
+  public private(set) var homeProcessingItems: [MeetingProcessingItem] = []
   public private(set) var captureStatus: HomeCaptureStatus = .active
   public private(set) var interruptionGaps: [RecordingInterruptionGap] = []
   public var isRecordingNoticePresented = false
@@ -78,6 +81,10 @@ public final class HomeRecordingModel {
   private var captureEvents: [RecordingCaptureEvent] = []
   private var isFinalizingTranscript = false
   private var isStartingMinutes = false
+  /// Local-only phases (transcript finalize / optimize) not yet durable as jobs.
+  private var localPhaseByMeeting: [MeetingID: MeetingProcessingPhase] = [:]
+  private var meetingMetaByID: [MeetingID: (title: String?, createdAt: Date, duration: Double?)] =
+    [:]
 
   public init(
     recording: any RecordingUseCase,
@@ -132,6 +139,7 @@ public final class HomeRecordingModel {
     cancelPostRecordingWork()
     captureEvents = []
     interruptionGaps = []
+    // Keep multi-meeting processing list; only clear primary session focus.
     processingPhase = .idle
     focusedMeetingID = nil
     transcriptRecoveryState = .idle
@@ -371,12 +379,19 @@ public final class HomeRecordingModel {
   private func presentCompleted(_ completion: RecordingCompletion) {
     state = .completed(completion)
     focusedMeetingID = completion.session.meetingID
+    meetingMetaByID[completion.session.meetingID] = (
+      nil,
+      completion.session.startedAt,
+      completion.audio.durationSeconds
+    )
     transcriptRecoveryState = .idle
     if completion.transcriptRevision == nil {
       processingPhase = .finalizingTranscript
+      noteLocalPhaseChange(for: completion.session.meetingID)
       schedulePostRecordingPipeline(for: completion)
     } else {
       processingPhase = .awaitingMinutes
+      noteLocalPhaseChange(for: completion.session.meetingID)
       schedulePostRecordingPipeline(for: completion)
     }
   }
@@ -547,6 +562,7 @@ public final class HomeRecordingModel {
         return .disabled
       }
       processingPhase = .optimizingTranscript
+      noteLocalPhaseChange(for: meetingID)
       let meeting = try await resolveMeeting(
         meetingID: meetingID,
         library: library
@@ -695,6 +711,11 @@ public final class HomeRecordingModel {
   }
 
   private func startGenerationPolling(meetingID: MeetingID) {
+    _ = meetingID
+    startMultiGenerationPolling()
+  }
+
+  private func startMultiGenerationPolling() {
     generationPollTask?.cancel()
     guard let generation else {
       return
@@ -706,14 +727,17 @@ public final class HomeRecordingModel {
           return
         }
         do {
-          if let snapshot = try await generation.load(meetingID: meetingID) {
-            self.applyGenerationSnapshot(snapshot)
-            switch snapshot.job.state {
-            case .completed, .superseded:
-              return
-            case .pending, .running, .paused:
-              continue
-            }
+          let active = try await generation.activeJobs()
+          await self.refreshHomeProcessingItems()
+          if let focused = self.focusedMeetingID,
+            let snapshot = active.first(where: { $0.job.meetingID == focused })
+          {
+            self.applyGenerationSnapshotWithoutRefresh(snapshot)
+          } else if let first = active.first {
+            self.applyGenerationSnapshotWithoutRefresh(first)
+          }
+          if active.isEmpty {
+            return
           }
         } catch {
           return
@@ -722,8 +746,10 @@ public final class HomeRecordingModel {
     }
   }
 
-  private func applyGenerationSnapshot(_ snapshot: GenerationSnapshot) {
-    focusedMeetingID = snapshot.job.meetingID
+  private func applyGenerationSnapshotWithoutRefresh(_ snapshot: GenerationSnapshot) {
+    let meetingID = snapshot.job.meetingID
+    focusedMeetingID = meetingID
+    localPhaseByMeeting[meetingID] = nil
     switch snapshot.job.state {
     case .pending, .running:
       processingPhase = .generatingMinutes(snapshot)
@@ -736,22 +762,138 @@ public final class HomeRecordingModel {
     }
   }
 
+  private func applyGenerationSnapshot(_ snapshot: GenerationSnapshot) {
+    applyGenerationSnapshotWithoutRefresh(snapshot)
+    Task { await refreshHomeProcessingItems() }
+  }
+
+  /// Records a local (non-generation-job) phase for multi-meeting home list.
+  private func noteLocalPhaseChange(for meetingID: MeetingID?) {
+    guard let meetingID else {
+      Task { await refreshHomeProcessingItems() }
+      return
+    }
+    if let mapped = mapHomePhaseToMeeting(processingPhase) {
+      switch processingPhase {
+      case .generatingMinutes, .generationPaused, .minutesCompleted:
+        localPhaseByMeeting[meetingID] = nil
+      case .idle:
+        localPhaseByMeeting[meetingID] = nil
+      default:
+        localPhaseByMeeting[meetingID] = mapped
+      }
+    }
+    Task { await refreshHomeProcessingItems() }
+  }
+
+  private func setLocalPhase(_ phase: HomeProcessingPhase, for meetingID: MeetingID) {
+    focusedMeetingID = meetingID
+    processingPhase = phase
+    localPhaseByMeeting[meetingID] = mapHomePhaseToMeeting(phase)
+    Task { await refreshHomeProcessingItems() }
+  }
+
+  private func mapHomePhaseToMeeting(_ phase: HomeProcessingPhase) -> MeetingProcessingPhase? {
+    switch phase {
+    case .idle:
+      return nil
+    case .finalizingTranscript:
+      return .finalizingTranscript
+    case .transcriptFailed:
+      return .transcriptFailed
+    case .optimizingTranscript:
+      return .optimizingTranscript
+    case .optimizeFailed:
+      return .optimizeFailed
+    case .awaitingMinutes:
+      return .awaitingMinutes
+    case .generatingMinutes(let snapshot):
+      return .generatingMinutes(
+        progress: snapshot.job.progress,
+        completedChunks: snapshot.job.completedChunkCount,
+        chunkCount: snapshot.job.chunkCount,
+        stage: snapshot.job.stage
+      )
+    case .generationPaused(let snapshot):
+      return .generationPaused(
+        progress: snapshot.job.progress,
+        pauseReason: snapshot.job.pauseReason
+      )
+    case .minutesCompleted:
+      return .minutesCompleted
+    case .generationFailed:
+      return .generationFailed
+    }
+  }
+
+  public func refreshHomeProcessingItems() async {
+    var generations: [MeetingID: GenerationSnapshot] = [:]
+    if let generation {
+      let active = (try? await generation.activeJobs()) ?? []
+      for snapshot in active {
+        generations[snapshot.job.meetingID] = snapshot
+      }
+    }
+    var meetings: [MeetingIndexEntry] = []
+    if let library, let snapshot = try? await library.restore() {
+      meetings = snapshot.meetings
+      for meeting in meetings {
+        meetingMetaByID[meeting.id] = (
+          meeting.title,
+          meeting.createdAt,
+          meeting.durationSeconds
+        )
+      }
+    }
+    // Ensure meetings that only exist as local overrides are still projected.
+    for meetingID in localPhaseByMeeting.keys where !meetings.contains(where: { $0.id == meetingID })
+    {
+      let meta = meetingMetaByID[meetingID]
+      meetings.append(
+        MeetingIndexEntry(
+          id: meetingID,
+          createdAt: meta?.createdAt ?? Date(),
+          relativeDirectory: meetingID.rawValue.uuidString,
+          assets: [.transcript],
+          title: meta?.title,
+          durationSeconds: meta?.duration
+        )
+      )
+    }
+    let projected = MeetingProcessingProjector.projectAll(
+      meetings: meetings,
+      generationsByMeeting: generations,
+      localOverrides: localPhaseByMeeting
+    )
+    homeProcessingItems = MeetingProcessingProjector.homeVisibleItems(from: projected)
+  }
+
   private func restoreProcessingState() async {
-    // Prefer restoring an active generation job for a recent meeting.
+    // Restore every active generation job (multi-meeting), focus the most recent.
     if let generation, let library,
       let snapshot = try? await library.restore()
     {
-      for meeting in snapshot.meetings {
-        if let job = try? await generation.load(meetingID: meeting.id),
-          job.job.isActive
+      let active = (try? await generation.activeJobs()) ?? []
+      if !active.isEmpty {
+        let sorted = active.sorted { $0.job.updatedAt > $1.job.updatedAt }
+        for job in sorted {
+          if let meeting = snapshot.meetings.first(where: { $0.id == job.job.meetingID }) {
+            meetingMetaByID[meeting.id] = (
+              meeting.title,
+              meeting.createdAt,
+              meeting.durationSeconds
+            )
+          }
+        }
+        if let primary = sorted.first,
+          let meeting = snapshot.meetings.first(where: { $0.id == primary.job.meetingID })
         {
           presentRestoredMeeting(meeting, revisionHint: nil)
-          applyGenerationSnapshot(job)
-          if job.job.state == .running || job.job.state == .pending {
-            startGenerationPolling(meetingID: meeting.id)
-          }
-          return
+          applyGenerationSnapshot(primary)
         }
+        startMultiGenerationPolling()
+        await refreshHomeProcessingItems()
+        return
       }
     }
 
@@ -793,6 +935,7 @@ public final class HomeRecordingModel {
     }), case .failure(let error) = firstFailure.result {
       focusedMeetingID = firstFailure.meetingID
       processingPhase = .transcriptFailed(error)
+      noteLocalPhaseChange(for: firstFailure.meetingID)
       transcriptRecoveryState = .failed(error)
       state = .completed(
         RecordingCompletion(

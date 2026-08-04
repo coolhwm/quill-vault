@@ -102,38 +102,7 @@ public struct MeetingDetailView: View {
 
   @ViewBuilder
   private func smartMinutesContent(_ detail: MeetingDetail) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      TextField(
-        "minutes.detail.title.placeholder",
-        text: Binding(
-          get: { model.draftTitle },
-          set: { model.draftTitle = $0 }
-        )
-      )
-      .textFieldStyle(.roundedBorder)
-      .accessibilityIdentifier("minutes.detail.title.field")
-      HStack {
-        Button {
-          Task {
-            await model.saveTitle()
-          }
-        } label: {
-          if model.titleSaveBusy {
-            ProgressView()
-          } else {
-            Label("minutes.detail.title.save", systemImage: "checkmark.circle")
-          }
-        }
-        .buttonStyle(.bordered)
-        .disabled(model.titleSaveBusy)
-        .accessibilityIdentifier("minutes.detail.title.save")
-        if model.titleSaveError {
-          Text("minutes.detail.title.save.failed")
-            .font(.footnote)
-            .foregroundStyle(.orange)
-        }
-      }
-    }
+    titleSection
 
     MeetingGenerationSection(
       minutes: detail.minutes,
@@ -163,6 +132,11 @@ public struct MeetingDetailView: View {
           await model.regenerateGeneration()
         }
       },
+      regenerateWithOptimize: {
+        Task {
+          await model.regenerateGeneration(optimizingTranscriptFirst: true)
+        }
+      },
       selectModelProfile: { profileID in
         Task {
           await model.selectGenerationProfile(profileID)
@@ -170,9 +144,80 @@ public struct MeetingDetailView: View {
       }
     )
     // Body markdown renders fenced mermaid; dedicated section covers diagramSource metadata.
-    MeetingSummarySection(minutes: detail.minutes)
+    MeetingSummarySection(
+      minutes: detail.minutes,
+      onChapterSeek: { seconds in
+        model.seek(to: seconds, beginsPlayback: true)
+      }
+    )
     if case .available(let content) = detail.minutes, !content.diagrams.isEmpty {
       MeetingDiagramSection(minutes: detail.minutes)
+    }
+  }
+
+  @ViewBuilder
+  private var titleSection: some View {
+    if model.isEditingTitle {
+      VStack(alignment: .leading, spacing: 8) {
+        TextField(
+          "minutes.detail.title.placeholder",
+          text: Binding(
+            get: { model.draftTitle },
+            set: { model.draftTitle = $0 }
+          )
+        )
+        .textFieldStyle(.roundedBorder)
+        .accessibilityIdentifier("minutes.detail.title.field")
+        HStack {
+          Button {
+            Task {
+              await model.saveTitle()
+            }
+          } label: {
+            if model.titleSaveBusy {
+              ProgressView()
+            } else {
+              Label("minutes.detail.title.save", systemImage: "checkmark.circle")
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(model.titleSaveBusy)
+          .accessibilityIdentifier("minutes.detail.title.save")
+          Button("minutes.detail.title.cancel") {
+            model.cancelTitleEditing()
+          }
+          .buttonStyle(.bordered)
+          .disabled(model.titleSaveBusy)
+          .accessibilityIdentifier("minutes.detail.title.cancel")
+        }
+        if model.titleSaveError {
+          Text("minutes.detail.title.save.failed")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        }
+      }
+    } else {
+      HStack(alignment: .firstTextBaseline) {
+        Text(
+          model.displayedTitle.isEmpty
+            ? String(localized: "minutes.card.default.title")
+            : model.displayedTitle
+        )
+        .font(.title2.bold())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("minutes.detail.title.readonly")
+        .onLongPressGesture {
+          model.beginTitleEditing()
+        }
+        Button {
+          model.beginTitleEditing()
+        } label: {
+          Image(systemName: "pencil")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("minutes.detail.title.edit")
+        .accessibilityLabel("minutes.detail.title.edit")
+      }
     }
   }
 

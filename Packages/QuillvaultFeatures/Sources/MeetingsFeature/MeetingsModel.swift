@@ -11,6 +11,8 @@ public final class MeetingsModel {
   private(set) var isSearching = false
   /// Programmatic navigation target for meeting detail (e.g. home deep link).
   private(set) var detailMeeting: MeetingIndexEntry?
+  /// Generation-aware processing phase per meeting for list status parity with home/detail.
+  private(set) var processingByMeeting: [MeetingID: MeetingProcessingPhase] = [:]
   var searchText = ""
   var dateFilter: MeetingDateFilter = .all
   var selectedStatuses: Set<MeetingIndexStatus> = []
@@ -82,12 +84,38 @@ public final class MeetingsModel {
     state = .loading
     do {
       setLoaded(try await library.restore())
+      await refreshProcessingProjection()
       Task { [weak self] in
         await self?.synchronizeExternalChanges()
       }
     } catch {
       state = .failed(recovery(for: error))
     }
+  }
+
+  public func refreshProcessingProjection() async {
+    guard case .loaded(let snapshot) = state else {
+      processingByMeeting = [:]
+      return
+    }
+    var generations: [MeetingID: GenerationSnapshot] = [:]
+    if let generation {
+      let active = (try? await generation.activeJobs()) ?? []
+      for job in active {
+        generations[job.job.meetingID] = job
+      }
+    }
+    let items = MeetingProcessingProjector.projectAll(
+      meetings: snapshot.meetings,
+      generationsByMeeting: generations
+    )
+    processingByMeeting = Dictionary(
+      uniqueKeysWithValues: items.map { ($0.meetingID, $0.phase) }
+    )
+  }
+
+  public func processingPhase(for meetingID: MeetingID) -> MeetingProcessingPhase? {
+    processingByMeeting[meetingID]
   }
 
   /// Opens a specific meeting detail after library is available (home deep link).
@@ -150,6 +178,7 @@ public final class MeetingsModel {
         return
       }
       setLoaded(synchronizedSnapshot)
+      await refreshProcessingProjection()
       if hasActiveSearch {
         await applySearch()
       }

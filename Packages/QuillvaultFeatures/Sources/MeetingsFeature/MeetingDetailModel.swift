@@ -35,6 +35,8 @@ public final class MeetingDetailModel {
   public private(set) var titleSaveBusy = false
   public private(set) var titleSaveError = false
   public private(set) var displayedTitle: String = ""
+  /// Default is read-only; edit mode is opt-in (#48).
+  public private(set) var isEditingTitle = false
 
   public enum MeetingDetailTab: String, CaseIterable, Identifiable, Sendable {
     case smartMinutes
@@ -82,6 +84,18 @@ public final class MeetingDetailModel {
     selectedDetailTab = tab
   }
 
+  public func beginTitleEditing() {
+    draftTitle = displayedTitle
+    titleSaveError = false
+    isEditingTitle = true
+  }
+
+  public func cancelTitleEditing() {
+    draftTitle = displayedTitle
+    titleSaveError = false
+    isEditingTitle = false
+  }
+
   public func saveTitle() async {
     guard let titleAccess, !titleSaveBusy else {
       return
@@ -105,12 +119,14 @@ public final class MeetingDetailModel {
       meeting = meeting.withTitle(title)
       displayedTitle = title
       draftTitle = title
+      isEditingTitle = false
       state = .idle
       await load()
       // loadMeetingDetail prefers minutes.md title; still re-assert hand-edit.
       meeting = meeting.withTitle(title)
       displayedTitle = title
       draftTitle = title
+      isEditingTitle = false
     } catch {
       titleSaveError = true
     }
@@ -304,10 +320,17 @@ public final class MeetingDetailModel {
   }
 
   public func regenerateGeneration(
-    replacingExternalMinutes: Bool = false
+    replacingExternalMinutes: Bool = false,
+    optimizingTranscriptFirst: Bool = false
   ) async {
     guard let generation, !generationBusy else {
       return
+    }
+    if optimizingTranscriptFirst {
+      await optimizeTranscript()
+      if transcriptOptimizeError {
+        return
+      }
     }
     if let snapshot = generationSnapshot,
       snapshot.job.pauseReason == .externalMinutesChanged,

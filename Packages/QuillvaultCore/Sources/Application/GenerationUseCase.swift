@@ -24,10 +24,17 @@ public protocol GenerationUseCase: Sendable {
     meetingID: MeetingID
   ) async throws -> GenerationSnapshot?
 
+  /// All active (pending/running/paused) generation jobs across meetings.
+  func activeJobs() async throws -> [GenerationSnapshot]
+
   func cancel(_ jobID: UUID) async
 }
 
 extension GenerationUseCase {
+  public func activeJobs() async throws -> [GenerationSnapshot] {
+    []
+  }
+
   public func regenerate(
     in directory: AuthoritativeDirectory,
     meeting: MeetingIndexEntry

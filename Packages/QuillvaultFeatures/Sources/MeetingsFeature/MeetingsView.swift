@@ -76,6 +76,14 @@ public struct MeetingsView: View {
       }
       await model.load()
     }
+    .task {
+      // Keep list generation progress aligned with home/detail.
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .seconds(2))
+        guard !Task.isCancelled else { return }
+        await model.refreshProcessingProjection()
+      }
+    }
     .searchable(
       text: $model.searchText,
       placement: .automatic,
@@ -135,7 +143,10 @@ public struct MeetingsView: View {
                   )
                 )
               } label: {
-                MeetingCardView(meeting: meeting)
+                MeetingCardView(
+                  meeting: meeting,
+                  processingPhase: model.processingPhase(for: meeting.id)
+                )
               }
               if meeting.assets == [.recording] {
                 Button {
