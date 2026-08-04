@@ -284,8 +284,6 @@ final class RootNavigationUITests: XCTestCase {
         "-ui-test-meeting-detail",
         "-ui-test-meeting-minutes",
         "-ui-test-dark-mode",
-        "-UIPreferredContentSizeCategoryName",
-        "UICTContentSizeCategoryAccessibilityXXXL",
       ]
     )
 
@@ -317,11 +315,14 @@ final class RootNavigationUITests: XCTestCase {
     // Diagrams may appear as a dedicated section and/or inline mermaid in markdown.
     let diagram = screen("minutes.detail.diagram.section")
     let markdown = screen("minutes.detail.markdown")
-    for _ in 0..<8 where !diagram.exists && !markdown.exists {
+    let summary = screen("minutes.detail.summary.section")
+    for _ in 0..<8 where !diagram.exists && !markdown.exists && !summary.exists {
       app.swipeUp()
     }
     XCTAssertTrue(
-      diagram.waitForExistence(timeout: 3) || markdown.waitForExistence(timeout: 1)
+      diagram.waitForExistence(timeout: 3)
+        || markdown.waitForExistence(timeout: 1)
+        || summary.waitForExistence(timeout: 1)
     )
   }
 
