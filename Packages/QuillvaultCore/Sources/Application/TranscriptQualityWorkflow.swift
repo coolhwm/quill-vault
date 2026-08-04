@@ -88,6 +88,10 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
       from: output.trimmingCharacters(in: .whitespacesAndNewlines),
       fallback: timeline
     )
+    // Parse fallback / no-op model output must not count as a successful optimize.
+    guard optimized.segments.map(\.text) != timeline.segments.map(\.text) else {
+      throw TranscriptQualityAccessError.optimizationUnchanged
+    }
     let metadata = TranscriptVersionMetadata(
       strategyID: strategy.id,
       strategyVersion: strategy.version,
@@ -149,19 +153,34 @@ public actor TranscriptQualityWorkflow: TranscriptQualityUseCase {
     from output: String,
     fallback: TranscriptTimeline
   ) throws -> TranscriptTimeline {
-    // Prefer returning a timeline with same anchors and replaced text when the
-    // model keeps line structure; otherwise keep original to avoid data loss.
-    let lines = output
+    // Prefer line-aligned replacements when the model keeps segment structure.
+    // Accept common wrappers (fences, bullet prefixes) without inventing text.
+    var body = output
       .replacingOccurrences(of: "\r\n", with: "\n")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if body.hasPrefix("```") {
+      let lines = body.components(separatedBy: "\n")
+      body = lines.dropFirst().filter { !$0.hasPrefix("```") }.joined(separator: "\n")
+    }
+    let lines = body
       .components(separatedBy: "\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
-    guard lines.count == fallback.segments.count else {
+      .filter { line in
+        guard !line.isEmpty else { return false }
+        if line.hasPrefix("#") { return false }
+        if line.hasPrefix("---") { return false }
+        return true
+      }
+    // Prefer exact segment-count match; if model returns more lines, take first N.
+    guard lines.count >= fallback.segments.count, !fallback.segments.isEmpty else {
       return fallback
     }
     var candidates: [TranscriptSegmentCandidate] = []
     for (index, segment) in fallback.segments.enumerated() {
-      let line = lines[index]
+      var line = lines[index]
+      if line.hasPrefix("- ") {
+        line = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+      }
       let text: String
       if let close = line.lastIndex(of: "]"),
         close < line.endIndex

@@ -30,4 +30,6 @@ public enum TranscriptQualityAccessError: Error, Equatable, Sendable {
   case transcriptUnavailable
   case publicationFailed
   case directoryUnavailable
+  /// Model output matched the original (or parse fell back); not a successful optimize.
+  case optimizationUnchanged
 }

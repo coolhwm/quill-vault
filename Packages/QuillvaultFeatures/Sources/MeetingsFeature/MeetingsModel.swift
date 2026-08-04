@@ -9,6 +9,8 @@ public final class MeetingsModel {
   private(set) var state: MeetingLibraryState = .idle
   private(set) var recoveringMeetingID: MeetingID?
   private(set) var isSearching = false
+  /// Programmatic navigation target for meeting detail (e.g. home deep link).
+  private(set) var detailMeeting: MeetingIndexEntry?
   var searchText = ""
   var dateFilter: MeetingDateFilter = .all
   var selectedStatuses: Set<MeetingIndexStatus> = []
@@ -82,6 +84,30 @@ public final class MeetingsModel {
     } catch {
       state = .failed(recovery(for: error))
     }
+  }
+
+  /// Opens a specific meeting detail after library is available (home deep link).
+  public func openDetail(for meetingID: MeetingID) async {
+    if case .loaded(let snapshot) = state,
+      let meeting = snapshot.meetings.first(where: { $0.id == meetingID })
+    {
+      detailMeeting = meeting
+      return
+    }
+    do {
+      if state == .idle || state == .loading {
+        // fall through to load
+      }
+      let snapshot = try await library.synchronize()
+      setLoaded(snapshot)
+      detailMeeting = snapshot.meetings.first(where: { $0.id == meetingID })
+    } catch {
+      // Keep list failure handling separate; deep link quietly no-ops.
+    }
+  }
+
+  public func clearDetailRoute() {
+    detailMeeting = nil
   }
 
   public func selectDirectory(opaqueReference: String) async {

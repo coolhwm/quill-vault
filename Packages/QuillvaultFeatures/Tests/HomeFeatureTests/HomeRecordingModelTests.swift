@@ -278,6 +278,109 @@ struct HomeRecordingModelTests {
     #expect(await generation.startCount == 1)
   }
 
+  @Test("Optimize failure stops auto generation until user skips or retries")
+  func optimizeFailureBlocksAutoGeneration() async {
+    let revision = TranscriptRevision(
+      meetingID: RecordingSession.fixture().meetingID,
+      localeIdentifier: "zh-CN",
+      timeline: TranscriptTimeline(audioDurationSeconds: 60, segments: [])
+    )
+    let meeting = MeetingIndexEntry(
+      id: revision.meetingID,
+      createdAt: Date(timeIntervalSince1970: 1_722_470_400),
+      relativeDirectory: "meeting-test",
+      assets: [.recording, .transcript],
+      durationSeconds: 60,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint
+    )
+    let completedJob = GenerationJob(
+      id: UUID(uuidString: "77777777-7777-7777-7777-777777777777")!,
+      meetingID: revision.meetingID,
+      transcriptRevisionID: revision.id,
+      transcriptFingerprint: revision.contentFingerprint,
+      modelProfile: ModelProfileSnapshot(
+        profileID: ModelProfileID(
+          rawValue: UUID(uuidString: "88888888-8888-8888-8888-888888888888")!
+        ),
+        baseURL: URL(string: "https://api.example.com/v1")!,
+        model: "gpt-test",
+        parameters: ModelGenerationParameters(),
+        credentialReference: ModelCredentialReference(
+          rawValue: UUID(uuidString: "99999999-9999-9999-9999-999999999999")!
+        )
+      ),
+      createdAt: Date(timeIntervalSince1970: 1_722_470_500),
+      updatedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      completedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      state: .completed,
+      stage: .completed,
+      progress: 100
+    )
+    let generation = GenerationUseCaseStub(
+      startSnapshot: GenerationSnapshot(job: completedJob)
+    )
+    let quality = TranscriptQualityUseCaseStub(shouldFail: true)
+    let profileID = completedJob.modelProfile.profileID
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(
+        recoveryResults: [
+          TranscriptionRecoveryResult(
+            meetingID: revision.meetingID,
+            result: .success(revision)
+          )
+        ]
+      ),
+      directory: AuthoritativeDirectoryUseCaseStub(),
+      library: MeetingLibraryUseCaseStub(meetings: [meeting]),
+      generation: generation,
+      modelProfiles: ModelProfileUseCaseStub(
+        collection: ModelProfileCollection(
+          profiles: [
+            ModelProfile(
+              id: profileID,
+              name: "Test",
+              baseURL: completedJob.modelProfile.baseURL,
+              model: completedJob.modelProfile.model,
+              credentialReference: completedJob.modelProfile.credentialReference,
+              isUsable: true
+            )
+          ],
+          currentProfileID: profileID,
+          automaticGeneration: AutomaticGenerationPreferences(
+            isEnabled: true,
+            disclosureAcknowledged: true
+          ),
+          transcriptQuality: TranscriptQualityPreferences(isEnabled: true)
+        )
+      ),
+      transcriptQuality: quality
+    )
+    await model.selectDirectory(opaqueReference: "file:///vault")
+    await model.start()
+    await model.stop()
+
+    for _ in 0..<200 {
+      if model.processingPhase == .optimizeFailed {
+        break
+      }
+      await Task.yield()
+    }
+    #expect(model.processingPhase == .optimizeFailed)
+    #expect(await generation.startCount == 0)
+    #expect(await quality.publishCount == 1)
+
+    await model.skipOptimizeAndStartMinutes()
+    for _ in 0..<200 {
+      if model.processingPhase == .minutesCompleted {
+        break
+      }
+      await Task.yield()
+    }
+    #expect(model.processingPhase == .minutesCompleted)
+    #expect(await generation.startCount == 1)
+  }
+
   @Test("Manual minutes generation is available when automatic generation is off")
   func manualMinutesGenerationWhenAutoOff() async {
     let revision = TranscriptRevision(
@@ -858,6 +961,46 @@ private actor GenerationUseCaseStub: GenerationUseCase {
   }
 
   func cancel(_ jobID: UUID) async {}
+}
+
+private actor TranscriptQualityUseCaseStub: TranscriptQualityUseCase {
+  private let shouldFail: Bool
+  private(set) var publishCount = 0
+
+  init(shouldFail: Bool = false) {
+    self.shouldFail = shouldFail
+  }
+
+  func optimize(
+    timeline: TranscriptTimeline,
+    localeIdentifier: String
+  ) async throws -> (timeline: TranscriptTimeline, metadata: TranscriptVersionMetadata) {
+    (
+      timeline,
+      TranscriptVersionMetadata(
+        strategyID: "offline-readability",
+        strategyVersion: "v1",
+        modelName: "test",
+        createdAt: Date(timeIntervalSince1970: 1)
+      )
+    )
+  }
+
+  func optimizeAndPublish(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptVersionMetadata {
+    publishCount += 1
+    if shouldFail {
+      throw TranscriptQualityAccessError.publicationFailed
+    }
+    return TranscriptVersionMetadata(
+      strategyID: "offline-readability",
+      strategyVersion: "v1",
+      modelName: "test",
+      createdAt: Date(timeIntervalSince1970: 1)
+    )
+  }
 }
 
 private struct ModelProfileUseCaseStub: ModelProfileUseCase {

@@ -25,6 +25,27 @@ public struct MeetingsView: View {
         recoveryContent(recovery)
       }
     }
+    .navigationDestination(
+      isPresented: Binding(
+        get: { model.detailMeeting != nil },
+        set: { presented in
+          if !presented {
+            model.clearDetailRoute()
+          }
+        }
+      )
+    ) {
+      if let meeting = model.detailMeeting,
+        case .loaded(let snapshot) = model.state
+      {
+        MeetingDetailView(
+          model: model.makeDetailModel(
+            directory: snapshot.directory,
+            meeting: meeting
+          )
+        )
+      }
+    }
     .navigationTitle("minutes.navigation.title")
     .toolbar {
       ToolbarItem(placement: .secondaryAction) {

@@ -31,6 +31,10 @@ public enum HomeProcessingPhase: Equatable, Sendable {
   case idle
   case finalizingTranscript
   case transcriptFailed(TranscriptError)
+  /// Quality optimization is running after transcript is ready.
+  case optimizingTranscript
+  /// Quality optimization failed; user may retry or skip to generate from original.
+  case optimizeFailed
   case awaitingMinutes
   case generatingMinutes(GenerationSnapshot)
   case generationPaused(GenerationSnapshot)
@@ -466,29 +470,83 @@ public final class HomeRecordingModel {
     guard completion.transcriptRevision != nil else {
       return
     }
-    await maybeOptimizeTranscript(for: completion.session.meetingID)
+    let optimizeOutcome = await runTranscriptOptimization(
+      for: completion.session.meetingID
+    )
+    switch optimizeOutcome {
+    case .failed:
+      processingPhase = .optimizeFailed
+      return
+    case .disabled, .unavailable, .succeeded:
+      break
+    }
+    await continueAfterOptimization(meetingID: completion.session.meetingID)
+  }
+
+  /// User chose to retry quality optimization after a failure.
+  public func retryOptimizeTranscript() async {
+    guard
+      case .completed(let completion) = state,
+      completion.transcriptRevision != nil,
+      case .optimizeFailed = processingPhase
+    else {
+      return
+    }
+    let outcome = await runTranscriptOptimization(
+      for: completion.session.meetingID
+    )
+    switch outcome {
+    case .failed:
+      processingPhase = .optimizeFailed
+    case .disabled, .unavailable, .succeeded:
+      await continueAfterOptimization(meetingID: completion.session.meetingID)
+    }
+  }
+
+  /// User skipped failed optimization; generate from original transcript.
+  public func skipOptimizeAndStartMinutes() async {
+    guard case .optimizeFailed = processingPhase else {
+      return
+    }
+    guard case .completed(let completion) = state else {
+      return
+    }
+    await continueAfterOptimization(meetingID: completion.session.meetingID)
+  }
+
+  private func continueAfterOptimization(meetingID: MeetingID) async {
     let shouldAutoGenerate = await shouldAutomaticallyGenerateMinutes()
     if shouldAutoGenerate {
-      await beginMinutesGeneration(for: completion.session.meetingID)
+      await beginMinutesGeneration(for: meetingID)
     } else {
       processingPhase = .awaitingMinutes
     }
   }
 
-  private func maybeOptimizeTranscript(for meetingID: MeetingID) async {
+  private enum OptimizeRunOutcome: Equatable {
+    case disabled
+    case unavailable
+    case succeeded
+    case failed
+  }
+
+  private func runTranscriptOptimization(
+    for meetingID: MeetingID
+  ) async -> OptimizeRunOutcome {
     guard
       let transcriptQuality,
       let modelProfiles,
       let library,
       case .authorized(let directory) = directoryState
     else {
-      return
+      return .unavailable
     }
     do {
       let collection = try await modelProfiles.load()
       guard collection.transcriptQuality.isEnabled else {
-        return
+        return .disabled
       }
+      processingPhase = .optimizingTranscript
       let meeting = try await resolveMeeting(
         meetingID: meetingID,
         library: library
@@ -497,8 +555,11 @@ public final class HomeRecordingModel {
         in: directory,
         meeting: meeting
       )
+      return .succeeded
+    } catch is CancellationError {
+      return .failed
     } catch {
-      // Optimization is best-effort; original transcript remains authoritative.
+      return .failed
     }
   }
 

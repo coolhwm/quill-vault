@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Transcript quality workflow")
 struct TranscriptQualityWorkflowTests {
-  @Test("Keeps original anchors when optimized line count mismatches")
-  func keepsOriginalOnMismatch() async throws {
+  @Test("Line-count mismatch does not publish a silent no-op optimize")
+  func mismatchThrowsUnchanged() async throws {
     let timeline = try TranscriptTimeline.normalizing(
       [
         TranscriptSegmentCandidate(startSeconds: 0, endSeconds: 1, text: "原始一句"),
@@ -19,12 +19,12 @@ struct TranscriptQualityWorkflowTests {
       profiles: QualityProfilesStub(),
       provider: provider
     )
-    let result = try await workflow.optimize(
-      timeline: timeline,
-      localeIdentifier: "zh-CN"
-    )
-    #expect(result.timeline.segments.map(\.text) == ["原始一句", "原始二句"])
-    #expect(result.metadata.strategyID == "offline-readability")
+    await #expect(throws: TranscriptQualityAccessError.optimizationUnchanged) {
+      _ = try await workflow.optimize(
+        timeline: timeline,
+        localeIdentifier: "zh-CN"
+      )
+    }
   }
 
   @Test("Applies line-aligned optimized text")

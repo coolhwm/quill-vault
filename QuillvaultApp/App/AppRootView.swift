@@ -17,8 +17,8 @@ struct AppRootView: View {
   var body: some View {
     TabView(selection: $router.selectedTab) {
       NavigationStack {
-        HomeView(model: recordingModel) { _ in
-          router.selectedTab = .minutes
+        HomeView(model: recordingModel) { meetingID in
+          router.openMeetingDetail(meetingID)
         }
       }
       .tabItem {
@@ -51,10 +51,20 @@ struct AppRootView: View {
           await recordingModel.refreshDirectory()
         case .minutes:
           await meetingsModel.load()
+          await openPendingMeetingIfNeeded()
         case .profile:
           await profileModel.load()
           await settingsModel.load()
         }
+      }
+    }
+    .onChange(of: router.pendingMeetingID) { _, pending in
+      guard pending != nil, router.selectedTab == .minutes else {
+        return
+      }
+      Task {
+        await meetingsModel.load()
+        await openPendingMeetingIfNeeded()
       }
     }
     .onChange(of: scenePhase) { _, phase in
@@ -78,5 +88,13 @@ struct AppRootView: View {
       return .light
     }
     return nil
+  }
+
+  @MainActor
+  private func openPendingMeetingIfNeeded() async {
+    guard let meetingID = router.consumePendingMeetingID() else {
+      return
+    }
+    await meetingsModel.openDetail(for: meetingID)
   }
 }

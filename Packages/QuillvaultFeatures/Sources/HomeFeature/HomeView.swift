@@ -292,6 +292,10 @@ public struct HomeView: View {
       "home.processing.transcript.running"
     case .transcriptFailed:
       "home.processing.transcript.failed"
+    case .optimizingTranscript:
+      "home.processing.optimize.running"
+    case .optimizeFailed:
+      "home.processing.optimize.failed"
     case .awaitingMinutes:
       "home.processing.minutes.pending"
     case .generatingMinutes:
@@ -309,13 +313,13 @@ public struct HomeView: View {
     switch model.processingPhase {
     case .idle, .minutesCompleted:
       "checkmark.circle.fill"
-    case .finalizingTranscript, .generatingMinutes:
+    case .finalizingTranscript, .generatingMinutes, .optimizingTranscript:
       "arrow.triangle.2.circlepath.circle.fill"
     case .awaitingMinutes:
       "sparkles"
     case .generationPaused:
       "pause.circle.fill"
-    case .transcriptFailed, .generationFailed:
+    case .transcriptFailed, .generationFailed, .optimizeFailed:
       "exclamationmark.circle.fill"
     }
   }
@@ -324,11 +328,10 @@ public struct HomeView: View {
     switch model.processingPhase {
     case .idle, .minutesCompleted:
       .green
-    case .finalizingTranscript, .generatingMinutes, .awaitingMinutes:
+    case .finalizingTranscript, .generatingMinutes, .awaitingMinutes,
+      .optimizingTranscript:
       .accentColor
-    case .generationPaused:
-      .orange
-    case .transcriptFailed, .generationFailed:
+    case .generationPaused, .transcriptFailed, .generationFailed, .optimizeFailed:
       .orange
     }
   }
@@ -364,6 +367,41 @@ public struct HomeView: View {
       .buttonStyle(.bordered)
       .disabled(model.transcriptRecoveryState == .retrying)
       .accessibilityIdentifier("home.processing.transcript.retry")
+    case .optimizingTranscript:
+      HStack(spacing: QuillvaultSpacing.compact) {
+        ProgressView()
+        Text("home.processing.optimize.running.description")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      }
+      .accessibilityIdentifier("home.processing.optimize.running")
+    case .optimizeFailed:
+      Text("home.processing.optimize.failed.description")
+        .font(.subheadline)
+        .foregroundStyle(.orange)
+      HStack(spacing: QuillvaultSpacing.compact) {
+        Button {
+          Task {
+            await model.retryOptimizeTranscript()
+          }
+        } label: {
+          Label("home.processing.optimize.retry", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("home.processing.optimize.retry")
+        Button {
+          Task {
+            await model.skipOptimizeAndStartMinutes()
+          }
+        } label: {
+          Label(
+            "home.processing.optimize.skip",
+            systemImage: "arrow.forward.circle"
+          )
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("home.processing.optimize.skip")
+      }
     case .awaitingMinutes:
       Text("home.processing.minutes.pending.description")
         .font(.subheadline)

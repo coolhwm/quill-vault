@@ -117,8 +117,25 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
         case .recording:
           durationSeconds = durationSeconds ?? recordingDuration(at: fileURL)
         case .transcript:
+          // Index "生成主文字记录": prefer optimized when present, else original.
+          let optimizedURL = child.appending(
+            path: GenerationPrimaryTranscript.optimizedFileName
+          )
+          let originalURL = fileURL
+          let primaryURL: URL
+          let primaryKind: TranscriptVersionKind
+          if fileManager.fileExists(atPath: optimizedURL.path) {
+            primaryURL = optimizedURL
+            primaryKind = .optimized
+            if !(try ubiquitousStatus.isDownloaded(optimizedURL)) {
+              throw DirectoryAccessError.itemNotDownloaded
+            }
+          } else {
+            primaryURL = originalURL
+            primaryKind = .original
+          }
           guard
-            let markdown = fullText(at: fileURL),
+            let markdown = fullText(at: primaryURL),
             let timeline = try? MeetingTranscriptMarkdownParser().parse(markdown)
           else {
             hasInvalidMarkdown = true
@@ -129,13 +146,15 @@ struct MeetingDirectoryScanner: @unchecked Sendable {
             ?? durationSeconds
           searchableTranscript = timeline.segments.map(\.text).joined(separator: "\n")
           let locale = frontMatterValue(named: "locale", in: markdown) ?? "und"
-          let revision = TranscriptRevision(
+          let primary = GenerationPrimaryTranscript.candidate(
             meetingID: meetingID,
             localeIdentifier: locale,
-            timeline: timeline
+            timeline: timeline,
+            kind: primaryKind
           )
-          transcriptRevisionID = revision.id
-          transcriptFingerprint = revision.contentFingerprint
+          transcriptRevisionID = primary.revisionID
+          transcriptFingerprint = primary.contentFingerprint
+          _ = primaryKind
         case .minutes:
           guard let markdown = fullText(at: fileURL) else {
             hasInvalidMarkdown = true
