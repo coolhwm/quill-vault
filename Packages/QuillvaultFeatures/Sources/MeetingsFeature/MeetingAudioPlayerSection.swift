@@ -56,6 +56,7 @@ struct MeetingAudioPlayerSection: View {
       case .missing:
         Label("minutes.detail.recording.missing", systemImage: "waveform.slash")
           .foregroundStyle(.secondary)
+          .accessibilityIdentifier("minutes.detail.recording.missing")
       case .downloadRequired:
         Label("minutes.detail.download.required", systemImage: "icloud.and.arrow.down")
           .foregroundStyle(.secondary)

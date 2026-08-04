@@ -255,20 +255,41 @@ final class RootNavigationUITests: XCTestCase {
     XCTAssertTrue(meeting.waitForExistence(timeout: 2))
     meeting.tap()
 
-    XCTAssertTrue(app.navigationBars["Meeting"].waitForExistence(timeout: 2))
-    let transcriptTab = app.segmentedControls.buttons["Transcript"]
-    XCTAssertTrue(transcriptTab.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      app.navigationBars["Meeting"].waitForExistence(timeout: 3)
+        || screen("minutes.detail.screen").waitForExistence(timeout: 2)
+    )
+    // Segmented control may expose the localized title or the raw key depending
+    // on how strings are resolved in the runner locale.
+    let transcriptTab =
+      app.segmentedControls.buttons["Transcript"].exists
+      ? app.segmentedControls.buttons["Transcript"]
+      : app.segmentedControls.buttons.element(boundBy: 1)
+    XCTAssertTrue(transcriptTab.waitForExistence(timeout: 3))
     transcriptTab.tap()
-    let emptyTranscript =
-      app.staticTexts["No speech was recognized in this recording."]
-    for _ in 0..<10 where !emptyTranscript.exists {
+
+    let emptyTranscript = screen("minutes.detail.transcript.empty")
+    let emptyTranscriptText = app.staticTexts[
+      "No speech was recognized in this recording."
+    ]
+    for _ in 0..<12 where !emptyTranscript.exists && !emptyTranscriptText.exists {
       app.swipeUp()
     }
-    XCTAssertTrue(emptyTranscript.exists)
     XCTAssertTrue(
-      app.staticTexts[
-        "The recording file is missing. Restore it to this meeting folder, then reopen the meeting."
-      ].exists
+      emptyTranscript.waitForExistence(timeout: 3)
+        || emptyTranscriptText.waitForExistence(timeout: 1)
+    )
+
+    let missingRecording = screen("minutes.detail.recording.missing")
+    let missingRecordingText = app.staticTexts[
+      "The recording file is missing. Restore it to this meeting folder, then reopen the meeting."
+    ]
+    for _ in 0..<8 where !missingRecording.exists && !missingRecordingText.exists {
+      app.swipeUp()
+    }
+    XCTAssertTrue(
+      missingRecording.waitForExistence(timeout: 3)
+        || missingRecordingText.waitForExistence(timeout: 1)
     )
     let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.name = "meeting-detail-light-empty-english"

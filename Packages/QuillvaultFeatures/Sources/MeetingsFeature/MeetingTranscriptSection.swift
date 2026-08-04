@@ -126,6 +126,7 @@ struct MeetingTranscriptSection: View {
       if timeline.segments.isEmpty {
         Text("minutes.detail.transcript.empty")
           .foregroundStyle(.secondary)
+          .accessibilityIdentifier("minutes.detail.transcript.empty")
       } else {
         LazyVStack(alignment: .leading, spacing: 14) {
           ForEach(timeline.segments, id: \.id) { segment in
