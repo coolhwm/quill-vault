@@ -278,6 +278,110 @@ struct HomeRecordingModelTests {
     #expect(await generation.startCount == 1)
   }
 
+  @Test("Cold-start restore resumes a running optimize job once without double optimize")
+  func restoreResumesOptimizeJobOnce() async {
+    let meetingID = RecordingSession.fixture().meetingID
+    let meeting = MeetingIndexEntry(
+      id: meetingID,
+      createdAt: Date(timeIntervalSince1970: 1_722_470_400),
+      relativeDirectory: "meeting-optimize-resume",
+      assets: [.recording, .transcript],
+      durationSeconds: 60,
+      transcriptRevisionID: "rev",
+      transcriptFingerprint: "fp"
+    )
+    let completedJob = GenerationJob(
+      id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!,
+      meetingID: meetingID,
+      transcriptRevisionID: "rev",
+      transcriptFingerprint: "fp",
+      modelProfile: ModelProfileSnapshot(
+        profileID: ModelProfileID(
+          rawValue: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!
+        ),
+        baseURL: URL(string: "https://api.example.com/v1")!,
+        model: "gpt-test",
+        parameters: ModelGenerationParameters(),
+        credentialReference: ModelCredentialReference(
+          rawValue: UUID(uuidString: "cccccccc-cccc-cccc-cccc-cccccccccccc")!
+        )
+      ),
+      createdAt: Date(timeIntervalSince1970: 1_722_470_500),
+      updatedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      completedAt: Date(timeIntervalSince1970: 1_722_470_600),
+      state: .completed,
+      stage: .completed,
+      progress: 100
+    )
+    let generation = GenerationUseCaseStub(
+      startSnapshot: GenerationSnapshot(job: completedJob)
+    )
+    let quality = TranscriptQualityUseCaseStub(
+      shouldFail: false,
+      initialJobs: [
+        meetingID: TranscriptOptimizeJob(
+          meetingID: meetingID,
+          state: .running,
+          progress: 40,
+          updatedAt: Date(timeIntervalSince1970: 1_722_470_550)
+        )
+      ]
+    )
+    let profileID = completedJob.modelProfile.profileID
+    let model = HomeRecordingModel(
+      recording: RecordingUseCaseStub(recoveryResults: []),
+      directory: AuthoritativeDirectoryUseCaseStub(),
+      library: MeetingLibraryUseCaseStub(meetings: [meeting]),
+      generation: generation,
+      modelProfiles: ModelProfileUseCaseStub(
+        collection: ModelProfileCollection(
+          profiles: [
+            ModelProfile(
+              id: profileID,
+              name: "Test",
+              baseURL: completedJob.modelProfile.baseURL,
+              model: completedJob.modelProfile.model,
+              credentialReference: completedJob.modelProfile.credentialReference,
+              isUsable: true
+            )
+          ],
+          currentProfileID: profileID,
+          automaticGeneration: AutomaticGenerationPreferences(
+            isEnabled: true,
+            disclosureAcknowledged: true
+          ),
+          transcriptQuality: TranscriptQualityPreferences(isEnabled: true)
+        )
+      ),
+      transcriptQuality: quality
+    )
+
+    await model.restore()
+
+    for _ in 0..<400 {
+      switch model.processingPhase {
+      case .minutesCompleted, .awaitingMinutes, .generatingMinutes, .generationPaused:
+        break
+      default:
+        await Task.yield()
+        continue
+      }
+      break
+    }
+
+    // Single optimize resume — must not call optimize twice (advanceAfterTranscriptReady path).
+    #expect(await quality.publishCount == 1)
+    #expect(await quality.loadJobCount >= 1)
+    // After success, continueAfterOptimization starts minutes (auto on).
+    switch model.processingPhase {
+    case .generatingMinutes, .minutesCompleted, .awaitingMinutes, .generationPaused:
+      break
+    default:
+      Issue.record("Unexpected phase after optimize resume: \(model.processingPhase)")
+    }
+    #expect(await generation.startCount == 1)
+  }
+
   @Test("Optimize failure stops auto generation until user skips or retries")
   func optimizeFailureBlocksAutoGeneration() async {
     let revision = TranscriptRevision(
@@ -965,10 +1069,16 @@ private actor GenerationUseCaseStub: GenerationUseCase {
 
 private actor TranscriptQualityUseCaseStub: TranscriptQualityUseCase {
   private let shouldFail: Bool
+  private var jobs: [MeetingID: TranscriptOptimizeJob]
   private(set) var publishCount = 0
+  private(set) var loadJobCount = 0
 
-  init(shouldFail: Bool = false) {
+  init(
+    shouldFail: Bool = false,
+    initialJobs: [MeetingID: TranscriptOptimizeJob] = [:]
+  ) {
     self.shouldFail = shouldFail
+    self.jobs = initialJobs
   }
 
   func optimize(
@@ -991,15 +1101,36 @@ private actor TranscriptQualityUseCaseStub: TranscriptQualityUseCase {
     meeting: MeetingIndexEntry
   ) async throws -> TranscriptVersionMetadata {
     publishCount += 1
+    jobs[meeting.id] = TranscriptOptimizeJob(
+      meetingID: meeting.id,
+      state: .running,
+      progress: 10,
+      updatedAt: Date(timeIntervalSince1970: 2)
+    )
     if shouldFail {
+      jobs[meeting.id] = TranscriptOptimizeJob(
+        meetingID: meeting.id,
+        state: .failed,
+        progress: 0,
+        updatedAt: Date(timeIntervalSince1970: 3)
+      )
       throw TranscriptQualityAccessError.publicationFailed
     }
+    jobs[meeting.id] = nil
     return TranscriptVersionMetadata(
       strategyID: "offline-readability",
       strategyVersion: "v1",
       modelName: "test",
       createdAt: Date(timeIntervalSince1970: 1)
     )
+  }
+
+  func loadOptimizeJob(
+    in directory: AuthoritativeDirectory,
+    meeting: MeetingIndexEntry
+  ) async throws -> TranscriptOptimizeJob? {
+    loadJobCount += 1
+    return jobs[meeting.id]
   }
 }
 

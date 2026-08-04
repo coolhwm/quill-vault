@@ -995,30 +995,12 @@ public final class HomeRecordingModel {
         resumed = true
         Task { [weak self] in
           guard let self else { return }
+          // Resume only re-runs optimization once; do NOT call
+          // advanceAfterTranscriptReady (that would optimize again).
           let outcome = await self.runTranscriptOptimization(for: meeting.id)
           switch outcome {
           case .succeeded, .disabled, .unavailable:
-            await self.advanceAfterTranscriptReady(
-              for: RecordingCompletion(
-                session: RecordingSession(
-                  meetingID: meeting.id,
-                  startedAt: meeting.createdAt
-                ),
-                audio: RecordedAudio(
-                  durationSeconds: max(meeting.durationSeconds ?? 0.001, 0.001),
-                  packetCount: 0,
-                  byteCount: 0
-                ),
-                transcriptRevision: TranscriptRevision(
-                  meetingID: meeting.id,
-                  localeIdentifier: "und",
-                  timeline: TranscriptTimeline(
-                    audioDurationSeconds: max(meeting.durationSeconds ?? 0.001, 0.001),
-                    segments: []
-                  )
-                )
-              )
-            )
+            await self.continueAfterOptimization(meetingID: meeting.id)
           case .failed:
             self.processingPhase = .optimizeFailed
             self.noteLocalPhaseChange(for: meeting.id)
